@@ -38,13 +38,13 @@ Frontend response contracts live in `web/src/types.ts`. `api<T>`, `post<T>` and 
 - GET/POST `/cabinets`, PUT/DELETE `/cabinets/{id}`
   fields `{id,name,host,port,jumpHost,jumpPort,jumpUserName,jumpPassword,remark}`
   jumpPassword write-only; responses `hasJumpPassword`.
-- POST `/cabinets/test-connections`: `{ids:[]}` real timed probes -> `{items:[{id,success,message}]}`
+- POST `/cabinets/test-connections`: `{ids:[]}` real timed probes -> `{items:[{id,success,message}]}`; writes an audit entry. Targets that resolve to loopback, link-local, multicast or unspecified addresses are refused with `success:false` instead of being probed.
 - POST `/cabinets/{id}/reclaim`: release platform sessions/reservations; never pretend hardware reset
 - GET/POST `/devices?cabinetId=...`, PUT/DELETE `/devices/{id}`
   fields `{id,name,cabinetId,deviceTypeId,host,port,connectionType,serialPortNumber,webPort,webProtocol,userName,password,remark}`
   password write-only; connectionType `ssh|telnet|tcp`; responses `hasPassword`.
-- POST `/devices/{id}/connect-test`: real timed probe
-- GET `/terminal/{deviceId}` WebSocket; validate same origin, admin cookie. Input/output raw terminal text; xterm UI. No credentials in URL.
+- POST `/devices/{id}/connect-test`: real timed probe with the same target policy and audit entry as `/cabinets/test-connections`
+- GET `/terminal/{deviceId}` WebSocket; validate same origin, admin cookie, and the same outbound target policy. Input/output raw terminal text; xterm UI. No credentials in URL.
 - GET `/server/info`: actual management-host CPU/memory/network inventory and status
 - GET/POST `/nodes`, PUT/DELETE `/nodes/{id}`
   fields `{id,name,host,provider,port,userName,password,enabled,remark}`; provider `hyperv|proxmox`; write-only secrets

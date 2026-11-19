@@ -121,12 +121,29 @@ try {
   assert.equal((await api(`/devices/${device.id}/connect-test`, 'POST', {})).isSimulated, true);
   const probes = await api('/cabinets/test-connections', 'POST', { ids: [cabinet.id] }); assert.equal(probes.items[0].success, true); assert.equal(probes.items[0].isSimulated, true); mark('connection probes identify simulated transport');
 
+  // Outbound policy: an administrator account must not be able to use connect probes as a
+  // loopback port scanner for the management host.
+  const blockedCabinet = await api('/cabinets', 'POST', { name: `回环机柜-${suffix}`, host: '127.0.0.1', port: 5080, jumpPort: 22, isSimulated: false });
+  cleanup.push(() => api(`/cabinets/${blockedCabinet.id}`, 'DELETE'));
+  const blockedProbe = await api('/cabinets/test-connections', 'POST', { ids: [blockedCabinet.id] });
+  assert.equal(blockedProbe.items[0].success, false);
+  assert.match(blockedProbe.items[0].message, /不允许连接/);
+  const blockedDevice = await api('/devices', 'POST', { name: `回环设备-${suffix}`, cabinetId: blockedCabinet.id, deviceTypeId: type.id, port: 5080, webPort: 80, webProtocol: 'http', serialPortNumber: 1, connectionType: 'tcp', host: '127.0.0.1' });
+  cleanup.push(() => api(`/devices/${blockedDevice.id}`, 'DELETE'));
+  const blockedDeviceProbe = await api(`/devices/${blockedDevice.id}/connect-test`, 'POST', {});
+  assert.equal(blockedDeviceProbe.success, false);
+  assert.match(blockedDeviceProbe.message, /不允许连接/);
+  const probeAudit = await api('/audits?search=测试');
+  assert.ok(probeAudit.items.some(x => x.action === '测试机柜连接' && x.target.includes(blockedCabinet.name)), 'cabinet probe was not audited');
+  assert.ok(probeAudit.items.some(x => x.action === '测试设备连接' && x.target === blockedDevice.name), 'device probe was not audited');
+  mark('loopback and link-local probes refused and audited');
+
   await terminal(device.id, 403, 'https://foreign.example');
   const cli = await terminal(device.id); await cli.waitFor('SIMULATED DEVICE');
   await terminal(device.id, 409);
   cli.send('configure terminal\rhostname TESTLAB\rinterface ethernet0/0\rshutdown\rdescription test-interface\rend\rwrite memory\rshow interfaces\r');
   await cli.waitFor('admin-down'); await cli.waitFor('test-interface');
-  assert.equal((await api(`/devices?search=${encodeURIComponent(suffix)}`)).items[0].sessionActive, true);
+  assert.equal((await api(`/devices?search=${encodeURIComponent(suffix)}`)).items.find(x => x.id === device.id).sessionActive, true);
   await api(`/devices/${device.id}`, 'DELETE', undefined, 409); mark('terminal same-origin guard, exclusive lease and functional CLI');
   const reclaimed = await api(`/cabinets/${cabinet.id}/reclaim`, 'POST', {}); assert.equal(reclaimed.releasedSessions, 1); await cli.waitClosed();
   const fresh = await terminal(device.id); await fresh.waitFor('TESTLAB#');

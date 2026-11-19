@@ -74,6 +74,16 @@ try {
         @{name='security'; command='dotnet'; args=@('run','--project',(Join-Path $projectRoot 'tools/School.SecurityChecks/School.SecurityChecks.csproj'),'-c','Release','--no-build')},
         @{name='deployment-policy'; command='powershell.exe'; args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $projectRoot 'tests/deployment-policy.ps1'))}
     )
+    # Frontend checks live in the same gate as the backend suites: they are cheap and a
+    # formatting, lint or unit regression must block packaging exactly like a failed smoke run.
+    if (-not $SkipFrontend) {
+        $gateTests += @(
+            @{name='frontend-format'; command='npm.cmd'; args=@('--prefix','web','run','format:check')},
+            @{name='frontend-lint'; command='npm.cmd'; args=@('--prefix','web','run','lint')},
+            @{name='frontend-tests'; command='npm.cmd'; args=@('--prefix','web','run','test')},
+            @{name='frontend-time'; command='npm.cmd'; args=@('--prefix','web','run','check:time')}
+        )
+    }
     foreach ($test in $gateTests) {
         $started = [DateTime]::UtcNow
         Push-Location $projectRoot

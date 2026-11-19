@@ -1,11 +1,11 @@
 {
-  "recordedAtUtc": "2026-11-19T14:45:24.119Z",
+  "recordedAtUtc": "2026-11-19T15:15:31.477Z",
   "status": "passed",
   "command": "node tests/load-smoke.mjs",
-  "sourceDirectory": "artifacts/SchoolTraining-0.1.0-p3-win-x64/app",
-  "runtimeDirectory": ".local/load-smoke-xGrOFF/program",
-  "dataDirectory": ".local/load-smoke-xGrOFF/data",
-  "serviceLog": ".local/load-smoke-xGrOFF/service-output.log",
+  "sourceDirectory": "src/School.Training/bin/Release/net10.0",
+  "runtimeDirectory": ".local/load-smoke-QSoujY/program",
+  "dataDirectory": ".local/load-smoke-QSoujY/data",
+  "serviceLog": ".local/load-smoke-QSoujY/service-output.log",
   "machine": {
     "platform": "win32",
     "architecture": "x64",
@@ -34,12 +34,12 @@
       "concurrency": 20,
       "successCount": 100,
       "failureCount": 0,
-      "elapsedMs": 72.24,
-      "throughputRequestsPerSecond": 1384.32,
+      "elapsedMs": 71.23,
+      "throughputRequestsPerSecond": 1403.83,
       "latencyMs": {
-        "p50": 8.67,
-        "p95": 36.05,
-        "max": 39.01
+        "p50": 9.36,
+        "p95": 36.15,
+        "max": 40.29
       },
       "quantileMethod": "nearest-rank",
       "errors": []
@@ -49,32 +49,32 @@
       "concurrency": 8,
       "successCount": 40,
       "failureCount": 0,
-      "elapsedMs": 1109.61,
-      "throughputRequestsPerSecond": 36.05,
+      "elapsedMs": 1103.74,
+      "throughputRequestsPerSecond": 36.24,
       "latencyMs": {
-        "p50": 2.46,
-        "p95": 796.32,
-        "max": 1108.57
+        "p50": 2.41,
+        "p95": 789.31,
+        "max": 1103.42
       },
       "quantileMethod": "nearest-rank",
       "errors": []
     },
     "studentImportWithConcurrentWrites": {
       "studentCount": 10000,
-      "previewLatencyMs": 781.45,
-      "commitLatencyMs": 401675.23,
+      "previewLatencyMs": 679.8,
+      "commitLatencyMs": 237860.35,
       "importResult": {
-        "batchId": "53cff121cfe943088acf8367c3c01999",
+        "batchId": "3d065d512eae449382657d1513b493ac",
         "status": "completed",
         "processedCount": 10000,
         "totalCount": 10000,
         "importedCount": 10000,
         "removedCount": 0,
         "failureMessage": "",
-        "createdAt": "2026-11-19T14:38:41.9246967Z",
-        "queuedAt": "2026-11-19T14:38:42.2117706Z",
-        "startedAt": "2026-11-19T14:38:42.2843867Z",
-        "completedAt": "2026-11-19T14:45:22.4948006Z",
+        "createdAt": "2026-11-19T15:11:33.1287984Z",
+        "queuedAt": "2026-11-19T15:11:33.4165523Z",
+        "startedAt": "2026-11-19T15:11:33.4695581Z",
+        "completedAt": "2026-11-19T15:15:29.9503539Z",
         "message": "已导入10000条记录"
       },
       "observedImportStates": [
@@ -82,1219 +82,259 @@
           "status": "queued",
           "processedCount": 0,
           "totalCount": 10000,
-          "elapsedMs": 231.43
+          "elapsedMs": 263.57
         },
         {
           "status": "running",
           "processedCount": 0,
           "totalCount": 10000,
-          "elapsedMs": 351.63
-        },
-        {
-          "status": "running",
-          "processedCount": 50,
-          "totalCount": 10000,
-          "elapsedMs": 2353.37
-        },
-        {
-          "status": "running",
-          "processedCount": 100,
-          "totalCount": 10000,
-          "elapsedMs": 4240.04
-        },
-        {
-          "status": "running",
-          "processedCount": 150,
-          "totalCount": 10000,
-          "elapsedMs": 6130.74
-        },
-        {
-          "status": "running",
-          "processedCount": 200,
-          "totalCount": 10000,
-          "elapsedMs": 8129.32
+          "elapsedMs": 382.3
         },
         {
           "status": "running",
           "processedCount": 250,
           "totalCount": 10000,
-          "elapsedMs": 9909.69
-        },
-        {
-          "status": "running",
-          "processedCount": 300,
-          "totalCount": 10000,
-          "elapsedMs": 11798.23
-        },
-        {
-          "status": "running",
-          "processedCount": 350,
-          "totalCount": 10000,
-          "elapsedMs": 13581.76
-        },
-        {
-          "status": "running",
-          "processedCount": 400,
-          "totalCount": 10000,
-          "elapsedMs": 15477.32
-        },
-        {
-          "status": "running",
-          "processedCount": 450,
-          "totalCount": 10000,
-          "elapsedMs": 17366.21
+          "elapsedMs": 7014.96
         },
         {
           "status": "running",
           "processedCount": 500,
           "totalCount": 10000,
-          "elapsedMs": 19150.04
-        },
-        {
-          "status": "running",
-          "processedCount": 550,
-          "totalCount": 10000,
-          "elapsedMs": 21046.86
-        },
-        {
-          "status": "running",
-          "processedCount": 600,
-          "totalCount": 10000,
-          "elapsedMs": 22833.02
-        },
-        {
-          "status": "running",
-          "processedCount": 650,
-          "totalCount": 10000,
-          "elapsedMs": 24729.12
-        },
-        {
-          "status": "running",
-          "processedCount": 700,
-          "totalCount": 10000,
-          "elapsedMs": 26620.93
+          "elapsedMs": 13647.62
         },
         {
           "status": "running",
           "processedCount": 750,
           "totalCount": 10000,
-          "elapsedMs": 28508.76
-        },
-        {
-          "status": "running",
-          "processedCount": 800,
-          "totalCount": 10000,
-          "elapsedMs": 30288.08
-        },
-        {
-          "status": "running",
-          "processedCount": 850,
-          "totalCount": 10000,
-          "elapsedMs": 32182.99
-        },
-        {
-          "status": "running",
-          "processedCount": 900,
-          "totalCount": 10000,
-          "elapsedMs": 34081.29
-        },
-        {
-          "status": "running",
-          "processedCount": 950,
-          "totalCount": 10000,
-          "elapsedMs": 35977.75
+          "elapsedMs": 19183.55
         },
         {
           "status": "running",
           "processedCount": 1000,
           "totalCount": 10000,
-          "elapsedMs": 37762.01
-        },
-        {
-          "status": "running",
-          "processedCount": 1050,
-          "totalCount": 10000,
-          "elapsedMs": 39542.95
-        },
-        {
-          "status": "running",
-          "processedCount": 1100,
-          "totalCount": 10000,
-          "elapsedMs": 41435.51
-        },
-        {
-          "status": "running",
-          "processedCount": 1150,
-          "totalCount": 10000,
-          "elapsedMs": 43217.66
-        },
-        {
-          "status": "running",
-          "processedCount": 1200,
-          "totalCount": 10000,
-          "elapsedMs": 45108.52
+          "elapsedMs": 24615.66
         },
         {
           "status": "running",
           "processedCount": 1250,
           "totalCount": 10000,
-          "elapsedMs": 46893.5
-        },
-        {
-          "status": "running",
-          "processedCount": 1300,
-          "totalCount": 10000,
-          "elapsedMs": 48677.69
-        },
-        {
-          "status": "running",
-          "processedCount": 1350,
-          "totalCount": 10000,
-          "elapsedMs": 50572.76
-        },
-        {
-          "status": "running",
-          "processedCount": 1400,
-          "totalCount": 10000,
-          "elapsedMs": 52468.12
-        },
-        {
-          "status": "running",
-          "processedCount": 1450,
-          "totalCount": 10000,
-          "elapsedMs": 54357.06
+          "elapsedMs": 30163.04
         },
         {
           "status": "running",
           "processedCount": 1500,
           "totalCount": 10000,
-          "elapsedMs": 56143.59
-        },
-        {
-          "status": "running",
-          "processedCount": 1550,
-          "totalCount": 10000,
-          "elapsedMs": 58036.31
-        },
-        {
-          "status": "running",
-          "processedCount": 1600,
-          "totalCount": 10000,
-          "elapsedMs": 59926.05
-        },
-        {
-          "status": "running",
-          "processedCount": 1650,
-          "totalCount": 10000,
-          "elapsedMs": 61708.98
-        },
-        {
-          "status": "running",
-          "processedCount": 1700,
-          "totalCount": 10000,
-          "elapsedMs": 63492.26
+          "elapsedMs": 35820.51
         },
         {
           "status": "running",
           "processedCount": 1750,
           "totalCount": 10000,
-          "elapsedMs": 65274.44
-        },
-        {
-          "status": "running",
-          "processedCount": 1800,
-          "totalCount": 10000,
-          "elapsedMs": 67055.12
-        },
-        {
-          "status": "running",
-          "processedCount": 1850,
-          "totalCount": 10000,
-          "elapsedMs": 68941.1
-        },
-        {
-          "status": "running",
-          "processedCount": 1900,
-          "totalCount": 10000,
-          "elapsedMs": 70722.93
-        },
-        {
-          "status": "running",
-          "processedCount": 1950,
-          "totalCount": 10000,
-          "elapsedMs": 72502.89
+          "elapsedMs": 41582.09
         },
         {
           "status": "running",
           "processedCount": 2000,
           "totalCount": 10000,
-          "elapsedMs": 74282.17
-        },
-        {
-          "status": "running",
-          "processedCount": 2050,
-          "totalCount": 10000,
-          "elapsedMs": 76062.48
-        },
-        {
-          "status": "running",
-          "processedCount": 2100,
-          "totalCount": 10000,
-          "elapsedMs": 77846.78
-        },
-        {
-          "status": "running",
-          "processedCount": 2150,
-          "totalCount": 10000,
-          "elapsedMs": 79732.07
-        },
-        {
-          "status": "running",
-          "processedCount": 2200,
-          "totalCount": 10000,
-          "elapsedMs": 81513.24
+          "elapsedMs": 47466.01
         },
         {
           "status": "running",
           "processedCount": 2250,
           "totalCount": 10000,
-          "elapsedMs": 83293.75
-        },
-        {
-          "status": "running",
-          "processedCount": 2300,
-          "totalCount": 10000,
-          "elapsedMs": 85077.94
-        },
-        {
-          "status": "running",
-          "processedCount": 2350,
-          "totalCount": 10000,
-          "elapsedMs": 86862.75
-        },
-        {
-          "status": "running",
-          "processedCount": 2400,
-          "totalCount": 10000,
-          "elapsedMs": 88642.15
-        },
-        {
-          "status": "running",
-          "processedCount": 2450,
-          "totalCount": 10000,
-          "elapsedMs": 90422.72
+          "elapsedMs": 53215.6
         },
         {
           "status": "running",
           "processedCount": 2500,
           "totalCount": 10000,
-          "elapsedMs": 92204.39
-        },
-        {
-          "status": "running",
-          "processedCount": 2550,
-          "totalCount": 10000,
-          "elapsedMs": 94099.49
-        },
-        {
-          "status": "running",
-          "processedCount": 2600,
-          "totalCount": 10000,
-          "elapsedMs": 95878.58
-        },
-        {
-          "status": "running",
-          "processedCount": 2650,
-          "totalCount": 10000,
-          "elapsedMs": 97767.36
-        },
-        {
-          "status": "running",
-          "processedCount": 2700,
-          "totalCount": 10000,
-          "elapsedMs": 99549.64
+          "elapsedMs": 59642.36
         },
         {
           "status": "running",
           "processedCount": 2750,
           "totalCount": 10000,
-          "elapsedMs": 101333.92
-        },
-        {
-          "status": "running",
-          "processedCount": 2800,
-          "totalCount": 10000,
-          "elapsedMs": 103228.23
-        },
-        {
-          "status": "running",
-          "processedCount": 2850,
-          "totalCount": 10000,
-          "elapsedMs": 105013.9
-        },
-        {
-          "status": "running",
-          "processedCount": 2900,
-          "totalCount": 10000,
-          "elapsedMs": 106797.41
-        },
-        {
-          "status": "running",
-          "processedCount": 2950,
-          "totalCount": 10000,
-          "elapsedMs": 108691.06
+          "elapsedMs": 65528.63
         },
         {
           "status": "running",
           "processedCount": 3000,
           "totalCount": 10000,
-          "elapsedMs": 110585.35
-        },
-        {
-          "status": "running",
-          "processedCount": 3050,
-          "totalCount": 10000,
-          "elapsedMs": 112368.66
-        },
-        {
-          "status": "running",
-          "processedCount": 3100,
-          "totalCount": 10000,
-          "elapsedMs": 114259.68
-        },
-        {
-          "status": "running",
-          "processedCount": 3150,
-          "totalCount": 10000,
-          "elapsedMs": 116043.3
-        },
-        {
-          "status": "running",
-          "processedCount": 3200,
-          "totalCount": 10000,
-          "elapsedMs": 117933.47
+          "elapsedMs": 71296.89
         },
         {
           "status": "running",
           "processedCount": 3250,
           "totalCount": 10000,
-          "elapsedMs": 119711.43
-        },
-        {
-          "status": "running",
-          "processedCount": 3300,
-          "totalCount": 10000,
-          "elapsedMs": 121490.08
-        },
-        {
-          "status": "running",
-          "processedCount": 3350,
-          "totalCount": 10000,
-          "elapsedMs": 123373.34
-        },
-        {
-          "status": "running",
-          "processedCount": 3400,
-          "totalCount": 10000,
-          "elapsedMs": 125264.71
-        },
-        {
-          "status": "running",
-          "processedCount": 3450,
-          "totalCount": 10000,
-          "elapsedMs": 127150.28
+          "elapsedMs": 76951.53
         },
         {
           "status": "running",
           "processedCount": 3500,
           "totalCount": 10000,
-          "elapsedMs": 128925.14
-        },
-        {
-          "status": "running",
-          "processedCount": 3550,
-          "totalCount": 10000,
-          "elapsedMs": 130817.99
-        },
-        {
-          "status": "running",
-          "processedCount": 3600,
-          "totalCount": 10000,
-          "elapsedMs": 132714.43
-        },
-        {
-          "status": "running",
-          "processedCount": 3650,
-          "totalCount": 10000,
-          "elapsedMs": 134496.58
-        },
-        {
-          "status": "running",
-          "processedCount": 3700,
-          "totalCount": 10000,
-          "elapsedMs": 136277.08
+          "elapsedMs": 82734.89
         },
         {
           "status": "running",
           "processedCount": 3750,
           "totalCount": 10000,
-          "elapsedMs": 138174.36
-        },
-        {
-          "status": "running",
-          "processedCount": 3800,
-          "totalCount": 10000,
-          "elapsedMs": 140061.94
-        },
-        {
-          "status": "running",
-          "processedCount": 3850,
-          "totalCount": 10000,
-          "elapsedMs": 141837.34
-        },
-        {
-          "status": "running",
-          "processedCount": 3900,
-          "totalCount": 10000,
-          "elapsedMs": 143732.81
-        },
-        {
-          "status": "running",
-          "processedCount": 3950,
-          "totalCount": 10000,
-          "elapsedMs": 145511.08
+          "elapsedMs": 88387.04
         },
         {
           "status": "running",
           "processedCount": 4000,
           "totalCount": 10000,
-          "elapsedMs": 147405.47
-        },
-        {
-          "status": "running",
-          "processedCount": 4050,
-          "totalCount": 10000,
-          "elapsedMs": 149188.76
-        },
-        {
-          "status": "running",
-          "processedCount": 4100,
-          "totalCount": 10000,
-          "elapsedMs": 151083.52
-        },
-        {
-          "status": "running",
-          "processedCount": 4150,
-          "totalCount": 10000,
-          "elapsedMs": 152867.62
-        },
-        {
-          "status": "running",
-          "processedCount": 4200,
-          "totalCount": 10000,
-          "elapsedMs": 155086.87
+          "elapsedMs": 94155.82
         },
         {
           "status": "running",
           "processedCount": 4250,
           "totalCount": 10000,
-          "elapsedMs": 157302.65
-        },
-        {
-          "status": "running",
-          "processedCount": 4300,
-          "totalCount": 10000,
-          "elapsedMs": 159863.37
-        },
-        {
-          "status": "running",
-          "processedCount": 4350,
-          "totalCount": 10000,
-          "elapsedMs": 162536.83
-        },
-        {
-          "status": "running",
-          "processedCount": 4400,
-          "totalCount": 10000,
-          "elapsedMs": 165210.07
-        },
-        {
-          "status": "running",
-          "processedCount": 4450,
-          "totalCount": 10000,
-          "elapsedMs": 167434.38
+          "elapsedMs": 100028.38
         },
         {
           "status": "running",
           "processedCount": 4500,
           "totalCount": 10000,
-          "elapsedMs": 169657.63
-        },
-        {
-          "status": "running",
-          "processedCount": 4550,
-          "totalCount": 10000,
-          "elapsedMs": 171655.74
-        },
-        {
-          "status": "running",
-          "processedCount": 4600,
-          "totalCount": 10000,
-          "elapsedMs": 173652.01
-        },
-        {
-          "status": "running",
-          "processedCount": 4650,
-          "totalCount": 10000,
-          "elapsedMs": 175761.58
-        },
-        {
-          "status": "running",
-          "processedCount": 4700,
-          "totalCount": 10000,
-          "elapsedMs": 178091.25
+          "elapsedMs": 106000.19
         },
         {
           "status": "running",
           "processedCount": 4750,
           "totalCount": 10000,
-          "elapsedMs": 180295.71
-        },
-        {
-          "status": "running",
-          "processedCount": 4800,
-          "totalCount": 10000,
-          "elapsedMs": 182951.33
-        },
-        {
-          "status": "running",
-          "processedCount": 4850,
-          "totalCount": 10000,
-          "elapsedMs": 185587.98
-        },
-        {
-          "status": "running",
-          "processedCount": 4900,
-          "totalCount": 10000,
-          "elapsedMs": 188109.8
-        },
-        {
-          "status": "running",
-          "processedCount": 4950,
-          "totalCount": 10000,
-          "elapsedMs": 190651.43
+          "elapsedMs": 112092.89
         },
         {
           "status": "running",
           "processedCount": 5000,
           "totalCount": 10000,
-          "elapsedMs": 193194.86
-        },
-        {
-          "status": "running",
-          "processedCount": 5050,
-          "totalCount": 10000,
-          "elapsedMs": 195747.51
-        },
-        {
-          "status": "running",
-          "processedCount": 5100,
-          "totalCount": 10000,
-          "elapsedMs": 198413.07
-        },
-        {
-          "status": "running",
-          "processedCount": 5150,
-          "totalCount": 10000,
-          "elapsedMs": 200615.2
-        },
-        {
-          "status": "running",
-          "processedCount": 5200,
-          "totalCount": 10000,
-          "elapsedMs": 203280
+          "elapsedMs": 118100.27
         },
         {
           "status": "running",
           "processedCount": 5250,
           "totalCount": 10000,
-          "elapsedMs": 205832.62
-        },
-        {
-          "status": "running",
-          "processedCount": 5300,
-          "totalCount": 10000,
-          "elapsedMs": 208491.66
-        },
-        {
-          "status": "running",
-          "processedCount": 5350,
-          "totalCount": 10000,
-          "elapsedMs": 211033.79
-        },
-        {
-          "status": "running",
-          "processedCount": 5400,
-          "totalCount": 10000,
-          "elapsedMs": 213365.56
-        },
-        {
-          "status": "running",
-          "processedCount": 5450,
-          "totalCount": 10000,
-          "elapsedMs": 215809.81
+          "elapsedMs": 124094.4
         },
         {
           "status": "running",
           "processedCount": 5500,
           "totalCount": 10000,
-          "elapsedMs": 218030.13
-        },
-        {
-          "status": "running",
-          "processedCount": 5550,
-          "totalCount": 10000,
-          "elapsedMs": 220245.85
-        },
-        {
-          "status": "running",
-          "processedCount": 5600,
-          "totalCount": 10000,
-          "elapsedMs": 222578.84
-        },
-        {
-          "status": "running",
-          "processedCount": 5650,
-          "totalCount": 10000,
-          "elapsedMs": 224571.29
-        },
-        {
-          "status": "running",
-          "processedCount": 5700,
-          "totalCount": 10000,
-          "elapsedMs": 226901.62
+          "elapsedMs": 130084.52
         },
         {
           "status": "running",
           "processedCount": 5750,
           "totalCount": 10000,
-          "elapsedMs": 229119.04
-        },
-        {
-          "status": "running",
-          "processedCount": 5800,
-          "totalCount": 10000,
-          "elapsedMs": 231459.85
-        },
-        {
-          "status": "running",
-          "processedCount": 5850,
-          "totalCount": 10000,
-          "elapsedMs": 233123.52
-        },
-        {
-          "status": "running",
-          "processedCount": 5900,
-          "totalCount": 10000,
-          "elapsedMs": 234788.89
-        },
-        {
-          "status": "running",
-          "processedCount": 5950,
-          "totalCount": 10000,
-          "elapsedMs": 236670.97
+          "elapsedMs": 136075.86
         },
         {
           "status": "running",
           "processedCount": 6000,
           "totalCount": 10000,
-          "elapsedMs": 238776.12
-        },
-        {
-          "status": "running",
-          "processedCount": 6050,
-          "totalCount": 10000,
-          "elapsedMs": 240883.61
-        },
-        {
-          "status": "running",
-          "processedCount": 6100,
-          "totalCount": 10000,
-          "elapsedMs": 243001.55
-        },
-        {
-          "status": "running",
-          "processedCount": 6150,
-          "totalCount": 10000,
-          "elapsedMs": 244895.27
-        },
-        {
-          "status": "running",
-          "processedCount": 6200,
-          "totalCount": 10000,
-          "elapsedMs": 246891.06
+          "elapsedMs": 142173.9
         },
         {
           "status": "running",
           "processedCount": 6250,
           "totalCount": 10000,
-          "elapsedMs": 248999.23
-        },
-        {
-          "status": "running",
-          "processedCount": 6300,
-          "totalCount": 10000,
-          "elapsedMs": 251104.29
-        },
-        {
-          "status": "running",
-          "processedCount": 6350,
-          "totalCount": 10000,
-          "elapsedMs": 253322.86
-        },
-        {
-          "status": "running",
-          "processedCount": 6400,
-          "totalCount": 10000,
-          "elapsedMs": 255418.11
-        },
-        {
-          "status": "running",
-          "processedCount": 6450,
-          "totalCount": 10000,
-          "elapsedMs": 257519.33
+          "elapsedMs": 148066.07
         },
         {
           "status": "running",
           "processedCount": 6500,
           "totalCount": 10000,
-          "elapsedMs": 259508.53
-        },
-        {
-          "status": "running",
-          "processedCount": 6550,
-          "totalCount": 10000,
-          "elapsedMs": 261608.43
-        },
-        {
-          "status": "running",
-          "processedCount": 6600,
-          "totalCount": 10000,
-          "elapsedMs": 263601.67
-        },
-        {
-          "status": "running",
-          "processedCount": 6650,
-          "totalCount": 10000,
-          "elapsedMs": 265595.09
-        },
-        {
-          "status": "running",
-          "processedCount": 6700,
-          "totalCount": 10000,
-          "elapsedMs": 267589.01
+          "elapsedMs": 154056.27
         },
         {
           "status": "running",
           "processedCount": 6750,
           "totalCount": 10000,
-          "elapsedMs": 269700.03
-        },
-        {
-          "status": "running",
-          "processedCount": 6800,
-          "totalCount": 10000,
-          "elapsedMs": 271799.85
-        },
-        {
-          "status": "running",
-          "processedCount": 6850,
-          "totalCount": 10000,
-          "elapsedMs": 273796.4
-        },
-        {
-          "status": "running",
-          "processedCount": 6900,
-          "totalCount": 10000,
-          "elapsedMs": 275677.61
-        },
-        {
-          "status": "running",
-          "processedCount": 6950,
-          "totalCount": 10000,
-          "elapsedMs": 277771.05
+          "elapsedMs": 159954.55
         },
         {
           "status": "running",
           "processedCount": 7000,
           "totalCount": 10000,
-          "elapsedMs": 279867.39
-        },
-        {
-          "status": "running",
-          "processedCount": 7050,
-          "totalCount": 10000,
-          "elapsedMs": 281963.4
-        },
-        {
-          "status": "running",
-          "processedCount": 7100,
-          "totalCount": 10000,
-          "elapsedMs": 283952.47
-        },
-        {
-          "status": "running",
-          "processedCount": 7150,
-          "totalCount": 10000,
-          "elapsedMs": 286043.66
-        },
-        {
-          "status": "running",
-          "processedCount": 7200,
-          "totalCount": 10000,
-          "elapsedMs": 288148.24
+          "elapsedMs": 165840.88
         },
         {
           "status": "running",
           "processedCount": 7250,
           "totalCount": 10000,
-          "elapsedMs": 290133.71
-        },
-        {
-          "status": "running",
-          "processedCount": 7300,
-          "totalCount": 10000,
-          "elapsedMs": 292122.48
-        },
-        {
-          "status": "running",
-          "processedCount": 7350,
-          "totalCount": 10000,
-          "elapsedMs": 294117.49
-        },
-        {
-          "status": "running",
-          "processedCount": 7400,
-          "totalCount": 10000,
-          "elapsedMs": 295996.32
-        },
-        {
-          "status": "running",
-          "processedCount": 7450,
-          "totalCount": 10000,
-          "elapsedMs": 297993.32
+          "elapsedMs": 171729.53
         },
         {
           "status": "running",
           "processedCount": 7500,
           "totalCount": 10000,
-          "elapsedMs": 299985.52
-        },
-        {
-          "status": "running",
-          "processedCount": 7550,
-          "totalCount": 10000,
-          "elapsedMs": 301977.86
-        },
-        {
-          "status": "running",
-          "processedCount": 7600,
-          "totalCount": 10000,
-          "elapsedMs": 304085.22
-        },
-        {
-          "status": "running",
-          "processedCount": 7650,
-          "totalCount": 10000,
-          "elapsedMs": 306083.67
-        },
-        {
-          "status": "running",
-          "processedCount": 7700,
-          "totalCount": 10000,
-          "elapsedMs": 308066.84
+          "elapsedMs": 177520.78
         },
         {
           "status": "running",
           "processedCount": 7750,
           "totalCount": 10000,
-          "elapsedMs": 309950.08
-        },
-        {
-          "status": "running",
-          "processedCount": 7800,
-          "totalCount": 10000,
-          "elapsedMs": 312058.29
-        },
-        {
-          "status": "running",
-          "processedCount": 7850,
-          "totalCount": 10000,
-          "elapsedMs": 314165.46
-        },
-        {
-          "status": "running",
-          "processedCount": 7900,
-          "totalCount": 10000,
-          "elapsedMs": 316379.28
-        },
-        {
-          "status": "running",
-          "processedCount": 7950,
-          "totalCount": 10000,
-          "elapsedMs": 318377.83
+          "elapsedMs": 183407.2
         },
         {
           "status": "running",
           "processedCount": 8000,
           "totalCount": 10000,
-          "elapsedMs": 320362.08
-        },
-        {
-          "status": "running",
-          "processedCount": 8050,
-          "totalCount": 10000,
-          "elapsedMs": 322455.96
-        },
-        {
-          "status": "running",
-          "processedCount": 8100,
-          "totalCount": 10000,
-          "elapsedMs": 324447.82
-        },
-        {
-          "status": "running",
-          "processedCount": 8150,
-          "totalCount": 10000,
-          "elapsedMs": 326657.55
-        },
-        {
-          "status": "running",
-          "processedCount": 8200,
-          "totalCount": 10000,
-          "elapsedMs": 328653.23
+          "elapsedMs": 189182.17
         },
         {
           "status": "running",
           "processedCount": 8250,
           "totalCount": 10000,
-          "elapsedMs": 330757.61
-        },
-        {
-          "status": "running",
-          "processedCount": 8300,
-          "totalCount": 10000,
-          "elapsedMs": 332637.27
-        },
-        {
-          "status": "running",
-          "processedCount": 8350,
-          "totalCount": 10000,
-          "elapsedMs": 334626.87
-        },
-        {
-          "status": "running",
-          "processedCount": 8400,
-          "totalCount": 10000,
-          "elapsedMs": 336509.81
-        },
-        {
-          "status": "running",
-          "processedCount": 8450,
-          "totalCount": 10000,
-          "elapsedMs": 338390.49
+          "elapsedMs": 195065.99
         },
         {
           "status": "running",
           "processedCount": 8500,
           "totalCount": 10000,
-          "elapsedMs": 340488.65
-        },
-        {
-          "status": "running",
-          "processedCount": 8550,
-          "totalCount": 10000,
-          "elapsedMs": 342591.39
-        },
-        {
-          "status": "running",
-          "processedCount": 8600,
-          "totalCount": 10000,
-          "elapsedMs": 344471.91
-        },
-        {
-          "status": "running",
-          "processedCount": 8650,
-          "totalCount": 10000,
-          "elapsedMs": 346672.35
-        },
-        {
-          "status": "running",
-          "processedCount": 8700,
-          "totalCount": 10000,
-          "elapsedMs": 348543.88
+          "elapsedMs": 200954.32
         },
         {
           "status": "running",
           "processedCount": 8750,
           "totalCount": 10000,
-          "elapsedMs": 350419.05
-        },
-        {
-          "status": "running",
-          "processedCount": 8800,
-          "totalCount": 10000,
-          "elapsedMs": 352410.36
-        },
-        {
-          "status": "running",
-          "processedCount": 8850,
-          "totalCount": 10000,
-          "elapsedMs": 354640.52
-        },
-        {
-          "status": "running",
-          "processedCount": 8900,
-          "totalCount": 10000,
-          "elapsedMs": 356777.88
-        },
-        {
-          "status": "running",
-          "processedCount": 8950,
-          "totalCount": 10000,
-          "elapsedMs": 359102.2
+          "elapsedMs": 206835.91
         },
         {
           "status": "running",
           "processedCount": 9000,
           "totalCount": 10000,
-          "elapsedMs": 361081.87
-        },
-        {
-          "status": "running",
-          "processedCount": 9050,
-          "totalCount": 10000,
-          "elapsedMs": 363163.35
-        },
-        {
-          "status": "running",
-          "processedCount": 9100,
-          "totalCount": 10000,
-          "elapsedMs": 365131.13
-        },
-        {
-          "status": "running",
-          "processedCount": 9150,
-          "totalCount": 10000,
-          "elapsedMs": 367111.44
-        },
-        {
-          "status": "running",
-          "processedCount": 9200,
-          "totalCount": 10000,
-          "elapsedMs": 369085.59
+          "elapsedMs": 212838.92
         },
         {
           "status": "running",
           "processedCount": 9250,
           "totalCount": 10000,
-          "elapsedMs": 371057.76
-        },
-        {
-          "status": "running",
-          "processedCount": 9300,
-          "totalCount": 10000,
-          "elapsedMs": 372932.07
-        },
-        {
-          "status": "running",
-          "processedCount": 9350,
-          "totalCount": 10000,
-          "elapsedMs": 374797.48
-        },
-        {
-          "status": "running",
-          "processedCount": 9400,
-          "totalCount": 10000,
-          "elapsedMs": 376892.21
-        },
-        {
-          "status": "running",
-          "processedCount": 9450,
-          "totalCount": 10000,
-          "elapsedMs": 378984.73
+          "elapsedMs": 218732.13
         },
         {
           "status": "running",
           "processedCount": 9500,
           "totalCount": 10000,
-          "elapsedMs": 380974.05
-        },
-        {
-          "status": "running",
-          "processedCount": 9550,
-          "totalCount": 10000,
-          "elapsedMs": 382844.53
-        },
-        {
-          "status": "running",
-          "processedCount": 9600,
-          "totalCount": 10000,
-          "elapsedMs": 384723.34
-        },
-        {
-          "status": "running",
-          "processedCount": 9650,
-          "totalCount": 10000,
-          "elapsedMs": 386605.22
-        },
-        {
-          "status": "running",
-          "processedCount": 9700,
-          "totalCount": 10000,
-          "elapsedMs": 388589.88
+          "elapsedMs": 224633.95
         },
         {
           "status": "running",
           "processedCount": 9750,
           "totalCount": 10000,
-          "elapsedMs": 390580.18
-        },
-        {
-          "status": "running",
-          "processedCount": 9800,
-          "totalCount": 10000,
-          "elapsedMs": 392465.34
-        },
-        {
-          "status": "running",
-          "processedCount": 9850,
-          "totalCount": 10000,
-          "elapsedMs": 394448.93
-        },
-        {
-          "status": "running",
-          "processedCount": 9900,
-          "totalCount": 10000,
-          "elapsedMs": 396333.34
-        },
-        {
-          "status": "running",
-          "processedCount": 9950,
-          "totalCount": 10000,
-          "elapsedMs": 398328.8
+          "elapsedMs": 230632.29
         },
         {
           "status": "running",
           "processedCount": 10000,
           "totalCount": 10000,
-          "elapsedMs": 400209.97
+          "elapsedMs": 236518.05
         },
         {
           "status": "completed",
           "processedCount": 10000,
           "totalCount": 10000,
-          "elapsedMs": 401675.23
+          "elapsedMs": 237860.35
         }
       ],
       "pendingAtProbeDispatch": true,
@@ -1305,12 +345,12 @@
         "concurrency": 4,
         "successCount": 8,
         "failureCount": 0,
-        "elapsedMs": 635.73,
-        "throughputRequestsPerSecond": 12.58,
+        "elapsedMs": 320.93,
+        "throughputRequestsPerSecond": 24.93,
         "latencyMs": {
-          "p50": 11.38,
-          "p95": 635.1,
-          "max": 635.1
+          "p50": 3.71,
+          "p95": 320.62,
+          "max": 320.62
         },
         "quantileMethod": "nearest-rank",
         "errors": []
@@ -1319,73 +359,73 @@
         {
           "index": 0,
           "success": true,
-          "latencyMs": 476.75,
+          "latencyMs": 16.74,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 727.77,
+          "completedAfterImportStartMs": 267.81,
           "error": null
         },
         {
           "index": 1,
           "success": true,
-          "latencyMs": 316.51,
+          "latencyMs": 320.62,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 567.81,
+          "completedAfterImportStartMs": 571.85,
           "error": null
         },
         {
           "index": 2,
           "success": true,
-          "latencyMs": 158.09,
+          "latencyMs": 156.36,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 409.51,
+          "completedAfterImportStartMs": 407.7,
           "error": null
         },
         {
           "index": 3,
           "success": true,
-          "latencyMs": 635.1,
+          "latencyMs": 172.49,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 886.57,
+          "completedAfterImportStartMs": 423.91,
           "error": null
         },
         {
           "index": 4,
           "success": true,
-          "latencyMs": 3.39,
+          "latencyMs": 3.32,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 412.91,
+          "completedAfterImportStartMs": 271.16,
           "error": null
         },
         {
           "index": 5,
           "success": true,
-          "latencyMs": 2.53,
+          "latencyMs": 3.71,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 415.46,
+          "completedAfterImportStartMs": 274.89,
           "error": null
         },
         {
           "index": 6,
           "success": true,
-          "latencyMs": 2.21,
+          "latencyMs": 3.62,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 417.68,
+          "completedAfterImportStartMs": 278.52,
           "error": null
         },
         {
           "index": 7,
           "success": true,
-          "latencyMs": 11.38,
+          "latencyMs": 2.61,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 429.08,
+          "completedAfterImportStartMs": 281.15,
           "error": null
         }
       ],
@@ -1426,9 +466,9 @@
     "Other development processes may share this machine. No claim is made about concurrent real users, sustained workloads, or other hardware.",
     "Import progress is observed through the persisted batch-status endpoint. The initial password stays in process memory and is never persisted. Password hashing finishes before the SQLite write transaction starts."
   ],
-  "sourceAssemblySha256": "9F4798EC72EFB7ABBE051580DA4E4CE027965A922264CA6C4C8EFFBFAA9A095C",
-  "testedAssemblySha256": "9F4798EC72EFB7ABBE051580DA4E4CE027965A922264CA6C4C8EFFBFAA9A095C",
-  "isolatedUrl": "http://127.0.0.1:50942",
+  "sourceAssemblySha256": "D9170BCEB322A1171314147EB71954FB736BAD5B69D7FD716E47AEE59D01C818",
+  "testedAssemblySha256": "D9170BCEB322A1171314147EB71954FB736BAD5B69D7FD716E47AEE59D01C818",
+  "isolatedUrl": "http://127.0.0.1:62086",
   "serviceExit": {
     "code": null,
     "signal": "SIGTERM"

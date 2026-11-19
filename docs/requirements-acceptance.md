@@ -73,7 +73,7 @@
 - **[A]** [应用接口回归](verification/application-smoke.json)，来源 `tests/application-smoke.mjs`：15 组实际 HTTP/SQLite/同机恢复场景，含后台导入状态与防重复、运行中导入取消、班级唯一约束竞争、日志保留、备份保留、SQLite 写锁 503、管理员并发下限和未知账号登录耗时对齐。报告不能代替未覆盖的界面、服务安装或全部字段测试。
 - **[M]** [数据库迁移回归](verification/migration-smoke.json)，来源 `tests/migration-smoke.mjs`：5 组，覆盖新库 v4、v1→v4 数据保留、真实 v2→v4 导入任务字段补齐与旧批次状态映射、v3→v4 审计时间索引补齐、预迁移快照、重复班级阻断且版本不推进。
 - **[P]** [万行导入负载回归](verification/load-smoke.json)，来源 `tests/load-smoke.mjs`：本机 16 逻辑处理器、10000 行后台导入约 402 秒完成，10000/10000 唯一写入；导入期间 8 个并发业务写入全部成功，p95 635.10 ms、max 635.10 ms。仅代表当前开发机隔离回环环境，不构成生产容量承诺。
-- **[G]** [发布测试门禁](verification/release-test-gate.json)，来源 `scripts/build-release.ps1`：对实际 Release 发布目录执行 C# 格式检查（主程序与测试项目）、后端单元测试、迁移、应用、Excel、节点账号、基础设施、负载、安全和部署策略 11 个套件并绑定程序 SHA-256；门禁通过不代表清洁 Win11 安装或服务恢复已验收。
+- **[G]** [发布测试门禁](verification/release-test-gate.json)，来源 `scripts/build-release.ps1`：对实际 Release 发布目录执行 C# 格式检查（主程序与测试项目）、后端单元测试、迁移、应用、Excel、节点账号、基础设施、负载、安全和部署策略 11 个套件，再执行前端 Prettier、ESLint、Vitest 与北京时间转换 4 个套件，共 15 个套件并绑定程序 SHA-256（`-SkipFrontend` 时为 11 个）；门禁通过不代表清洁 Win11 安装或服务恢复已验收。
 - **[T]** 单元测试，来源 `tests/School.Training.Tests`（xUnit，70 项）与 `web/src/**/*.test.ts`（Vitest，31 项）：覆盖 CSV 引号/换行/行数上限与表头映射、账号与口令策略、分页边界、文件保留的数量/容量/时间/保护文件、UTC 时间转换、存储配置钳制、北京时间输入转换、API 错误消息与分页恢复、401/503 会话判定。测试为纯逻辑快速回归，发布门禁中执行后端部分。
 - **[X]** [Excel/CSV 边界回归](verification/excel-smoke.json)，来源 `tests/excel-smoke.mjs`：8 项，包含真实 XLSX 导入、稀疏行列/ZIP 膨胀拒绝、CSV 引号与换行保真。
 - **[I]** [基础设施回归](verification/infrastructure-smoke.json)，来源 `tests/infrastructure-smoke.mjs`：12 组模拟设备/节点/虚拟机及实际主机只读采集。无真实串口硬件或 Hypervisor。

@@ -70,7 +70,7 @@ public static partial class InfrastructureEndpoints
             if (await db.Devices.AnyAsync(x => x.CabinetId == id)) return Conflict("机柜中仍有设备，请先删除或移走设备。");
             db.Cabinets.Remove(row); Audit.Add(db, ctx, "删除机柜", row.Name); await db.SaveChangesAsync(ctx.RequestAborted); return Results.Ok(new { message = "已删除。" });
         });
-        group.MapPost("/cabinets/test-connections", async (InfrastructureIds input, SchoolDbContext db, CancellationToken ct) =>
+        group.MapPost("/cabinets/test-connections", async (InfrastructureIds input, SchoolDbContext db, HttpContext ctx, CancellationToken ct) =>
         {
             if (input.Ids is not { Length: > 0 and <= 50 }) return Bad("请选择 1 至 50 个机柜。");
             var rows = await db.Cabinets.AsNoTracking().Where(x => input.Ids.Contains(x.Id)).ToListAsync(ct);
@@ -83,7 +83,11 @@ public static partial class InfrastructureEndpoints
                 var result = await Probe(host, port, ct);
                 return new ConnectionProbe(row.Id, result.Success, result.Success ? (string.IsNullOrWhiteSpace(row.JumpHost) ? "TCP 握手成功；未验证串口协议或认证。" : "跳板机 TCP 握手成功；未验证到设备的后续链路。") : result.Message, false, "tcp");
             });
-            return Results.Ok(new { items = await Task.WhenAll(tasks) });
+            var items = await Task.WhenAll(tasks);
+            var names = string.Join(",", rows.Take(10).Select(x => x.Name)) + (rows.Count > 10 ? $" 等 {rows.Count} 个" : "");
+            Audit.Add(db, ctx, "测试机柜连接", names, $"共 {items.Length} 个机柜，失败 {items.Count(x => !x.Success)} 个；仅验证 TCP 可达性。");
+            await db.SaveChangesAsync(ctx.RequestAborted);
+            return Results.Ok(new { items });
         });
         group.MapPost("/cabinets/{id}/reclaim", async (string id, SchoolDbContext db, SimulationSessions sessions, HttpContext ctx) =>
         {
@@ -123,13 +127,16 @@ public static partial class InfrastructureEndpoints
             if (sessions.Owner(id) is not null) return Conflict("设备存在活动会话，请先关闭终端或回收机柜。");
             db.Devices.Remove(row); Audit.Add(db, ctx, "删除设备", row.Name); await db.SaveChangesAsync(ctx.RequestAborted); return Results.Ok(new { message = "已删除。" });
         });
-        group.MapPost("/devices/{id}/connect-test", async (string id, SchoolDbContext db, CancellationToken ct) =>
+        group.MapPost("/devices/{id}/connect-test", async (string id, SchoolDbContext db, HttpContext ctx, CancellationToken ct) =>
         {
             var row = await db.Devices.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct); if (row is null) return Missing();
             if (row.ConnectionType == "simulated") return Results.Ok(new ConnectionProbe(id, true, "模拟设备响应正常。", true, "simulation"));
             var cabinet = await db.Cabinets.FindAsync([row.CabinetId], ct);
             if (!string.IsNullOrEmpty(cabinet?.JumpHost)) return Results.Ok(new ConnectionProbe(id, false, "真实跳板机链路尚未配置验证；不能将直连探测作为设备连接成功。", false, "unsupported"));
-            var probe = await Probe(string.IsNullOrWhiteSpace(row.Host) ? cabinet?.Host ?? "" : row.Host, row.Port, ct);
+            var target = string.IsNullOrWhiteSpace(row.Host) ? cabinet?.Host ?? "" : row.Host;
+            var probe = await Probe(target, row.Port, ct);
+            Audit.Add(db, ctx, "测试设备连接", row.Name, $"{target}:{row.Port}；" + (probe.Success ? "TCP 握手成功，未验证设备认证与控制协议。" : probe.Message));
+            await db.SaveChangesAsync(ctx.RequestAborted);
             return Results.Ok(new ConnectionProbe(id, probe.Success, probe.Success ? "仅 TCP 握手成功，未验证设备认证与控制协议。" : probe.Message, false, "tcp"));
         });
         group.MapGet("/terminal/{deviceId}", SimulationTerminal.Handle);
@@ -417,7 +424,7 @@ public static partial class InfrastructureEndpoints
     private static object NodeView(TrainingNode x, int virtualMachineCount = 0, int accountCount = 0) => new { x.Id, x.Name, x.Host, x.Provider, x.Port, x.UserName, hasPassword = x.PasswordProtected.Length > 0, x.Enabled, x.Remark, x.TotalCpu, x.TotalMemoryMb, x.TotalDiskGb, isSimulated = x.Provider == "simulated", virtualMachineCount, x.VirtualMachineQuota, accountCount, x.AccountQuota };
     private static object VmView(TrainingVirtualMachine x, TrainingNode? node) => new { x.Id, x.Name, x.NodeId, nodeName = node?.Name ?? "", x.Status, x.CpuCount, x.MemoryMb, x.DiskGb, x.CreatedAt, x.StartedAt, x.Remark, isSimulated = node?.Provider == "simulated" };
     private static string? Search(HttpRequest r) => r.Query["search"].FirstOrDefault()?.Trim();
-    private static IQueryable<T> Slice<T>(IQueryable<T> q, HttpRequest r) { var page = int.TryParse(r.Query["page"], out var p) ? Math.Clamp(p, 1, 100000) : 1; var size = int.TryParse(r.Query["pageSize"], out var s) ? Math.Clamp(s, 1, 500) : 20; return q.Skip((page - 1) * size).Take(size); }
+    private static IQueryable<T> Slice<T>(IQueryable<T> q, HttpRequest r) { var (page, size) = Validation.Page(r); return q.Skip((page - 1) * size).Take(size); }
     private static async Task<object> Page<T>(IQueryable<T> q, HttpRequest r, CancellationToken ct = default) => new { total = await q.CountAsync(ct), items = await Slice(q, r).ToListAsync(ct) };
     private static IResult Bad(string m) => Results.BadRequest(new { message = m });
     private static IResult Conflict(string m) => Results.Conflict(new { message = m });
@@ -425,8 +432,10 @@ public static partial class InfrastructureEndpoints
     private static async Task<(bool Success, string Message)> Probe(string host, int port, CancellationToken ct)
     {
         if (!HostValid(host) || !PortValid(port)) return (false, "目标主机或端口配置无效。");
+        var target = await NetworkTargets.ResolveAllowedAsync(host, ct);
+        if (!target.Allowed) return (false, target.Message);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(4));
-        try { using var client = new TcpClient(); await client.ConnectAsync(host, port, timeout.Token); return (true, "TCP 可达。"); }
+        try { using var client = new TcpClient(); await client.ConnectAsync(target.Addresses[0], port, timeout.Token); return (true, "TCP 可达。"); }
         catch (OperationCanceledException) { return (false, "连接超时或已取消。"); }
         catch (SocketException) { return (false, "无法建立 TCP 连接，请检查地址、端口及网络。"); }
     }

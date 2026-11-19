@@ -193,8 +193,16 @@ public static class SimulationTerminal
     {
         var ct = lease.Token;
         var host = string.IsNullOrWhiteSpace(device.Host) ? cabinet.Host : device.Host;
+        var target = await NetworkTargets.ResolveAllowedAsync(host, ct);
+        if (!target.Allowed)
+        {
+            // Same policy as the probe endpoint: the service never opens a session to the
+            // host itself, the link-local segment or a multicast group.
+            await Send(socket, $"\r\n无法连接 {(string.IsNullOrWhiteSpace(host) ? "（未配置连接地址）" : $"{host}:{device.Port}")}：{target.Message}\r\n", ct);
+            return;
+        }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(5));
-        using var client = new TcpClient(); await client.ConnectAsync(host, device.Port, timeout.Token);
+        using var client = new TcpClient(); await client.ConnectAsync(target.Addresses[0], device.Port, timeout.Token);
         await Send(socket, $"\r\n真实 {device.ConnectionType.ToUpperInvariant()} 连接：{host}:{device.Port}\r\n", ct);
         using var network = client.GetStream();
         using var combined = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -235,7 +243,11 @@ public static class SimulationTerminal
 
     private static async Task MonitorAuthorization(TerminalLease lease, IServiceScopeFactory scopeFactory, ILogger logger)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        // Revalidation is a safety net, not the primary revocation path: password resets,
+        // role changes and user deletion cancel the lease immediately through
+        // SimulationSessions.RevokeUser. Five seconds keeps that net without turning every
+        // open terminal into one database query per second.
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
         try
         {
             while (await timer.WaitForNextTickAsync(lease.Token))

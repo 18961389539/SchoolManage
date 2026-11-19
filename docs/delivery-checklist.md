@@ -3,7 +3,7 @@
 ## 构建与软件清单
 
 - [x] 后端编译及必要测试通过，记录 SDK、提交/源文件版本和命令输出。Release 下 xUnit 70 项、Vitest 31 项通过；`dotnet format --verify-no-changes` 与 `npm run format:check`、`npm run lint` 无差异。
-- [x] 发布门禁对实际 Release 产物执行 C# 格式、xUnit、迁移、应用、Excel、节点账号、基础设施、负载、安全和部署策略回归，全部通过；证据见 `verification/release-test-gate.json` 和 `verification/migration-smoke.json`。门禁不等于清洁验机。
+- [x] 发布门禁对实际 Release 产物执行 C# 格式、xUnit、迁移、应用、Excel、节点账号、基础设施、负载、安全和部署策略回归，并执行前端 Prettier、ESLint、Vitest 与北京时间转换回归，全部通过；证据见 `verification/release-test-gate.json` 和 `verification/migration-smoke.json`。门禁不等于清洁验机。
 - [x] 前端 TypeScript 检查与生产构建通过；构建首包 359.22 kB（gzip 128.45 kB），终端 294.08 kB 仅在打开时加载。页面、实体页、导入弹窗与终端保持异步分块。
 - [ ] 所有网页资源、字体、图标和脚本均随包交付；断网后仍能使用。
 - [ ] Windows 发布包包含自身运行时；不把开发机数据、Cookie、密码、签发私钥或用户原始附件打入包中。

@@ -29,7 +29,7 @@ dotnet run --project src/School.Training -- --urls http://127.0.0.1:5080
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1 -Version 0.1.0
 ```
 
-构建会先发布 Release 程序，再对发布目录执行 C# 格式检查、xUnit 单元测试、迁移、应用、Excel、节点账号、基础设施、负载、安全和部署策略回归；前端构建阶段还会执行 Prettier 格式检查、ESLint（含复杂度告警）与 Vitest 单元测试。任一失败即停止，不生成发布包。门禁报告写入 `docs/verification/release-test-gate.json`。输出到 `artifacts/`：
+构建会先发布 Release 程序，再对发布目录执行 C# 格式检查、xUnit 单元测试、迁移、应用、Excel、节点账号、基础设施、负载、安全和部署策略回归；同一门禁还会执行 Prettier 格式检查、ESLint（含复杂度告警）、Vitest 单元测试与北京时间转换回归（`-SkipFrontend` 时跳过这 4 项）。任一失败即停止，不生成发布包。门禁报告写入 `docs/verification/release-test-gate.json`。输出到 `artifacts/`：
 
 - `SchoolTraining-0.1.0-Setup.exe`：自包含安装程序，申请管理员权限后注册本系统服务。
 - `SchoolTraining-0.1.0-win-x64.zip`：离线发布包、安装维护脚本和文档。

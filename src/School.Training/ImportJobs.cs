@@ -67,12 +67,26 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, IServiceScopeFactory sc
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await RecoverInterruptedAsync();
+        try { await RecoverInterruptedAsync(); }
+        catch (Exception ex)
+        {
+            // Startup recovery is best effort. A transient database error must not stop the
+            // worker, otherwise every later import would be rejected until the next restart.
+            logger.LogError(ex, "Recovering interrupted import batches did not complete.");
+        }
         try
         {
             await foreach (var request in jobs.ReadAllAsync(stoppingToken))
             {
-                await ProcessAsync(request, stoppingToken);
+                try { await ProcessAsync(request, stoppingToken); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+                catch (Exception ex)
+                {
+                    // ProcessAsync records its own failures on the batch row. This guard only
+                    // keeps one bad batch from faulting ExecuteAsync, which would stop the host
+                    // and drop every open terminal session.
+                    logger.LogError(ex, "Import job {BatchId} failed outside its own error handling.", request.BatchId);
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -97,7 +111,15 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, IServiceScopeFactory sc
 
     async Task ProcessAsync(ImportJobRequest request, CancellationToken stoppingToken)
     {
-        var token = jobs.RegisterRunning(request.BatchId, stoppingToken);
+        CancellationToken token;
+        try { token = jobs.RegisterRunning(request.BatchId, stoppingToken); }
+        catch (InvalidOperationException ex)
+        {
+            // A duplicate queue entry never owns the registration; unregistering here would
+            // dispose the cancellation source of the run that already holds the batch.
+            logger.LogWarning(ex, "Import batch {BatchId} is already running; the duplicate queue entry was ignored.", request.BatchId);
+            return;
+        }
         try
         {
             await using var scope = scopes.CreateAsyncScope();
@@ -115,42 +137,44 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, IServiceScopeFactory sc
                 ?? throw new InvalidDataException("导入预览数据无法读取，请重新上传");
             if (rows.Count == 0 || rows.Count != batch.TotalCount) throw new InvalidDataException("导入预览数据不完整，请重新上传");
 
-            var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
-            var prepared = new Dictionary<int, AppUser>(rows.Count);
-            var degree = Math.Clamp(Environment.ProcessorCount / 2, 1, 4);
-            var processed = 0;
-            foreach (var chunk in rows.Chunk(50))
-            {
-                token.ThrowIfCancellationRequested();
-                var users = new AppUser[chunk.Length];
-                await Parallel.ForEachAsync(Enumerable.Range(0, chunk.Length),
-                    new ParallelOptions { MaxDegreeOfParallelism = degree, CancellationToken = token },
-                    async (index, cancellationToken) =>
-                    {
-                        users[index] = await Task.Run(() =>
-                        {
-                            var data = chunk[index].Data;
-                            var user = new AppUser
-                            {
-                                UserName = data.UserName,
-                                DisplayName = data.Name,
-                                Role = batch.Kind == "teacher" ? "Teacher" : "Student",
-                                MustChangePassword = true
-                            };
-                            user.PasswordHash = hasher.HashPassword(user, request.InitialPassword);
-                            return user;
-                        }, cancellationToken);
-                    });
-                for (var index = 0; index < chunk.Length; index++) prepared.Add(chunk[index].RowNumber, users[index]);
-                processed += chunk.Length;
-                await ReportProgressAsync(request.BatchId, processed, token);
-            }
-
+            // Validation must run before any password hashing: a stale preview fails the whole
+            // batch, and hashing dominates the run time (the 310000-iteration PBKDF2 hash is the
+            // largest per-row cost), so invalid rows must never be hashed.
             await ImportEndpoints.ValidateRows(rows, batch.Kind, db, token);
             if (rows.Any(row => row.Errors.Count > 0))
             {
                 await FinishFailedAsync(request.BatchId, "预览后数据已变化，问题行未导入；请重新预览并确认");
                 return;
+            }
+
+            var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
+            var prepared = new Dictionary<int, AppUser>(rows.Count);
+            var degree = Math.Clamp(Environment.ProcessorCount, 1, 8);
+            const int progressInterval = 250;
+            var processed = 0;
+            foreach (var chunk in rows.Chunk(progressInterval))
+            {
+                token.ThrowIfCancellationRequested();
+                var users = new AppUser[chunk.Length];
+                await Parallel.ForEachAsync(Enumerable.Range(0, chunk.Length),
+                    new ParallelOptions { MaxDegreeOfParallelism = degree, CancellationToken = token },
+                    (index, _) =>
+                    {
+                        var data = chunk[index].Data;
+                        var user = new AppUser
+                        {
+                            UserName = data.UserName,
+                            DisplayName = data.Name,
+                            Role = batch.Kind == "teacher" ? "Teacher" : "Student",
+                            MustChangePassword = true
+                        };
+                        user.PasswordHash = hasher.HashPassword(user, request.InitialPassword);
+                        users[index] = user;
+                        return ValueTask.CompletedTask;
+                    });
+                for (var index = 0; index < chunk.Length; index++) prepared.Add(chunk[index].RowNumber, users[index]);
+                processed += chunk.Length;
+                await ReportProgressAsync(request.BatchId, processed, token);
             }
 
             await using var transaction = await db.Database.BeginTransactionAsync(token);
@@ -214,36 +238,61 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, IServiceScopeFactory sc
 
     async Task ReportProgressAsync(string batchId, int processed, CancellationToken cancellationToken)
     {
-        await using var scope = scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
-        await db.ImportBatches
-            .Where(x => x.Id == batchId && (x.Status == ImportBatchStatus.Running || x.Status == ImportBatchStatus.Cancelling))
-            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProcessedCount, processed), cancellationToken);
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
+            await db.ImportBatches
+                .Where(x => x.Id == batchId && (x.Status == ImportBatchStatus.Running || x.Status == ImportBatchStatus.Cancelling))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProcessedCount, processed), cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            // Progress is cosmetic: a busy database must not abort an otherwise valid import.
+            logger.LogWarning(ex, "Reporting import progress for {BatchId} failed at row {Processed}.", batchId, processed);
+        }
     }
 
     async Task FinishFailedAsync(string batchId, string message)
     {
-        await using var scope = scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
-        await db.ImportBatches
-            .Where(x => x.Id == batchId && (x.Status == ImportBatchStatus.Queued || x.Status == ImportBatchStatus.Running || x.Status == ImportBatchStatus.Cancelling))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Status, ImportBatchStatus.Failed)
-                .SetProperty(x => x.FailureMessage, message)
-                .SetProperty(x => x.RowsJson, "[]")
-                .SetProperty(x => x.CompletedAt, DateTime.UtcNow));
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
+            await db.ImportBatches
+                .Where(x => x.Id == batchId && (x.Status == ImportBatchStatus.Queued || x.Status == ImportBatchStatus.Running || x.Status == ImportBatchStatus.Cancelling))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, ImportBatchStatus.Failed)
+                    .SetProperty(x => x.FailureMessage, message)
+                    .SetProperty(x => x.RowsJson, "[]")
+                    .SetProperty(x => x.CompletedAt, DateTime.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            // This runs from a catch block: letting it escape would fault ExecuteAsync and stop
+            // the host. A batch left in Running is failed by startup recovery on the next start.
+            logger.LogError(ex, "Persisting the failed state for import batch {BatchId} did not complete.", batchId);
+        }
     }
 
     async Task FinishCancelledAsync(string batchId)
     {
-        await using var scope = scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
-        await db.ImportBatches
-            .Where(x => x.Id == batchId && (x.Status == ImportBatchStatus.Queued || x.Status == ImportBatchStatus.Running || x.Status == ImportBatchStatus.Cancelling))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Status, ImportBatchStatus.Cancelled)
-                .SetProperty(x => x.FailureMessage, "导入任务已取消")
-                .SetProperty(x => x.RowsJson, "[]")
-                .SetProperty(x => x.CompletedAt, DateTime.UtcNow));
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
+            await db.ImportBatches
+                .Where(x => x.Id == batchId && (x.Status == ImportBatchStatus.Queued || x.Status == ImportBatchStatus.Running || x.Status == ImportBatchStatus.Cancelling))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, ImportBatchStatus.Cancelled)
+                    .SetProperty(x => x.FailureMessage, "导入任务已取消")
+                    .SetProperty(x => x.RowsJson, "[]")
+                    .SetProperty(x => x.CompletedAt, DateTime.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Persisting the cancelled state for import batch {BatchId} did not complete.", batchId);
+        }
     }
 }
