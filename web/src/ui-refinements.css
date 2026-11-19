@@ -1,0 +1,36 @@
+/* Keep terminal controls reachable on short Windows laptop viewports. */
+.terminal-dialog.el-dialog {
+  margin: 3vh auto !important;
+  max-height: 94dvh;
+  display: flex;
+  flex-direction: column;
+}
+.terminal-dialog .el-dialog__header {
+  flex: 0 0 auto;
+}
+.terminal-dialog .el-dialog__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.terminal-dialog .terminal-toolbar,
+.terminal-dialog .terminal-help,
+.terminal-dialog .el-alert {
+  flex: 0 0 auto;
+}
+.terminal-dialog .terminal-container {
+  height: min(500px, max(180px, calc(100dvh - 280px)));
+  min-height: 120px;
+  flex: 1 1 auto;
+}
+.terminal-dialog .terminal-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.terminal-dialog .terminal-help {
+  flex-wrap: wrap;
+}
+.terminal-dialog .terminal-help .el-button {
+  flex-shrink: 0;
+}

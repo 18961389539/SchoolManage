@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 4,
+  "testedAssembly": "D:\\code\\School\\artifacts\\SchoolTraining-0.1.0-p3-win-x64\\app\\School.Training.dll",
+  "testedAssemblySha256": "9F4798EC72EFB7ABBE051580DA4E4CE027965A922264CA6C4C8EFFBFAA9A095C",
+  "status": "passed",
+  "checks": [
+    "fresh database is created at schema version 4 with import job state columns and an audit time index",
+    "v1 database upgrades to v4, preserves data, creates unique and audit indexes, import job columns and a v1 pre-migration snapshot; old backups are restore-validated but current-schema validation rejects them",
+    "v2 database adds import job columns, preserves legacy batches and maps Committed to terminal status",
+    "v3 database adds the audit time index without changing business data",
+    "duplicate class names block v1→v4 migration without advancing the schema version"
+  ],
+  "completedAt": "2026-11-19T14:37:41.162Z",
+  "workspace": "D:\\code\\School\\.local\\migration-test-1795099054450"
+}

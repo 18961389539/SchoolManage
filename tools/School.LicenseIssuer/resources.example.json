@@ -1,0 +1,4 @@
+[
+  { "name": "模拟实训节点", "authorizationCode": "EXAMPLE-NODE-CODE", "quantity": 2 },
+  { "name": "模拟实训设备", "authorizationCode": "EXAMPLE-DEVICE-CODE", "quantity": 16 }
+]

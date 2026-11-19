@@ -1,0 +1,110 @@
+{
+    "suite":  "deployment-filesystem-safety",
+    "startedAtUtc":  "2026-11-19T10:39:18.6135055Z",
+    "completedAtUtc":  "2026-11-19T10:39:19.9766857Z",
+    "powershellVersion":  "5.1.26100.9818",
+    "commonScriptSha256":  "7C3413DE5599E7080089FC2A5B96A66C2D59EAB3DF6262C78F3CA26A69843608",
+    "testScriptSha256":  "4D70F731E4B589F2C75829F172ABE4304A5147F320B25CE0C2A65EB962776677",
+    "fixtureDirectory":  "D:\\code\\School\\.local\\deployment-safety-56a916a47c974f0a85a46797d43152e7",
+    "passed":  true,
+    "passedChecks":  19,
+    "totalChecks":  19,
+    "checks":  [
+                   {
+                       "name":  "Empty installation directory is accepted without mutation",
+                       "passed":  true,
+                       "durationMs":  52
+                   },
+                   {
+                       "name":  "Unknown nonempty program directory is refused and unchanged",
+                       "passed":  true,
+                       "durationMs":  375
+                   },
+                   {
+                       "name":  "Unknown nonempty data directory is refused and keys are preserved",
+                       "passed":  true,
+                       "durationMs":  49
+                   },
+                   {
+                       "name":  "Valid product data marker is accepted",
+                       "passed":  true,
+                       "durationMs":  53
+                   },
+                   {
+                       "name":  "Wrong product data marker is refused",
+                       "passed":  true,
+                       "durationMs":  26
+                   },
+                   {
+                       "name":  "Drive root and Windows system roots are refused",
+                       "passed":  true,
+                       "durationMs":  23
+                   },
+                   {
+                       "name":  "Traversal, absolute, UNC and alternate-stream relative paths are refused",
+                       "passed":  true,
+                       "durationMs":  22
+                   },
+                   {
+                       "name":  "A manifest with an escaping file path is refused",
+                       "passed":  true,
+                       "durationMs":  87
+                   },
+                   {
+                       "name":  "Case-insensitive duplicate manifest paths are refused",
+                       "passed":  true,
+                       "durationMs":  71
+                   },
+                   {
+                       "name":  "Uninstall removes unchanged payload but preserves modified and unknown files",
+                       "passed":  true,
+                       "durationMs":  138
+                   },
+                   {
+                       "name":  "Uninstall removes an empty product tree without recursive deletion",
+                       "passed":  true,
+                       "durationMs":  60
+                   },
+                   {
+                       "name":  "Upgrade refuses to overwrite an unknown payload collision",
+                       "passed":  true,
+                       "durationMs":  50
+                   },
+                   {
+                       "name":  "Upgrade refuses to overwrite a modified installed payload file",
+                       "passed":  true,
+                       "durationMs":  45
+                   },
+                   {
+                       "name":  "Upgrade accepts unchanged ownership and preserves owned production configuration",
+                       "passed":  true,
+                       "durationMs":  39
+                   },
+                   {
+                       "name":  "Upgrade does not exempt an unknown production configuration file",
+                       "passed":  true,
+                       "durationMs":  47
+                   },
+                   {
+                       "name":  "Upgrade refuses a release file that conflicts with an existing directory",
+                       "passed":  true,
+                       "durationMs":  27
+                   },
+                   {
+                       "name":  "Junction paths and descendants are refused",
+                       "passed":  true,
+                       "durationMs":  38
+                   },
+                   {
+                       "name":  "Source traversal refuses junctions without copying target data",
+                       "passed":  true,
+                       "durationMs":  19
+                   },
+                   {
+                       "name":  "Upgrade path validation refuses junction-backed destinations",
+                       "passed":  true,
+                       "durationMs":  18
+                   }
+               ],
+    "scope":  "Isolated .local fixtures using deployment-common file/path functions only. No service registration, registry changes, ACL changes, firewall changes, real installation, reboot or production restoration."
+}

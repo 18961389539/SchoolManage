@@ -1,0 +1,139 @@
+{
+  "suite": "excel-csv-real-http-boundaries",
+  "startedAt": "2026-11-19T14:37:59.568Z",
+  "sourceApp": "D:\\code\\School\\artifacts\\SchoolTraining-0.1.0-p3-win-x64\\app",
+  "isolatedWorkspace": "C:\\Users\\35953\\AppData\\Local\\Temp\\SchoolTraining-Excel-QA-L5Gh6n",
+  "databaseInitiallyEmpty": true,
+  "backendSha256": "9f4798ec72efb7abbe051580da4e4ce027965a922264ca6c4c8effbfaa9a095c",
+  "fixtures": [
+    {
+      "name": "valid-students.xlsx",
+      "bytes": 2279,
+      "zipEntries": 6,
+      "expandedBytes": 4194
+    },
+    {
+      "name": "valid-teachers.xlsx",
+      "bytes": 2231,
+      "zipEntries": 6,
+      "expandedBytes": 3656
+    },
+    {
+      "name": "sparse-last-row.xlsx",
+      "bytes": 2053,
+      "zipEntries": 6,
+      "expandedBytes": 2678
+    },
+    {
+      "name": "sparse-last-column.xlsx",
+      "bytes": 2048,
+      "zipEntries": 6,
+      "expandedBytes": 2668
+    },
+    {
+      "name": "too-many-zip-entries.xlsx",
+      "bytes": 207394,
+      "zipEntries": 2001,
+      "expandedBytes": 3101
+    },
+    {
+      "name": "expanded-over-64mb.xlsx",
+      "bytes": 68508,
+      "zipEntries": 7,
+      "expandedBytes": 68160541
+    }
+  ],
+  "checks": [
+    {
+      "name": "真实 .xlsx 学生预览、字段解析、提交及账号创建",
+      "passed": true,
+      "durationMs": 1672,
+      "validRows": 2,
+      "importedCount": 2,
+      "firstRowNumber": 2,
+      "accountRole": "Student",
+      "mustChangePassword": true,
+      "observedImportStates": [
+        {
+          "status": "running",
+          "processedCount": 0,
+          "totalCount": 2
+        },
+        {
+          "status": "completed",
+          "processedCount": 2,
+          "totalCount": 2
+        }
+      ]
+    },
+    {
+      "name": "真实 .xlsx 教师预览、工号关联、提交及账号创建",
+      "passed": true,
+      "durationMs": 368,
+      "validRows": 1,
+      "importedCount": 1,
+      "teacherNumber": "T2026001",
+      "accountRole": "Teacher"
+    },
+    {
+      "name": "稀疏工作表第1048576行快速拒绝且服务继续可用",
+      "passed": true,
+      "durationMs": 15,
+      "responseStatus": 400,
+      "rejectionMs": 11,
+      "message": "数据必须位于前10001行、30列以内（含表头）",
+      "maxAllowedMs": 5000
+    },
+    {
+      "name": "稀疏工作表第16384列快速拒绝且服务继续可用",
+      "passed": true,
+      "durationMs": 10,
+      "responseStatus": 400,
+      "rejectionMs": 7,
+      "message": "数据必须位于前10001行、30列以内（含表头）",
+      "maxAllowedMs": 5000
+    },
+    {
+      "name": "损坏 .xlsx 返回可读400错误",
+      "passed": true,
+      "durationMs": 5,
+      "responseStatus": 400,
+      "rejectionMs": 3,
+      "message": "无法读取文件，请检查文件格式和UTF-8编码",
+      "maxAllowedMs": 5000
+    },
+    {
+      "name": "超过2000个ZIP条目的 .xlsx 在解析前拒绝",
+      "passed": true,
+      "durationMs": 15,
+      "responseStatus": 400,
+      "rejectionMs": 11,
+      "message": "Excel解压后内容超过64MB或结构过于复杂",
+      "maxAllowedMs": 5000
+    },
+    {
+      "name": "解压超过64MB的压缩 .xlsx 在解析前拒绝",
+      "passed": true,
+      "durationMs": 7,
+      "responseStatus": 400,
+      "rejectionMs": 3,
+      "message": "Excel解压后内容超过64MB或结构过于复杂",
+      "maxAllowedMs": 5000
+    },
+    {
+      "name": "CSV引号、逗号、双引号转义与单元格内换行保真",
+      "passed": true,
+      "durationMs": 261,
+      "importedCount": 1,
+      "embeddedComma": true,
+      "escapedQuote": true,
+      "embeddedCrLf": true,
+      "originalRowNumber": 2
+    }
+  ],
+  "processStopped": true,
+  "temporaryWorkspaceRemoved": true,
+  "passed": true,
+  "completedAt": "2026-11-19T14:38:08.555Z",
+  "passedChecks": 8
+}

@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/node_modules/
+web/dist/
+/src/School.Training/wwwroot/
+artifacts/
+.local/
+.workbuddy/
+*.user
+/_cgi-bin_*.jpg
+/installer-staging-smoke.json
+

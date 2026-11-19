@@ -1,0 +1,29 @@
+{
+  "recordedAtUtc": "2026-11-19T11:21:26.0188543Z",
+  "status": "passed",
+  "artifact": "artifacts/SchoolTraining-0.1.0-win-x64/app/School.Training.exe",
+  "dataDirectory": ".local/release-qa-v2",
+  "runtime": "10.0.15",
+  "dotnetRootDeliberatelyMissing": true,
+  "modules": [
+    {
+      "ModuleName": "hostfxr.dll",
+      "FileName": "D:\\code\\School\\artifacts\\SchoolTraining-0.1.0-win-x64\\app\\hostfxr.dll"
+    },
+    {
+      "ModuleName": "hostpolicy.dll",
+      "FileName": "D:\\code\\School\\artifacts\\SchoolTraining-0.1.0-win-x64\\app\\hostpolicy.dll"
+    },
+    {
+      "ModuleName": "coreclr.dll",
+      "FileName": "D:\\code\\School\\artifacts\\SchoolTraining-0.1.0-win-x64\\app\\coreclr.dll"
+    }
+  ],
+  "statusResponse": {
+    "initialized": true,
+    "product": "实训资源管理平台",
+    "version": "0.1.0",
+    "schoolName": "学校实训资源平台·验收环境"
+  },
+  "limitation": "Shared runtime isolation and owned-process module paths verified on developer Win11; clean-machine service installation remains unverified."
+}

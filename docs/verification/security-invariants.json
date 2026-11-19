@@ -1,0 +1,58 @@
+{
+  "recordedAtUtc": "2026-11-19T14:45:25.2549192Z",
+  "status": "passed",
+  "command": "dotnet run --project tools/School.SecurityChecks -c Release -- --require-setup-access",
+  "mainAssemblySha256": "1DAD973DA74D566B29E5795E6FB2F3E4D8CA72C8B55B1254B57001787E1FB494",
+  "checks": [
+    {
+      "name": "request cancellation is isolated to its own lease",
+      "status": "passed",
+      "elapsedMs": 3.88
+    },
+    {
+      "name": "application stopping cancels every active terminal without waiting for ApplicationStopped",
+      "status": "passed",
+      "elapsedMs": 15.35
+    },
+    {
+      "name": "new requests cannot obtain a usable lease after stop or with an already-aborted request",
+      "status": "passed",
+      "elapsedMs": 0.78
+    },
+    {
+      "name": "stale release does not remove or cancel a later lease for the same device",
+      "status": "passed",
+      "elapsedMs": 0.32
+    },
+    {
+      "name": "user revocation and cabinet reclaim preserve unrelated leases",
+      "status": "passed",
+      "elapsedMs": 1.78
+    },
+    {
+      "name": "parallel acquire racing host shutdown never leaves a usable lease",
+      "status": "passed",
+      "elapsedMs": 3.52
+    },
+    {
+      "name": "setup access distinguishes local endpoints from remote LAN clients and unspecified addresses",
+      "status": "passed",
+      "elapsedMs": 8.97
+    },
+    {
+      "name": "unknown accounts and over-long passwords still perform one full hash verification",
+      "status": "passed",
+      "elapsedMs": 197.53
+    }
+  ],
+  "setupAccess": {
+    "status": "passed",
+    "required": true,
+    "testCaseCount": 16
+  },
+  "error": null,
+  "additionalNugetPackageReferences": 0,
+  "hostStarted": false,
+  "systemConfigurationChanged": false,
+  "scope": "In-process behavioral invariants with a fake IHostApplicationLifetime; no Windows service, HTTP listener or system configuration is started or changed. Does not replace SCM stop integration testing."
+}

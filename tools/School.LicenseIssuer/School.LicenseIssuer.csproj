@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.1.0</Version>
+    <AssemblyName>School.LicenseIssuer</AssemblyName>
+    <Description>供应商离线许可证签发工具，禁止随学校客户端分发私钥。</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="**/*.pem;**/*.key;**/*.pfx;**/*.p12" />
+  </ItemGroup>
+</Project>

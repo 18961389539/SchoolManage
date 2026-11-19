@@ -1,0 +1,20 @@
+{
+  "recordedAtUtc": "2026-11-19T04:28:45.426Z",
+  "status": "passed",
+  "command": "node tools/School.LicenseIssuer/verify-smoke.mjs",
+  "assemblySha256": "B91CB381C90922948D42D2508E7AB551A2B35DF30EFE626702019D9676FF25EE",
+  "testPublicKeySha256": "3FFAA1BD5ADB6A9A8B4A6937AC5EEBF8D22BEBB05CB69ACA8553C8167E693812",
+  "checks": [
+    "RSA-3072 keypair, encrypted PKCS8 and independent Node decryption",
+    "key generation refuses to overwrite existing keys",
+    "issued envelope signature and strict server payload contract",
+    "tampered resource quantities fail independent signature verification",
+    "expiry date uses UTC+08 end-of-day; omitted expiry is explicit null; no overwrite",
+    "actual School.Training API accepts issuer output; rejects duplicates, tampering and wrong machine binding",
+    "wrong password, negative resources and weak passwords fail without output files"
+  ],
+  "temporaryKeysRemoved": true,
+  "externalNugetDependencies": 0,
+  "apiIntegration": "http://127.0.0.1:5091",
+  "scope": "Environment-password CLI flow, independent Node RSA verification, file/format failure cases. Hidden interactive password input is implemented but not UI-automated."
+}

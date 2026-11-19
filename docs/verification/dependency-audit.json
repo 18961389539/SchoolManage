@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-19",
+  "backend": {
+    "command": "dotnet list src/School.Training/School.Training.csproj package --vulnerable --include-transitive",
+    "source": "https://api.nuget.org/v3/index.json",
+    "knownVulnerablePackages": 0,
+    "exitCode": 0
+  },
+  "frontendProduction": {
+    "command": "npm.cmd audit --registry=https://registry.npmjs.org --omit=dev --audit-level=high",
+    "source": "https://registry.npmjs.org",
+    "knownVulnerabilities": 0,
+    "exitCode": 0
+  },
+  "limitations": [
+    "Results reflect the configured registries at verification time, not a guarantee against unknown vulnerabilities.",
+    "The mirror audit endpoint was unsupported; frontend audit was rerun successfully against the official npm registry.",
+    "One dependency lacks an upstream LICENSE file in its published package; see third-party notice-review.json."
+  ]
+}

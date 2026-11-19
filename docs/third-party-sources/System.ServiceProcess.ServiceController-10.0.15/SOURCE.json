@@ -1,0 +1,6 @@
+{
+  "component": "System.ServiceProcess.ServiceController",
+  "version": "10.0.15",
+  "source": "https://raw.githubusercontent.com/dotnet/dotnet/8e0f8ed2312954727f8919d7d1c2f78b483b4ee7/LICENSE.TXT",
+  "retrievedAtUtc": "2026-11-19T04:17:11.211Z"
+}
