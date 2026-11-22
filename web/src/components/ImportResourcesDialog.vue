@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { focusFirstField } from '../focusField'
 import { Refresh, Search } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, messageOf, post } from '../api'
 import { durationText, labelOf, resourceKindOptions } from '../teaching'
 import type { CourseImportableResource, CourseImportableResponse } from '../types'
@@ -19,6 +19,32 @@ const error = ref('')
 const search = ref('')
 const searchInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
 const selected = ref<CourseImportableResource[]>([])
+
+async function confirmDiscard() {
+  if (importing.value) {
+    ElMessage.warning('正在导入资源，请等待完成')
+    return false
+  }
+  if (!selected.value.length) return true
+  try {
+    await ElMessageBox.confirm('已勾选的资源还没有导入，关闭后需要重新选择。', '关闭导入资源？', {
+      type: 'warning',
+      confirmButtonText: '关闭',
+      cancelButtonText: '继续选择'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function handleBeforeClose(done: () => void) {
+  if (await confirmDiscard()) done()
+}
+
+async function cancel() {
+  if (await confirmDiscard()) visible.value = false
+}
 
 const selectedIds = computed(() => selected.value.map(item => item.id))
 const summary = computed(() => {
@@ -102,6 +128,7 @@ async function confirmImport() {
     v-model="visible"
     :title="`导入资源到「${props.sectionName || targetName || '小节'}」`"
     width="min(880px, 96vw)"
+    :before-close="handleBeforeClose"
     destroy-on-close
     @opened="onDialogOpened"
   >
@@ -156,7 +183,7 @@ async function confirmImport() {
       </el-table-column>
     </el-table>
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
+      <el-button @click="cancel">取消</el-button>
       <el-button type="primary" :loading="importing" :disabled="!selectedIds.length" @click="confirmImport">
         导入所选资源
       </el-button>

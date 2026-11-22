@@ -224,12 +224,30 @@ async function cancelImport() {
     if (run === pollRun) cancelBusy.value = false
   }
 }
-function beforeClose(done: () => void) {
+async function confirmClose(): Promise<boolean> {
   if (busy.value) {
     ElMessage.warning('导入任务正在处理，请等待完成或先取消任务')
-    return
+    return false
   }
-  done()
+  if (!preview.value) return true
+  try {
+    await ElMessageBox.confirm('文件已经完成校验，关闭后需要重新选择文件。', '关闭批量导入？', {
+      type: 'warning',
+      confirmButtonText: '关闭导入',
+      cancelButtonText: '继续查看'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function beforeClose(done: () => void) {
+  if (await confirmClose()) done()
+}
+
+async function closeDialog() {
+  if (await confirmClose()) visible.value = false
 }
 // Element Plus passes table slot rows as its own loose DefaultRow type, so the
 // template-facing helpers accept Row while the underlying collections stay typed.
@@ -413,7 +431,7 @@ onBeforeUnmount(() => {
       }}</span
       ><el-button v-if="activeJob && jobStatus !== 'cancelling'" :loading="cancelBusy" @click="cancelImport"
         >取消导入</el-button
-      ><el-button :disabled="busy" @click="visible = false">关闭</el-button
+      ><el-button :disabled="busy" @click="closeDialog">关闭</el-button
       ><el-button
         type="primary"
         :disabled="!preview || !validCount || (!!invalidCount && !removedInvalid) || busy"
