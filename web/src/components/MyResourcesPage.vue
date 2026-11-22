@@ -58,6 +58,18 @@ function deviceStatus(device: AssignedDevice) {
   return '可连接'
 }
 
+function deviceTerminalReason(device: AssignedDevice): string | undefined {
+  if (!device.canAccess) return '当前不可连接'
+  if (device.sessionActive) return '该设备正在使用，不能重复打开终端'
+}
+function deviceWebReason(device: AssignedDevice): string | undefined {
+  if (!device.canAccess) return '当前不可连接'
+}
+function machineConnectReason(row: AssignedVirtualMachine): string | undefined {
+  if (!row.canAccess) return '当前不可连接'
+  if (row.status !== 'running') return '虚拟机未运行，无法连接'
+}
+
 function machineStatus(status: string) {
   if (status === 'running') return '运行中'
   if (status === 'stopped') return '已停止'
@@ -125,26 +137,42 @@ onBeforeUnmount(() => request?.abort())
         </el-table-column>
         <el-table-column label="操作" width="210">
           <template #default="{ row }">
-            <el-button
-              link
-              type="primary"
-              :icon="Monitor"
-              :disabled="loading || !row.canAccess || row.sessionActive"
-              :aria-label="`打开${row.name}终端`"
-              @click="activeDevice = row as AssignedDevice"
+            <el-tooltip
+              :disabled="!deviceTerminalReason(row as AssignedDevice)"
+              :content="deviceTerminalReason(row as AssignedDevice)"
+              placement="top"
             >
-              打开终端
-            </el-button>
-            <el-button
+              <span class="disabled-action-wrap">
+                <el-button
+                  link
+                  type="primary"
+                  :icon="Monitor"
+                  :disabled="loading || !row.canAccess || row.sessionActive"
+                  :aria-label="`打开${row.name}终端`"
+                  @click="activeDevice = row as AssignedDevice"
+                >
+                  打开终端
+                </el-button>
+              </span>
+            </el-tooltip>
+            <el-tooltip
               v-if="row.isSimulated"
-              link
-              type="primary"
-              :disabled="loading || !row.canAccess"
-              :aria-label="`打开${row.name}Web 管理`"
-              @click="webDevice = row as AssignedDevice"
+              :disabled="!deviceWebReason(row as AssignedDevice)"
+              :content="deviceWebReason(row as AssignedDevice)"
+              placement="top"
             >
-              Web 管理
-            </el-button>
+              <span class="disabled-action-wrap">
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="loading || !row.canAccess"
+                  :aria-label="`打开${row.name}Web 管理`"
+                  @click="webDevice = row as AssignedDevice"
+                >
+                  Web 管理
+                </el-button>
+              </span>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -171,14 +199,22 @@ onBeforeUnmount(() => request?.abort())
         </el-table-column>
         <el-table-column label="操作" width="118">
           <template #default="{ row }">
-            <el-button
-              link
-              type="primary"
-              :icon="Monitor"
-              :disabled="!row.canAccess || row.status !== 'running'"
-              @click="openMachine(row as AssignedVirtualMachine)"
-              >连接</el-button
+            <el-tooltip
+              :disabled="!machineConnectReason(row as AssignedVirtualMachine)"
+              :content="machineConnectReason(row as AssignedVirtualMachine)"
+              placement="top"
             >
+              <span class="disabled-action-wrap">
+                <el-button
+                  link
+                  type="primary"
+                  :icon="Monitor"
+                  :disabled="!row.canAccess || row.status !== 'running'"
+                  @click="openMachine(row as AssignedVirtualMachine)"
+                  >连接</el-button
+                >
+              </span>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -238,8 +274,8 @@ onBeforeUnmount(() => request?.abort())
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  background: #f6f8fc;
-  border: 1px solid #e8eef5;
+  background: #f3f8f6;
+  border: 1px solid #e4eeea;
   border-radius: 7px;
 }
 
@@ -249,7 +285,8 @@ onBeforeUnmount(() => request?.abort())
 }
 
 .resource-empty {
-  padding: 24px;
+  padding: 36px 20px;
+  text-align: center;
 }
 
 .resource-empty p {

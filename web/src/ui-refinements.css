@@ -109,3 +109,598 @@ html .el-select__wrapper.is-focused:hover {
   outline: 2px solid var(--el-color-primary);
   outline-offset: 2px;
 }
+
+/* Shared workspace refinements: typography, layout, tables, forms, and feedback. */
+
+body {
+  background: #f1f5f7;
+  color: #26374d;
+}
+
+.surface {
+  border-color: #d5e0e6;
+  border-radius: 14px;
+  box-shadow:
+    0 1px 2px #1732460a,
+    0 8px 22px #1b33420c;
+}
+
+.page-heading {
+  margin-bottom: 22px;
+  align-items: flex-start;
+}
+
+.page-heading h1 {
+  letter-spacing: -0.03em;
+}
+
+.page-heading p {
+  margin-top: 2px;
+  max-width: 68ch;
+}
+
+.main-content {
+  padding: 28px 32px 24px;
+}
+
+.sidebar {
+  background: linear-gradient(180deg, #f8fbfb 0%, #f3f7f8 48%, #f1f5f6 100%);
+  border-right-color: #d4e0e5;
+}
+
+.sidebar-brand {
+  min-height: 72px;
+  padding: 12px 16px 8px;
+}
+
+.brand-home {
+  gap: 12px;
+  padding: 6px;
+  border-radius: 10px;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
+}
+
+.brand-home:hover,
+.brand-home:focus-visible {
+  background: #e7f3ef;
+  color: #0f5f58;
+}
+
+.brand-home strong {
+  letter-spacing: 0.01em;
+}
+
+.school-name {
+  margin: 0 14px 14px;
+  border-color: #d6e6e3;
+  border-radius: 10px;
+  background: #eef6f4;
+}
+
+.nav-group {
+  margin-bottom: 10px;
+}
+
+.nav-group-label,
+.nav-group-toggle {
+  letter-spacing: 0.04em;
+  color: #66788a;
+}
+
+.nav-group-items > button {
+  border-radius: 9px;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.nav-group-items > button:hover {
+  background: #eaf2f3;
+}
+
+.nav-group-items > button.active {
+  background: #e3f3ee;
+  border-color: #cfe6df;
+  box-shadow: inset 3px 0 0 #1a7a6a;
+}
+
+.nav-group-items > button.active::after {
+  content: none;
+}
+
+.sidebar-bottom > button {
+  border-radius: 9px;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
+}
+
+.sidebar-bottom > button:hover,
+.sidebar-bottom > button:focus-visible {
+  background: #e7f3ef;
+  color: #145a50;
+}
+
+.topbar {
+  height: 64px;
+  background: rgb(255 255 255 / 88%);
+  box-shadow:
+    0 1px 0 #dfe7ed,
+    0 8px 18px #1b334208;
+}
+
+.breadcrumb-group {
+  color: #66788a;
+}
+
+.breadcrumb strong {
+  font-size: 15px;
+}
+
+.user-menu {
+  border: 1px solid transparent;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.user-menu:hover,
+.user-menu:focus-visible {
+  background: #eef6f4;
+  border-color: #d5e6e2;
+}
+
+.user-avatar {
+  background: linear-gradient(180deg, #d8efe9, #c6e4de);
+  color: #0f5f58;
+}
+
+.deployment-badge {
+  background: #eef7f3;
+  border-color: #d3e9e0;
+}
+
+.el-table {
+  --el-table-header-bg-color: #f3f8f7;
+  --el-table-row-hover-bg-color: #eef7f4;
+  --el-table-header-text-color: #3d5566;
+}
+
+.el-table th.el-table__cell {
+  height: 46px;
+  font-size: 13px;
+}
+
+.el-table td.el-table__cell {
+  height: 58px;
+}
+
+.el-form-item__label {
+  margin-bottom: 4px !important;
+}
+
+.el-input__wrapper,
+.el-select__wrapper {
+  min-height: 40px;
+  transition: box-shadow 0.16s ease;
+}
+
+.el-dialog {
+  border-radius: 16px !important;
+  box-shadow: 0 18px 50px #12304728 !important;
+}
+
+.el-button--primary:not(.is-link):not(.is-text):not(.is-disabled):hover,
+.el-button--primary:not(.is-link):not(.is-text):not(.is-disabled):focus-visible {
+  box-shadow: 0 4px 12px #0f737533;
+}
+
+.el-message {
+  border-radius: 10px;
+  box-shadow: 0 10px 28px #1732461f;
+  padding: 11px 16px;
+}
+
+.el-notification {
+  border-radius: 12px;
+  box-shadow: 0 14px 36px #17324622;
+}
+
+.assessment-card,
+.learner-record {
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.assessment-card.is-resumable,
+.learner-record.is-active {
+  box-shadow: 0 6px 16px #146d6612;
+}
+
+@media (max-width: 1250px) {
+  .main-content {
+    padding: 24px 24px 20px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .topbar {
+    height: 62px;
+  }
+
+  .main-content {
+    padding: 22px 20px 16px;
+  }
+
+  .page-heading {
+    flex-wrap: wrap;
+  }
+
+  .page-heading .heading-actions {
+    padding-top: 0;
+  }
+
+  .sidebar-backdrop {
+    background: #10243b66;
+    backdrop-filter: blur(2px);
+  }
+}
+
+@media (max-width: 550px) {
+  .page-heading .heading-actions {
+    padding-top: 15px;
+  }
+
+  .main-content {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-home,
+  .nav-group-items > button,
+  .sidebar-bottom > button,
+  .user-menu,
+  .el-input__wrapper,
+  .el-select__wrapper,
+  .el-button--primary,
+  .assessment-card,
+  .learner-record {
+    transition: none;
+  }
+}
+
+/* Round 2: drawers, pagination, catalogs, empty states, and remaining chrome. */
+
+.el-drawer {
+  background: #f6faf8;
+}
+
+.el-drawer__header {
+  margin-bottom: 0 !important;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid #dce7eb;
+}
+
+.el-drawer__title {
+  color: #1b2f47;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.el-drawer__body {
+  padding: 16px 20px 22px;
+}
+
+.drawer-toolbar {
+  border-bottom-color: #dce7eb;
+}
+
+.el-pagination {
+  --el-pagination-hover-color: var(--el-color-primary);
+  font-weight: 500;
+}
+
+.el-pagination button,
+.el-pager li {
+  min-width: 32px;
+  border-radius: 8px;
+}
+
+.el-pager li.is-active {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary-dark-2);
+  font-weight: 650;
+}
+
+.el-tabs__item {
+  font-weight: 500;
+}
+
+.el-tabs__item.is-active {
+  font-weight: 650;
+}
+
+.el-tabs__active-bar {
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+}
+
+.overview-toolbar,
+.student-filters,
+.table-toolbar {
+  background: #f8fbfb;
+}
+
+.catalog-empty,
+.resource-empty,
+.home-classrooms-empty,
+.map-empty,
+.empty-hint {
+  color: #5a7083;
+}
+
+.catalog-card,
+.classroom-card,
+.home-classroom,
+.kind-card {
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .catalog-card,
+  .classroom-card,
+  .home-classroom,
+  .kind-card,
+  .leaderboard-row {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Round 3: exams, camps, course preview, server, dialogs, and staff toolbars. */
+
+.el-message-box {
+  border-radius: 16px !important;
+  box-shadow: 0 18px 50px #12304728 !important;
+}
+
+.el-message-box__title {
+  color: #1b2f47;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.staff-toolbar,
+.monitor-toolbar {
+  background: #f8fbfb;
+  border-bottom: 1px solid #dce7eb;
+}
+
+.exam-form-grid,
+.course-form-grid,
+.position-form-grid,
+.question-form-grid,
+.classroom-form-grid {
+  column-gap: 16px;
+}
+
+.server-empty,
+.preview-state,
+.camp-loading {
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-row,
+  .outline-resource,
+  .environment-node,
+  .attention-row,
+  .take-option,
+  .take-question {
+    transition: none;
+  }
+}
+
+/* Round 4: remaining cool-blue surfaces, option markers, and summary panels. */
+
+.option-item {
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .option-item,
+  .resource-item,
+  .question-number {
+    transition: none;
+  }
+}
+
+/* Round 5: token warming, import/learner surfaces, remaining drawers and empty states. */
+
+:root {
+  --surface-border: #d5e0e6;
+  --el-border-color: #d4e0e5;
+  --el-border-color-light: #dce7eb;
+  --el-border-color-lighter: #e4eeea;
+  --el-border-color-extra-light: #eef6f4;
+  --el-fill-color: #eef6f4;
+  --el-fill-color-light: #f3f8f6;
+  --el-fill-color-lighter: #f6faf8;
+  --el-fill-color-extra-light: #f8fbfb;
+}
+
+.el-table {
+  --el-table-border-color: #e4eeea;
+}
+
+.startup-screen {
+  background: #f3f8f6;
+}
+
+.import-steps {
+  border-bottom-color: #dce7eb;
+}
+
+.import-steps > div > span {
+  background: #eef6f4;
+}
+
+.import-upload {
+  background: #f6faf8;
+  border-color: #c5dbd5;
+}
+
+.import-password {
+  border-top-color: #dce7eb;
+}
+
+.data-record-entry {
+  border-bottom-color: #e4eeea;
+}
+
+.data-array-item {
+  background: #f6faf8;
+  border-color: #e4eeea;
+}
+
+.host-surface .card-heading,
+.license-surface .card-heading {
+  border-bottom-color: #e4eeea;
+}
+
+.info-band {
+  background: #eef6f4;
+  border-color: #d3e9e0;
+}
+
+.assessment-card-foot {
+  border-top-color: #e4eeea;
+}
+
+.learner-record-parts > div {
+  background: #eef6f4;
+}
+
+.learner-record-aside {
+  background: #f3f8f6;
+}
+
+.monitor-empty,
+.review-empty,
+.roster-empty {
+  background: #f6faf8;
+  border-color: #dce7eb;
+  color: #5a7083;
+}
+
+.rubric-rule,
+.exam-meta,
+.member-panel,
+.node-account-panel,
+.score-breakdown > div,
+.monitor-counts > span,
+.record-summary > div,
+.summary-card,
+.stats-item,
+.detail-summary article {
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.rubric-rule:hover,
+.exam-meta:hover,
+.member-panel:hover,
+.node-account-panel:hover,
+.summary-card:hover,
+.detail-summary article:hover {
+  border-color: #cfe6df;
+  box-shadow: 0 4px 12px #146d6610;
+}
+
+.roster-toolbar,
+.stats-toolbar,
+.analysis-actions {
+  gap: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rubric-rule,
+  .exam-meta,
+  .member-panel,
+  .node-account-panel,
+  .score-breakdown > div,
+  .monitor-counts > span,
+  .record-summary > div,
+  .summary-card,
+  .stats-item,
+  .detail-summary article {
+    transition: none;
+  }
+
+  .rubric-rule:hover,
+  .exam-meta:hover,
+  .member-panel:hover,
+  .node-account-panel:hover,
+  .summary-card:hover,
+  .detail-summary article:hover {
+    box-shadow: none;
+  }
+}
+
+/* Usability: help start paths, empty actions, and disabled-control hints. */
+
+.help-dialog .el-dialog__body {
+  max-height: min(70vh, 640px);
+  overflow: auto;
+}
+
+.help-lead {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.help-start {
+  margin: 0 0 20px;
+  padding: 12px 16px 12px 36px;
+  border: 1px solid #dce7eb;
+  border-radius: 12px;
+  background: #f6faf8;
+}
+
+.help-start li {
+  margin: 6px 0;
+  line-height: 1.65;
+}
+
+.table-empty-action {
+  margin-top: 6px;
+}
+
+.disabled-action-wrap {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.disabled-action-wrap .el-button.is-disabled {
+  pointer-events: none;
+}
+
+.el-dropdown-menu__item.is-disabled.has-disabled-reason {
+  pointer-events: auto;
+  cursor: not-allowed;
+}

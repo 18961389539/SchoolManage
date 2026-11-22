@@ -3,6 +3,7 @@ import { reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { Row } from '../api'
 import { shanghaiInputTime, shanghaiInputToIso } from '../time'
+import { focusFirstField } from '../focusField'
 
 const visible = defineModel<boolean>({ required: true })
 const props = defineProps<{ node: Row | null; value: Row; saving: boolean }>()
@@ -10,6 +11,11 @@ const emit = defineEmits<{ submit: [payload: Row] }>()
 
 const configuration = reactive({ ipAddress: '', subnetMask: '', gateway: '', systemTime: '' })
 const updateSystemTime = ref(false)
+
+const configForm = ref<{ $el?: HTMLElement }>()
+function focusConfigForm() {
+  focusFirstField(configForm.value?.$el)
+}
 
 watch(visible, open => {
   if (!open) return
@@ -45,6 +51,7 @@ function submit() {
     :title="`${node?.name || '节点'} · 系统配置`"
     width="600px"
     :close-on-click-modal="false"
+    @opened="focusConfigForm"
   >
     <el-alert
       title="仅修改内置模拟节点的网络参数与模拟时钟，不修改实际 Win11 主机。"
@@ -53,7 +60,7 @@ function submit() {
       show-icon
       class="section-notice"
     />
-    <el-form label-position="top" class="entity-form">
+    <el-form ref="configForm" label-position="top" class="entity-form">
       <el-form-item label="IPv4 地址" required>
         <el-input v-model="configuration.ipAddress" placeholder="192.0.2.10" />
       </el-form-item>

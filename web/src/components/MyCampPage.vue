@@ -202,9 +202,10 @@ onBeforeUnmount(() => {
 
   <el-empty
     v-if="!loading && !error && !filtered.length"
-    :description="items.length ? '没有匹配的岗位测评' : '暂无可参加的岗位测评'"
+    :description="items.length ? '没有符合条件的岗位测评' : '暂无可参加的岗位测评'"
   >
     <el-button v-if="items.length" @click="search = ''">清除搜索</el-button>
+    <p v-else class="empty-hint">请联系授课教师，确认岗位测评已经发布并分配给你。</p>
   </el-empty>
 
   <CampReportDrawer v-model="reportVisible" :attempt-id="activeAttemptId" />
@@ -262,5 +263,13 @@ onBeforeUnmount(() => {
 
 .camp-actions :deep(.el-button + .el-button) {
   margin-left: 0;
+}
+
+.empty-hint {
+  max-width: 28ch;
+  margin: 8px auto 0;
+  color: #56697c;
+  font-size: 13px;
+  line-height: 1.6;
 }
 </style>

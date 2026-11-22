@@ -231,15 +231,23 @@ function cell(row: Row, key: string) {
         <el-button v-if="isPeople && selectedCount" type="danger" plain :icon="Delete" @click="emit('batch-delete')">
           删除 {{ selectedCount }} 项
         </el-button>
-        <el-button
+        <el-tooltip
           v-if="entityKey === 'cabinets'"
-          :icon="Connection"
-          :loading="actionLoading === 'batch-test'"
-          :disabled="!selectedCount"
-          @click="emit('test-cabinets')"
+          :disabled="!!selectedCount"
+          content="请先勾选要测试的机柜"
+          placement="bottom"
         >
-          测试选中机柜
-        </el-button>
+          <span class="disabled-action-wrap">
+            <el-button
+              :icon="Connection"
+              :loading="actionLoading === 'batch-test'"
+              :disabled="!selectedCount"
+              @click="emit('test-cabinets')"
+            >
+              测试选中机柜
+            </el-button>
+          </span>
+        </el-tooltip>
         <el-button ref="reloadButton" :icon="Refresh" aria-label="刷新列表" @click="emit('reload')">刷新</el-button>
       </div>
     </div>
@@ -263,7 +271,11 @@ function cell(row: Row, key: string) {
           :hint="
             error ? '请检查服务状态后刷新重试' : filtering ? '调整关键词或筛选条件后再试' : '点击右上角「新增」开始录入'
           "
-        />
+        >
+          <template v-if="!error && filtering" #action>
+            <el-button type="primary" plain @click="resetFilters">清除筛选</el-button>
+          </template>
+        </TableEmpty>
       </template>
       <el-table-column v-if="isPeople || entityKey === 'cabinets'" type="selection" width="48" reserve-selection />
       <el-table-column
@@ -351,7 +363,8 @@ function cell(row: Row, key: string) {
 }
 
 .entity-filters {
-  padding: 16px var(--entity-gutter);
+  padding: 18px var(--entity-gutter) 16px;
+  background: #f8fbfb;
 }
 
 .entity-filters > .search-box {
@@ -367,8 +380,11 @@ function cell(row: Row, key: string) {
   justify-content: space-between;
   min-height: 56px;
   padding: 8px var(--entity-gutter);
-  background: #f8fafb;
+  background: #f5f9f8;
   border-block: 1px solid var(--surface-border);
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease;
 }
 
 .entity-list-bar.has-selection {

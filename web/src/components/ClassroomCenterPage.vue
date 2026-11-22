@@ -28,6 +28,7 @@ import ClassroomCabinetDrawer from './ClassroomCabinetDrawer.vue'
 import ClassroomCaseMonitorDrawer from './ClassroomCaseMonitorDrawer.vue'
 import ClassroomStudentPicker from './ClassroomStudentPicker.vue'
 import TableEmpty from './TableEmpty.vue'
+import { focusFirstField } from '../focusField'
 
 const props = defineProps<{ admin: boolean; initialStatisticsId?: string }>()
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>] }>()
@@ -52,6 +53,12 @@ const teachers = ref<TeacherOption[]>([])
 const teaching = ref<TeachingClassesResponse>({ professions: [], classes: [] })
 
 const dialogVisible = ref(false)
+const nameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
+function focusNameInput() {
+  const root = nameInput.value?.$el
+  if (root) focusFirstField(root)
+  else nameInput.value?.focus?.()
+}
 const editing = ref<ClassroomSummary | null>(null)
 const saving = ref(false)
 const formError = ref('')
@@ -91,6 +98,11 @@ const addStudentForm = reactive({
   professionIds: [] as string[],
   studentUserIds: [] as string[]
 })
+
+const addStudentFormRef = ref<{ $el?: HTMLElement }>()
+function focusAddStudent() {
+  focusFirstField(addStudentFormRef.value?.$el)
+}
 
 const statisticsVisible = ref(false)
 const statisticsClassroomId = ref('')
@@ -164,6 +176,8 @@ function resetFilters() {
   statusFilter.value = ''
   applyFilters()
 }
+
+const filtering = computed(() => !!search.value.trim() || !!statusFilter.value)
 
 function defaultWindow() {
   const now = new Date()
@@ -427,7 +441,13 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     </div>
     <div class="heading-actions">
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      <el-button type="primary" :icon="Plus" :disabled="!courseOptions.length" @click="openCreate">新建课堂</el-button>
+      <el-tooltip :disabled="courseOptions.length > 0" content="请先在课程管理中发布并激活课程" placement="bottom">
+        <span class="disabled-action-wrap">
+          <el-button type="primary" :icon="Plus" :disabled="!courseOptions.length" @click="openCreate"
+            >新建课堂</el-button
+          >
+        </span>
+      </el-tooltip>
     </div>
   </section>
 
@@ -463,7 +483,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
         <el-button type="primary" :icon="Search" @click="applyFilters">查询</el-button>
         <el-button @click="resetFilters">重置</el-button>
       </div>
-      <span class="record-count">共 {{ loading && !total ? '—' : total }} 个课堂</span>
+      <span class="record-count">{{ loading && !total ? '正在加载课堂…' : '共 ' + total + ' 个课堂' }}</span>
     </div>
 
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="table-error" />
@@ -479,9 +499,21 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       <template #empty>
         <TableEmpty
           v-if="!loading"
-          :title="error ? '课堂加载失败' : '暂无课堂'"
-          :hint="error ? '请检查服务状态后刷新重试' : '点击右上角「新建课堂」，选择已激活课程与班级。'"
-        />
+          :title="error ? '课堂加载失败' : filtering ? '没有符合条件的课堂' : '暂无课堂'"
+          :hint="
+            error
+              ? '请检查服务状态后刷新重试'
+              : filtering
+                ? '试试调整关键词或状态筛选，也可清除后查看全部课堂。'
+                : courseOptions.length
+                  ? '点击右上角「新建课堂」，选择已激活课程与班级。'
+                  : '请先在课程管理中发布并激活课程，再来新建课堂。'
+          "
+        >
+          <template v-if="!error && filtering" #action>
+            <el-button type="primary" plain @click="resetFilters">清除筛选</el-button>
+          </template>
+        </TableEmpty>
       </template>
       <el-table-column prop="name" label="课堂" min-width="230">
         <template #default="{ row }">
@@ -555,12 +587,23 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     </div>
   </section>
 
-  <el-dialog v-model="dialogVisible" :title="editing ? '编辑课堂' : '新建课堂'" width="min(680px, 94vw)">
+  <el-dialog
+    v-model="dialogVisible"
+    :title="editing ? '编辑课堂' : '新建课堂'"
+    width="min(680px, 94vw)"
+    @opened="focusNameInput"
+  >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
     <el-form label-position="top" class="entity-form">
       <div class="classroom-form-grid">
         <el-form-item label="课堂名称" required>
-          <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="例如：网络 2401 班实训" />
+          <el-input
+            ref="nameInput"
+            v-model="form.name"
+            maxlength="100"
+            show-word-limit
+            placeholder="例如：网络 2401 班实训"
+          />
         </el-form-item>
         <el-form-item label="课程" required>
           <el-select v-model="form.courseId" filterable placeholder="选择已激活课程">
@@ -649,7 +692,13 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
         placeholder="搜索姓名、学号、班级或专业"
       />
       <el-button type="primary" :icon="Plus" @click="openAddStudents">添加学生</el-button>
-      <el-button type="danger" plain :disabled="!selectedStudents.length" @click="removeStudents">移除所选</el-button>
+      <el-tooltip :disabled="selectedStudents.length > 0" content="请先勾选要移除的学生" placement="bottom">
+        <span class="disabled-action-wrap">
+          <el-button type="danger" plain :disabled="!selectedStudents.length" @click="removeStudents"
+            >移除所选</el-button
+          >
+        </span>
+      </el-tooltip>
       <el-button :icon="Refresh" :loading="rosterLoading" @click="loadRoster">刷新</el-button>
     </div>
     <el-alert v-if="rosterError" :title="rosterError" type="error" show-icon :closable="false" class="section-notice" />
@@ -657,9 +706,16 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       v-loading="rosterLoading"
       :data="filteredRoster"
       row-key="userId"
-      empty-text="暂无学生"
+      empty-text=""
       @selection-change="(rows: unknown) => (selectedStudents = rows as ClassroomStudent[])"
     >
+      <template #empty>
+        <TableEmpty
+          v-if="!rosterLoading"
+          :title="rosterSearch.trim() ? '没有符合条件的学生' : '暂无学生'"
+          :hint="rosterSearch.trim() ? '试试调整搜索关键词。' : '点击「添加学生」，按专业、班级或名单加入课堂。'"
+        />
+      </template>
       <el-table-column type="selection" width="48" />
       <el-table-column prop="name" label="姓名" min-width="100" />
       <el-table-column prop="number" label="学号" min-width="120" />
@@ -669,7 +725,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     </el-table>
   </el-drawer>
 
-  <el-dialog v-model="addStudentVisible" title="添加课堂学生" width="min(540px, 94vw)">
+  <el-dialog v-model="addStudentVisible" title="添加课堂学生" width="min(540px, 94vw)" @opened="focusAddStudent">
     <el-alert
       v-if="addStudentError"
       :title="addStudentError"
@@ -678,7 +734,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       :closable="false"
       class="section-notice"
     />
-    <el-form label-position="top" class="entity-form">
+    <el-form ref="addStudentFormRef" label-position="top" class="entity-form">
       <ClassroomStudentPicker v-if="addStudentVisible" v-model="addStudentForm.studentUserIds" :teaching="teaching" />
       <el-form-item label="专业">
         <el-select v-model="addStudentForm.professionIds" multiple filterable placeholder="选择专业">

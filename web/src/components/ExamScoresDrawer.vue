@@ -257,7 +257,7 @@ watch(
   justify-content: space-between;
   gap: 8px;
   padding-top: 9px;
-  border-top: 1px solid #edf1f5;
+  border-top: 1px solid #e4eeea;
 }
 
 .score-list {
@@ -339,7 +339,7 @@ watch(
 .score-breakdown > div {
   padding: 5px 7px;
   border-radius: 6px;
-  background: #eef4f6;
+  background: #eef6f4;
   font-size: 12px;
 }
 

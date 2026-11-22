@@ -27,6 +27,7 @@
   border-color: #17454a;
   background: var(--workspace-hero);
   color: #f5fbff;
+  box-shadow: 0 10px 28px #153d4524;
 }
 
 .role-overview h2 {

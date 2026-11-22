@@ -182,9 +182,9 @@ function rowProgressType(row: ExamMonitorRow): 'success' | 'warning' | 'exceptio
   gap: 2px;
   min-width: 72px;
   padding: 8px 12px;
-  border: 1px solid #e6edf5;
+  border: 1px solid #dce7eb;
   border-radius: 8px;
-  background: #f9fbfd;
+  background: #f6faf8;
 }
 
 .monitor-counts small {

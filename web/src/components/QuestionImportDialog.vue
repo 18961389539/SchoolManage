@@ -16,6 +16,11 @@ const error = ref('')
 const errors = ref<CourseQuestionParseError[]>([])
 const summary = ref('')
 const fileInput = ref<HTMLInputElement>()
+const chooseFileButton = ref<{ ref?: HTMLElement; $el?: HTMLElement }>()
+function focusChooseFile() {
+  const button = chooseFileButton.value?.ref || chooseFileButton.value?.$el
+  button?.focus?.()
+}
 
 const fileName = computed(() => file.value?.name || '未选择文件')
 
@@ -90,14 +95,20 @@ async function parse() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="批量导入练习题目" width="min(760px, 96vw)" destroy-on-close>
+  <el-dialog
+    v-model="visible"
+    title="批量导入练习题目"
+    width="min(760px, 96vw)"
+    destroy-on-close
+    @opened="focusChooseFile"
+  >
     <el-alert type="info" :closable="false" show-icon class="import-hint">
       <p>支持 Excel（.xlsx）或 CSV。表头为：题型、题干、选项、正确答案、分值、解析；选项和答案用竖线或逗号分隔。</p>
       <p>课程练习只支持单选、多选和判断题；导入的题目会追加到当前列表，保存资源后生效。</p>
     </el-alert>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
     <div class="import-picker">
-      <el-button :icon="UploadFilled" @click="chooseFile">选择文件</el-button>
+      <el-button ref="chooseFileButton" :icon="UploadFilled" @click="chooseFile">选择文件</el-button>
       <span class="import-file">{{ fileName }}</span>
       <input ref="fileInput" class="upload-input" type="file" accept=".xlsx,.csv" @change="onFileChange" />
     </div>
@@ -116,7 +127,11 @@ async function parse() {
     </template>
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="parsing" :disabled="!file" @click="parse">解析并导入</el-button>
+      <el-tooltip :disabled="!!file" content="请先选择要导入的文件" placement="top">
+        <span class="disabled-action-wrap">
+          <el-button type="primary" :loading="parsing" :disabled="!file" @click="parse">解析并导入</el-button>
+        </span>
+      </el-tooltip>
     </template>
   </el-dialog>
 </template>

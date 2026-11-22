@@ -567,7 +567,7 @@ onBeforeUnmount(() => {
 :global(.camp-practical-drawer .el-drawer__header) {
   margin-bottom: 0;
   padding: 16px 20px;
-  border-bottom: 1px solid #e5edf5;
+  border-bottom: 1px solid #dce7eb;
 }
 
 :global(.camp-practical-drawer .el-drawer__body) {
@@ -578,7 +578,7 @@ onBeforeUnmount(() => {
 
 :global(.camp-practical-drawer .el-drawer__footer) {
   padding: 12px 20px;
-  border-top: 1px solid #e5edf5;
+  border-top: 1px solid #dce7eb;
 }
 
 .practical-heading {
@@ -607,7 +607,7 @@ onBeforeUnmount(() => {
 .practical-resources {
   min-width: 0;
   padding: 14px;
-  border: 1px solid #e5edf5;
+  border: 1px solid #dce7eb;
   border-radius: 9px;
 }
 
@@ -682,8 +682,8 @@ onBeforeUnmount(() => {
   gap: 12px;
   margin: 0;
   padding: 16px;
-  background: #f6f9fc;
-  border: 1px solid #e8eef6;
+  background: #f3f8f6;
+  border: 1px solid #e4eeea;
   border-radius: 10px;
 }
 
@@ -703,7 +703,7 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 14px;
   padding: 18px;
-  background: linear-gradient(135deg, #eff8f4, #f3f8ff);
+  background: linear-gradient(135deg, #eff8f4, #f3faf7);
   border: 1px solid #d8e9e1;
   border-radius: 10px;
 }
@@ -826,7 +826,7 @@ onBeforeUnmount(() => {
 
 .take-question {
   padding: 16px 0 20px;
-  border-bottom: 1px dashed #e6edf5;
+  border-bottom: 1px dashed #dce7eb;
   scroll-margin-top: calc(var(--assessment-sticky-top) + 8px);
 }
 
@@ -880,9 +880,17 @@ onBeforeUnmount(() => {
   height: auto;
   padding: 8px 10px;
   margin: 0;
-  border: 1px solid #e8eef6;
+  border: 1px solid #e4eeea;
   border-radius: 7px;
   white-space: normal;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+.option-item:hover {
+  border-color: #bdd9d3;
+  background: #f3f8f6;
 }
 
 .option-item :deep(.el-radio__label),
@@ -909,7 +917,7 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 8px;
   padding-top: 12px;
-  border-top: 1px solid #edf2f7;
+  border-top: 1px solid #e4eeea;
 }
 
 .nav-panel h2 {
@@ -939,8 +947,8 @@ onBeforeUnmount(() => {
   height: 34px;
   color: #64778b;
   font-size: 12px;
-  background: #f5f8fb;
-  border: 1px solid #e2eaf3;
+  background: #f5f9f8;
+  border: 1px solid #dce7eb;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -968,8 +976,8 @@ onBeforeUnmount(() => {
   width: 9px;
   height: 9px;
   margin-left: 6px;
-  background: #f5f8fb;
-  border: 1px solid #d7e1ec;
+  background: #f5f9f8;
+  border: 1px solid #d5e0e6;
   border-radius: 50%;
 }
 

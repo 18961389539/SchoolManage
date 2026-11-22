@@ -215,7 +215,7 @@ function correctText(question: CampRecordQuestion): string {
   flex: none;
   margin: 0;
   padding: 17px 22px;
-  border-bottom: 1px solid #e7edf4;
+  border-bottom: 1px solid #dce7eb;
 }
 
 :global(.camp-record-drawer .el-drawer__body) {
@@ -283,9 +283,9 @@ function correctText(question: CampRecordQuestion): string {
 
 .record-summary > div {
   padding: 9px 11px;
-  border: 1px solid #e4ecf4;
+  border: 1px solid #dce7eb;
   border-radius: 8px;
-  background: #f6f8fb;
+  background: #f6faf8;
 }
 
 .record-summary dt,
@@ -317,7 +317,7 @@ function correctText(question: CampRecordQuestion): string {
   position: sticky;
   top: 0;
   z-index: 2;
-  border: 1px solid #dde6ef;
+  border: 1px solid #dce7eb;
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 3px 10px #183c5c0d;
@@ -364,7 +364,7 @@ function correctText(question: CampRecordQuestion): string {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 4px 11px 11px;
-  border-top: 1px solid #edf2f7;
+  border-top: 1px solid #e4eeea;
 }
 
 .record-index-scroll :deep(.review-index-buttons) {
@@ -384,9 +384,9 @@ function correctText(question: CampRecordQuestion): string {
   scroll-margin-top: 57px;
   padding: 15px;
   margin-top: 13px;
-  border: 1px solid #e4ecf4;
+  border: 1px solid #e4eeea;
   border-radius: 9px;
-  background: #f7f9fc;
+  background: #f5f9f8;
   overflow-wrap: anywhere;
 }
 
@@ -440,7 +440,7 @@ function correctText(question: CampRecordQuestion): string {
 .answer-comparison > div {
   min-width: 0;
   padding: 7px 9px;
-  border: 1px solid #e5edf5;
+  border: 1px solid #dce7eb;
   border-radius: 6px;
   background: #fff;
 }
@@ -474,7 +474,7 @@ function correctText(question: CampRecordQuestion): string {
   gap: 5px;
   min-width: 0;
   padding: 9px;
-  border: 1px solid #e3ebf4;
+  border: 1px solid #e4eeea;
   border-radius: 7px;
   background: #fff;
   color: #334e68;

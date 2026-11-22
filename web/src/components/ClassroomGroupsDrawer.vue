@@ -4,6 +4,7 @@ import { Delete, EditPen, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
 import type { ClassroomGroup, ClassroomGroupListResponse, ClassroomStudent } from '../types'
+import { focusFirstField } from '../focusField'
 
 const props = defineProps<{ visible: boolean; classroomId: string; classroomName: string }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -20,6 +21,13 @@ const editing = ref<ClassroomGroup | null>(null)
 const saving = ref(false)
 const formError = ref('')
 const form = reactive({ name: '', remark: '', userIds: [] as string[] })
+
+const groupNameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
+function focusGroupName() {
+  const root = groupNameInput.value?.$el
+  if (root) focusFirstField(root)
+  else groupNameInput.value?.focus?.()
+}
 
 async function load() {
   if (!props.classroomId) return
@@ -178,11 +186,18 @@ watch(
       :title="editing ? '编辑小组' : '新建小组'"
       width="min(620px, 94vw)"
       append-to-body
+      @opened="focusGroupName"
     >
       <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
       <el-form label-position="top" class="entity-form">
         <el-form-item label="小组名称" required>
-          <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="例如：第一组" />
+          <el-input
+            ref="groupNameInput"
+            v-model="form.name"
+            maxlength="100"
+            show-word-limit
+            placeholder="例如：第一组"
+          />
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" show-word-limit />
@@ -210,7 +225,7 @@ watch(
 <style scoped>
 .member-panel {
   padding: 10px 16px 14px;
-  background: #f7fafc;
+  background: #f6faf8;
 }
 
 .member-head {

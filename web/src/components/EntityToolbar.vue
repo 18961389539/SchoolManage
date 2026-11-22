@@ -16,9 +16,17 @@ const emit = defineEmits<{ import: []; create: []; cabinets: [] }>()
     <div class="heading-actions">
       <el-button v-if="isPeople" :icon="Upload" @click="emit('import')">批量导入</el-button>
       <el-button v-if="cabinetScoped" @click="emit('cabinets')">返回机柜管理</el-button>
-      <el-button type="primary" :icon="Plus" :disabled="cabinetScoped && !cabinetName" @click="emit('create')">
-        新增{{ entity.singular }}
-      </el-button>
+      <el-tooltip
+        :disabled="!(cabinetScoped && !cabinetName)"
+        :content="`请先进入所属机柜，再新增${entity.singular}`"
+        placement="bottom"
+      >
+        <span class="disabled-action-wrap">
+          <el-button type="primary" :icon="Plus" :disabled="cabinetScoped && !cabinetName" @click="emit('create')">
+            新增{{ entity.singular }}
+          </el-button>
+        </span>
+      </el-tooltip>
     </div>
   </section>
   <el-alert

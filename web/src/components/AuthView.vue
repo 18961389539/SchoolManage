@@ -339,11 +339,19 @@ watch(
   border-radius: 8px;
   background: #fff;
   color: #20374b;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .auth-control::placeholder,
 .auth-password input::placeholder {
   color: #637686;
+}
+
+.auth-control:hover:not(:focus):not([aria-invalid='true']),
+.auth-password:hover:not(:focus-within):not(.has-error) {
+  border-color: #8aaab3;
 }
 
 .auth-control:focus,

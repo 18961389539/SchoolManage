@@ -9,6 +9,7 @@ import QuestionImportDialog from './QuestionImportDialog.vue'
 import CaseRubricEditor from './CaseRubricEditor.vue'
 import CaseTopologyEditor from './CaseTopologyEditor.vue'
 import type { CaseRubricItem, CaseTopologyBlueprint } from '../caseWork'
+import { focusFirstField } from '../focusField'
 
 const visible = defineModel<boolean>({ required: true })
 const props = defineProps<{ sectionId: string; resourceId?: string }>()
@@ -49,6 +50,11 @@ const environmentError = ref('')
 let environmentRequest = 0
 
 const title = computed(() => (props.resourceId ? '编辑资源' : '新增资源'))
+const resourceForm = ref<{ $el?: HTMLElement }>()
+function focusResourceForm() {
+  if (loading.value) return
+  focusFirstField(resourceForm.value?.$el)
+}
 const isPractice = computed(() => form.kind === 'theoryPractice')
 const isCasePractice = computed(() => form.kind === 'casePractice')
 const needsContent = computed(() => form.kind === 'theory' || form.kind === 'case')
@@ -148,6 +154,7 @@ async function load() {
     error.value = messageOf(failure)
   } finally {
     loading.value = false
+    if (visible.value) focusResourceForm()
   }
 }
 
@@ -326,12 +333,12 @@ async function save() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" :title="title" width="min(920px, 96vw)" destroy-on-close>
+  <el-dialog v-model="visible" :title="title" width="min(920px, 96vw)" destroy-on-close @opened="focusResourceForm">
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
     <div v-if="loading" class="resource-skeleton" aria-live="polite">
       <el-skeleton :rows="6" animated />
     </div>
-    <el-form v-else label-position="top" class="entity-form resource-form">
+    <el-form v-else ref="resourceForm" label-position="top" class="entity-form resource-form">
       <div class="resource-form-grid">
         <el-form-item label="资源名称" required>
           <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="例如：OSI 七层模型" />
@@ -582,7 +589,7 @@ async function save() {
   justify-content: space-between;
   gap: 16px;
   padding: 18px 0 12px;
-  border-top: 1px solid #e7edf4;
+  border-top: 1px solid #dce7eb;
   margin-top: 8px;
 }
 
@@ -608,8 +615,8 @@ async function save() {
 .question-card {
   padding: 16px;
   margin-bottom: 14px;
-  background: #f8fafc;
-  border: 1px solid #e5edf5;
+  background: #f6faf8;
+  border: 1px solid #dce7eb;
   border-radius: 10px;
 }
 
@@ -664,10 +671,10 @@ async function save() {
   width: 24px;
   height: 24px;
   flex: 0 0 auto;
-  color: #2d5f8b;
+  color: #145a50;
   font-size: 12px;
   font-weight: 700;
-  background: #eaf2fb;
+  background: #e3f3ee;
   border-radius: 6px;
 }
 

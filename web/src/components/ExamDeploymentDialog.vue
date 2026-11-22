@@ -222,6 +222,15 @@ onUnmounted(() => {
   border: 1px solid var(--el-border-color);
   border-radius: 9px;
   background: #fff;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.project-row:hover {
+  border-color: #bdd9d3;
+  box-shadow: 0 6px 16px #1732460c;
 }
 
 .project-row.is-selected {

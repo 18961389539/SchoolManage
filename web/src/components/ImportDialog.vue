@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, Download, CircleCheck, Warning, Delete } from '@element-plus/icons-vue'
 import { api, post, messageOf, passwordIssue, ApiError, limits, maxUploadMegabytes, type Row } from '../api'
@@ -22,6 +22,8 @@ const jobStatus = ref<ImportJobState | ''>(''),
   cancelBusy = ref(false)
 let pollRun = 0
 let previewRun = 0
+const chooseFileButton = ref<{ ref?: HTMLElement; $el?: HTMLElement }>()
+const passwordInput = ref<{ focus?: () => void }>()
 const fileInput = ref<HTMLInputElement>()
 const progressText = computed(() => {
   if (jobStatus.value === 'queued') return '等待导入任务'
@@ -249,6 +251,20 @@ function cellError(row: Row, key: string) {
     .map((err: ImportIssue) => err.message)
     .join('；')
 }
+function focusImportStart() {
+  const button = chooseFileButton.value?.ref || chooseFileButton.value?.$el
+  button?.focus?.()
+}
+
+function focusImportPassword() {
+  passwordInput.value?.focus?.()
+}
+
+function onImportOpened() {
+  if (preview.value) focusImportPassword()
+  else focusImportStart()
+}
+
 watch(
   () => props.modelValue,
   value => {
@@ -270,6 +286,10 @@ watch(
     }
   }
 )
+watch(preview, value => {
+  if (value) void nextTick(() => focusImportPassword())
+})
+
 onBeforeUnmount(() => {
   pollRun++
   previewRun++
@@ -283,6 +303,7 @@ onBeforeUnmount(() => {
     :close-on-click-modal="false"
     :before-close="beforeClose"
     class="import-dialog"
+    @opened="onImportOpened"
   >
     <div class="import-steps">
       <div class="active"><span>1</span>选择文件</div>
@@ -299,7 +320,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="heading-actions">
         <el-button :icon="Download" tag="a" :href="`/api/imports/template?kind=${kind}`">下载模板</el-button
-        ><el-button type="primary" :loading="busy" @click="fileInput?.click()">{{
+        ><el-button ref="chooseFileButton" type="primary" :loading="busy" @click="fileInput?.click()">{{
           preview ? '重新选择' : '选择文件'
         }}</el-button>
       </div>
@@ -371,14 +392,15 @@ onBeforeUnmount(() => {
       <div class="import-password">
         <div>
           <strong>设置导入账号的初始密码</strong>
-          <p>12–128 位，同时包含字母和数字。导入后请通过适当渠道单独告知本人；首次登录强制修改。</p>
+          <p>密码须为 12–128 位，且同时包含字母和数字。导入后请通过适当渠道单独告知本人；首次登录强制修改。</p>
         </div>
         <el-input
+          ref="passwordInput"
           v-model="password"
           type="password"
           show-password
           autocomplete="new-password"
-          placeholder="输入统一初始密码"
+          placeholder="密码须为 12–128 位，且同时包含字母和数字"
         /></div
     ></template>
     <div v-else-if="!busy" class="import-empty">

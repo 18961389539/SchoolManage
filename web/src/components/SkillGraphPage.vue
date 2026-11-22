@@ -79,7 +79,7 @@ const summaryRows = computed(() => {
 
 const scoreRing = computed(() => {
   const score = Math.max(0, Math.min(100, data.value?.summary.score || 0))
-  return { background: `conic-gradient(#2b7fb7 ${score * 3.6}deg, #e9f0f6 0deg)` }
+  return { background: `conic-gradient(#0f7375 ${score * 3.6}deg, #e3f3ee 0deg)` }
 })
 
 function shorten(value: string, max: number) {
@@ -702,8 +702,8 @@ onMounted(() => {
                 :width="MAP_WIDTH"
                 :height="band.height + 4"
                 rx="14"
-                fill="#f8fbfd"
-                stroke="#edf3f8"
+                fill="#f6faf8"
+                stroke="#e4eeea"
               />
               <path
                 v-for="link in mapLayout.links"
@@ -793,7 +793,7 @@ onMounted(() => {
                 :key="`radar-grid-${ratio}`"
                 :points="radarPolygon(ratio)"
                 fill="none"
-                stroke="#e4edf5"
+                stroke="#dce7eb"
                 stroke-width="1"
               />
               <line
@@ -803,10 +803,10 @@ onMounted(() => {
                 :y1="radarCenter.y"
                 :x2="radarPoint(index, 1).x"
                 :y2="radarPoint(index, 1).y"
-                stroke="#e9f0f6"
+                stroke="#e3f3ee"
                 stroke-width="1"
               />
-              <polygon :points="radarPolygon(1)" fill="none" stroke="#d6e3ee" stroke-width="1" />
+              <polygon :points="radarPolygon(1)" fill="none" stroke="#d5e0e6" stroke-width="1" />
               <polygon
                 :points="
                   radarAxes
@@ -1042,8 +1042,8 @@ onMounted(() => {
   align-items: center;
   padding: 13px 17px;
   margin-bottom: 14px;
-  background: linear-gradient(120deg, #f4f9fe, #fff);
-  border: 1px solid #e4edf5;
+  background: linear-gradient(120deg, #f3f9f6, #fff);
+  border: 1px solid #d6e6e3;
   border-radius: 11px;
 }
 
@@ -1058,8 +1058,8 @@ onMounted(() => {
   width: 38px;
   height: 38px;
   place-items: center;
-  color: #3279a9;
-  background: #e7f1fa;
+  color: #0f5f58;
+  background: #d8efe9;
   border-radius: 50%;
 }
 
@@ -1124,7 +1124,7 @@ onMounted(() => {
 }
 
 .score-ring strong {
-  color: #1d4c6c;
+  color: #1a514c;
   font-size: 31px;
   line-height: 1;
 }
@@ -1155,7 +1155,7 @@ onMounted(() => {
   padding: 7px 0;
   color: #56697c;
   font-size: 11px;
-  border-bottom: 1px dashed #eef3f8;
+  border-bottom: 1px dashed #e4eeea;
 }
 
 .side-row:last-child {
@@ -1211,12 +1211,12 @@ onMounted(() => {
 }
 
 .categories button:hover {
-  background: #f4f9fd;
+  background: #eef6f4;
 }
 
 .categories button.active {
-  color: #1e5d87;
-  background: #edf6fc;
+  color: #145a50;
+  background: #e3f3ee;
 }
 
 .categories button i {
@@ -1251,7 +1251,7 @@ onMounted(() => {
   gap: 10px;
   align-items: center;
   padding: 13px 16px;
-  border-bottom: 1px solid #edf3f8;
+  border-bottom: 1px solid #dce7eb;
 }
 
 .legend {
@@ -1307,7 +1307,13 @@ onMounted(() => {
 }
 
 .map-empty .el-icon {
-  color: #b6c5d4;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: #eef5f4;
+  color: #5e8f88;
 }
 
 .map-empty strong {
@@ -1403,8 +1409,8 @@ onMounted(() => {
 
 .radar-insights {
   padding: 15px;
-  background: #f8fbfd;
-  border: 1px solid #ebf1f7;
+  background: #f6faf8;
+  border: 1px solid #e4eeea;
   border-radius: 10px;
 }
 
@@ -1424,7 +1430,7 @@ onMounted(() => {
   gap: 5px 8px;
   align-items: baseline;
   padding: 8px 0;
-  border-bottom: 1px dashed #e8eff5;
+  border-bottom: 1px dashed #e4eeea;
 }
 
 .insight-row span {
@@ -1576,7 +1582,7 @@ onMounted(() => {
 }
 
 .detail-score strong {
-  color: #1f5e88;
+  color: #1a514c;
   font-size: 30px;
 }
 
@@ -1598,8 +1604,8 @@ onMounted(() => {
   padding: 8px;
   color: #56697c;
   font-size: 9px;
-  background: #f8fbfd;
-  border: 1px solid #edf3f8;
+  background: #f6faf8;
+  border: 1px solid #e4eeea;
   border-radius: 7px;
 }
 
@@ -1624,15 +1630,15 @@ onMounted(() => {
   padding: 9px;
   margin-bottom: 7px;
   text-align: left;
-  background: #fbfdff;
-  border: 1px solid #e9f0f6;
+  background: #f6faf8;
+  border: 1px solid #e4eeea;
   border-radius: 8px;
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
 
 .resource-item:hover {
-  border-color: #a6cbe5;
+  border-color: #bdd9d3;
 }
 
 .resource-item-head {
@@ -1673,7 +1679,7 @@ onMounted(() => {
 .skill-empty {
   padding: 30px;
   background: #fff;
-  border: 1px solid #e7eef6;
+  border: 1px solid #e4eeea;
   border-radius: 11px;
 }
 

@@ -279,7 +279,8 @@ onMounted(load)
   align-items: center;
   gap: 10px;
   padding: 16px 18px;
-  border-bottom: 1px solid #edf2f8;
+  border-bottom: 1px solid #dce7eb;
+  background: #f8fbfb;
 }
 
 .overview-toolbar > .table-filter {
@@ -303,8 +304,8 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   padding: 17px;
-  background: linear-gradient(165deg, #ffffff 0%, #f9fbfe 100%);
-  border: 1px solid #e6edf5;
+  background: linear-gradient(165deg, #ffffff 0%, #f7fbf9 100%);
+  border: 1px solid #d6e0e6;
   border-radius: 10px;
   transition:
     border-color 0.18s ease,
@@ -313,8 +314,8 @@ onMounted(load)
 }
 
 .catalog-card:hover {
-  border-color: #c9dcef;
-  box-shadow: 0 8px 22px rgba(31, 76, 122, 0.08);
+  border-color: #bdd9d3;
+  box-shadow: 0 8px 22px #146d6614;
   transform: translateY(-1px);
 }
 
@@ -354,8 +355,8 @@ onMounted(load)
   display: flex;
   gap: 16px;
   padding: 10px 0;
-  border-top: 1px solid #edf2f8;
-  border-bottom: 1px solid #edf2f8;
+  border-top: 1px solid #e4eeea;
+  border-bottom: 1px solid #e4eeea;
   color: #56697c;
   font-size: 11px;
 }
@@ -425,7 +426,7 @@ onMounted(load)
 .catalog-chapter {
   padding: 0 0 8px;
   margin-bottom: 14px;
-  border-bottom: 1px solid #eef3f8;
+  border-bottom: 1px solid #e4eeea;
 }
 
 .catalog-chapter h3 {
@@ -437,8 +438,8 @@ onMounted(load)
 .catalog-section {
   padding: 9px 12px;
   margin-bottom: 8px;
-  background: #f8fafd;
-  border: 1px solid #eaf0f7;
+  background: #f5f9f8;
+  border: 1px solid #e4eeea;
   border-radius: 8px;
 }
 

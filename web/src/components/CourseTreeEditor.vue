@@ -8,10 +8,25 @@ import type { CourseDetail, CourseResourceSummary } from '../types'
 import ImportResourcesDialog from './ImportResourcesDialog.vue'
 import ResourceEditorDialog from './ResourceEditorDialog.vue'
 import ResourceFilesDialog from './ResourceFilesDialog.vue'
+import { focusFirstField } from '../focusField'
 
 const visible = defineModel<boolean>({ required: true })
 const props = defineProps<{ courseId: string }>()
 const emit = defineEmits<{ changed: [] }>()
+
+const chapterNameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
+const sectionNameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
+function focusNamedInput(target?: { focus?: () => void; $el?: HTMLElement } | null) {
+  const root = target?.$el
+  if (root) focusFirstField(root)
+  else target?.focus?.()
+}
+function focusChapterName() {
+  focusNamedInput(chapterNameInput.value)
+}
+function focusSectionName() {
+  focusNamedInput(sectionNameInput.value)
+}
 
 const course = ref<CourseDetail | null>(null)
 const loading = ref(false)
@@ -290,10 +305,21 @@ async function deleteResource(id: string, name: string) {
       </div>
     </template>
 
-    <el-dialog v-model="chapterDialog" :title="chapterForm.id ? '编辑大章' : '新增大章'" width="min(460px, 94vw)">
+    <el-dialog
+      v-model="chapterDialog"
+      :title="chapterForm.id ? '编辑大章' : '新增大章'"
+      width="min(460px, 94vw)"
+      @opened="focusChapterName"
+    >
       <el-form label-position="top" class="entity-form">
         <el-form-item label="大章名称" required>
-          <el-input v-model="chapterForm.name" maxlength="100" show-word-limit @keyup.enter="saveChapter" />
+          <el-input
+            ref="chapterNameInput"
+            v-model="chapterForm.name"
+            maxlength="100"
+            show-word-limit
+            @keyup.enter="saveChapter"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -302,10 +328,15 @@ async function deleteResource(id: string, name: string) {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="sectionDialog" :title="sectionForm.id ? '编辑小节' : '新增小节'" width="min(480px, 94vw)">
+    <el-dialog
+      v-model="sectionDialog"
+      :title="sectionForm.id ? '编辑小节' : '新增小节'"
+      width="min(480px, 94vw)"
+      @opened="focusSectionName"
+    >
       <el-form label-position="top" class="entity-form">
         <el-form-item label="小节名称" required>
-          <el-input v-model="sectionForm.name" maxlength="100" show-word-limit />
+          <el-input ref="sectionNameInput" v-model="sectionForm.name" maxlength="100" show-word-limit />
         </el-form-item>
         <el-form-item label="预计时长（分钟）">
           <el-input-number v-model="sectionForm.durationMinutes" :min="1" :max="600" controls-position="right" />
@@ -350,7 +381,7 @@ async function deleteResource(id: string, name: string) {
   justify-content: space-between;
   gap: 16px;
   padding-bottom: 18px;
-  border-bottom: 1px solid #e7edf4;
+  border-bottom: 1px solid #dce7eb;
   margin-bottom: 18px;
 }
 
@@ -378,8 +409,8 @@ async function deleteResource(id: string, name: string) {
 
 .chapter-block {
   padding: 16px;
-  background: #f8fafc;
-  border: 1px solid #e5edf5;
+  background: #f6faf8;
+  border: 1px solid #dce7eb;
   border-radius: 10px;
 }
 
@@ -410,9 +441,9 @@ async function deleteResource(id: string, name: string) {
 
 .tree-index {
   padding: 2px 7px;
-  color: #275d8c;
+  color: #145a50;
   font-size: 12px;
-  background: #e8f2fc;
+  background: #e3f3ee;
   border-radius: 4px;
 }
 
@@ -432,7 +463,7 @@ async function deleteResource(id: string, name: string) {
 .section-block {
   padding: 12px 0 0 14px;
   margin-top: 12px;
-  border-top: 1px solid #e4ecf4;
+  border-top: 1px solid #dce7eb;
 }
 
 .section-head strong {
@@ -460,7 +491,7 @@ async function deleteResource(id: string, name: string) {
   gap: 9px;
   padding: 8px 10px;
   background: #fff;
-  border: 1px solid #e8eef5;
+  border: 1px solid #e4eeea;
   border-radius: 7px;
 }
 

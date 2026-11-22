@@ -945,7 +945,7 @@ function goRecords() {
   gap: 8px 12px;
   margin-bottom: 12px;
   padding: 10px 12px;
-  background: #fff;
+  background: #f8fbfb;
   border: 1px solid var(--el-border-color);
   border-radius: 10px;
 }
@@ -993,7 +993,7 @@ function goRecords() {
   width: 26px;
   height: 26px;
   border-radius: 8px;
-  background: #edf3f6;
+  background: #eef6f4;
   color: #385a70;
   font-size: 12px;
 }
@@ -1030,7 +1030,7 @@ function goRecords() {
   height: auto;
   margin: 0;
   padding: 11px 13px;
-  border: 1px solid #e7edf4;
+  border: 1px solid #dce7eb;
   border-radius: 8px;
   white-space: normal;
   transition:
@@ -1040,7 +1040,7 @@ function goRecords() {
 
 .take-option:hover {
   border-color: #a9cbcd;
-  background: #f8fcfc;
+  background: #f3f8f6;
 }
 
 .take-option :deep(.el-radio__label),
@@ -1069,8 +1069,8 @@ function goRecords() {
   height: 22px;
   flex: none;
   border-radius: 50%;
-  background: #f0f4f9;
-  color: #5d748b;
+  background: #e8f3ef;
+  color: #145a50;
   font-size: 12px;
 }
 
@@ -1388,8 +1388,8 @@ function goRecords() {
   flex-direction: column;
   gap: 4px;
   padding: 12px;
-  background: #f8fafd;
-  border: 1px solid #e8eef6;
+  background: #f3f8f6;
+  border: 1px solid #e4eeea;
   border-radius: 8px;
 }
 
@@ -1437,7 +1437,7 @@ function goRecords() {
   padding: 12px;
   border: 1px solid var(--surface-border);
   border-radius: 9px;
-  background: #f6f9fa;
+  background: #f5f9f8;
 }
 
 .review-counts > .has-unanswered {
@@ -1498,8 +1498,8 @@ function goRecords() {
   gap: 10px;
   margin: 20px 0;
   padding: 16px;
-  background: #f8fafd;
-  border: 1px solid #e8eef6;
+  background: #f3f8f6;
+  border: 1px solid #e4eeea;
   border-radius: 9px;
 }
 

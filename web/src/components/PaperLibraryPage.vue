@@ -6,6 +6,7 @@ import { api, dateTime, del, messageOf, post, put } from '../api'
 import { examQuestionTypeLabel, examQuestionTypeOptions, optionLetters, selectedText, typeCountText } from '../exam'
 import type { ExamPaperDetail, ExamPaperQuestion, ExamPaperSummary, ExamQuestionSummary, Paged } from '../types'
 import QuestionBankSelect from './QuestionBankSelect.vue'
+import { focusFirstField } from '../focusField'
 
 const items = ref<ExamPaperSummary[]>([])
 const total = ref(0)
@@ -16,6 +17,26 @@ const error = ref('')
 const search = ref('')
 
 const dialogVisible = ref(false)
+const paperNameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
+const pickerSearchInput = ref<{ $el?: HTMLElement }>()
+function focusPaperName() {
+  const root = paperNameInput.value?.$el
+  if (root) focusFirstField(root)
+  else paperNameInput.value?.focus?.()
+}
+function focusPickerSearch() {
+  focusFirstField(pickerSearchInput.value?.$el)
+}
+const paperLockedReason = '该试卷已被考试引用，不能再调整题目或分值'
+function addPaperQuestionReason(): string | undefined {
+  if (paper.value && !paper.value.questionEditable) return paperLockedReason
+}
+function removePaperQuestionReason(): string | undefined {
+  if (paper.value && !paper.value.questionEditable) return paperLockedReason
+}
+function addPickerReason(): string | undefined {
+  if (!pickerSelection.value.length) return '请先勾选要加入试卷的题目'
+}
 const editing = ref<ExamPaperSummary | null>(null)
 const saving = ref(false)
 const formError = ref('')
@@ -365,11 +386,22 @@ onMounted(load)
     </div>
   </section>
 
-  <el-dialog v-model="dialogVisible" :title="editing ? '编辑试卷' : '新建试卷'" width="min(620px, 94vw)">
+  <el-dialog
+    v-model="dialogVisible"
+    :title="editing ? '编辑试卷' : '新建试卷'"
+    width="min(620px, 94vw)"
+    @opened="focusPaperName"
+  >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
     <el-form label-position="top" class="entity-form">
       <el-form-item label="试卷名称" required>
-        <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="例如：网络安全期中试卷" />
+        <el-input
+          ref="paperNameInput"
+          v-model="form.name"
+          maxlength="100"
+          show-word-limit
+          placeholder="例如：网络安全期中试卷"
+        />
       </el-form-item>
       <el-form-item label="试卷简介">
         <el-input
@@ -411,9 +443,13 @@ onMounted(load)
             <strong>{{ paper.questionCount }}</strong>
           </div>
           <div class="paper-type-counts">{{ typeCountText(paper.typeCounts) }}</div>
-          <el-button type="primary" :icon="Plus" :disabled="!paper.questionEditable" @click="openPicker">
-            添加题目
-          </el-button>
+          <el-tooltip :disabled="!addPaperQuestionReason()" :content="addPaperQuestionReason()" placement="bottom">
+            <span class="disabled-action-wrap">
+              <el-button type="primary" :icon="Plus" :disabled="!paper.questionEditable" @click="openPicker">
+                添加题目
+              </el-button>
+            </span>
+          </el-tooltip>
         </div>
         <el-alert
           v-if="!paper.questionEditable"
@@ -490,16 +526,24 @@ onMounted(load)
           </el-table-column>
           <el-table-column label="操作" width="90">
             <template #default="{ row }">
-              <el-button
-                link
-                type="danger"
-                :icon="Delete"
-                :disabled="!paper.questionEditable"
-                :loading="removingId === row.id"
-                @click="removeQuestion(row as ExamPaperQuestion)"
+              <el-tooltip
+                :disabled="!removePaperQuestionReason()"
+                :content="removePaperQuestionReason()"
+                placement="left"
               >
-                移除
-              </el-button>
+                <span class="disabled-action-wrap">
+                  <el-button
+                    link
+                    type="danger"
+                    :icon="Delete"
+                    :disabled="!paper.questionEditable"
+                    :loading="removingId === row.id"
+                    @click="removeQuestion(row as ExamPaperQuestion)"
+                  >
+                    移除
+                  </el-button>
+                </span>
+              </el-tooltip>
             </template>
           </el-table-column>
         </el-table>
@@ -511,10 +555,18 @@ onMounted(load)
     </div>
   </el-drawer>
 
-  <el-dialog v-model="pickerVisible" title="从题库添加题目" width="min(980px, 96vw)" append-to-body destroy-on-close>
+  <el-dialog
+    v-model="pickerVisible"
+    title="从题库添加题目"
+    width="min(980px, 96vw)"
+    append-to-body
+    destroy-on-close
+    @opened="focusPickerSearch"
+  >
     <div class="table-toolbar picker-toolbar">
       <div class="table-controls">
         <el-input
+          ref="pickerSearchInput"
           v-model="pickerSearch"
           class="search-box"
           clearable
@@ -592,9 +644,13 @@ onMounted(load)
     </div>
     <template #footer>
       <el-button @click="pickerVisible = false">取消</el-button>
-      <el-button type="primary" :loading="adding" :disabled="!pickerSelection.length" @click="addSelected">
-        加入试卷（{{ pickerSelection.length }}）
-      </el-button>
+      <el-tooltip :disabled="!addPickerReason()" :content="addPickerReason()" placement="top">
+        <span class="disabled-action-wrap">
+          <el-button type="primary" :loading="adding" :disabled="!pickerSelection.length" @click="addSelected">
+            加入试卷（{{ pickerSelection.length }}）
+          </el-button>
+        </span>
+      </el-tooltip>
     </template>
   </el-dialog>
 </template>
@@ -623,8 +679,8 @@ onMounted(load)
   gap: 28px;
   padding: 16px 18px;
   margin-bottom: 16px;
-  background: #f7f9fd;
-  border: 1px solid #e7eef6;
+  background: #f3f8f6;
+  border: 1px solid #e4eeea;
   border-radius: 10px;
 }
 

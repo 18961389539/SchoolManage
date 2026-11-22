@@ -24,6 +24,10 @@ function connectMachine(row: CampEnvironment['virtualMachines'][number]) {
   machineVisible.value = true
 }
 
+function campMachineReason(row: CampEnvironment['virtualMachines'][number]): string | undefined {
+  if (row.status !== 'running') return '虚拟机未运行，无法连接'
+}
+
 async function load() {
   if (!props.sourceUrl) return
   loading.value = true
@@ -99,14 +103,22 @@ function openTerminal(device: { id: string; name: string }) {
         </el-table-column>
         <el-table-column v-if="attemptId" label="操作" width="110">
           <template #default="{ row }">
-            <el-button
+            <el-tooltip
               v-if="row.selected"
-              link
-              type="primary"
-              :disabled="row.status !== 'running'"
-              @click="connectMachine(row as CampEnvironment['virtualMachines'][number])"
-              >连接</el-button
+              :disabled="!campMachineReason(row as CampEnvironment['virtualMachines'][number])"
+              :content="campMachineReason(row as CampEnvironment['virtualMachines'][number])"
+              placement="top"
             >
+              <span class="disabled-action-wrap">
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="row.status !== 'running'"
+                  @click="connectMachine(row as CampEnvironment['virtualMachines'][number])"
+                  >连接</el-button
+                >
+              </span>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -149,6 +161,10 @@ function openTerminal(device: { id: string; name: string }) {
   align-items: center;
   flex-wrap: wrap;
   gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid #e4eeea;
+  border-radius: 10px;
+  background: #f6faf8;
   color: #56697c;
   font-size: 12px;
 }

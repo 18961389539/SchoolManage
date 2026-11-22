@@ -627,7 +627,7 @@ watch(
   gap: 20px;
   align-items: flex-start;
   padding-bottom: 16px;
-  border-bottom: 1px solid #e9eff6;
+  border-bottom: 1px solid #e4eeea;
 }
 
 .stats-head h2 {
@@ -676,7 +676,7 @@ watch(
 .summary-card {
   padding: 15px;
   background: #fff;
-  border: 1px solid #e6edf5;
+  border: 1px solid #dce7eb;
   border-radius: 11px;
   box-shadow: 0 2px 8px rgba(29, 62, 91, 0.035);
 }
@@ -787,8 +787,8 @@ watch(
   width: 100%;
   padding: 10px 8px;
   margin-bottom: 6px;
-  background: #f9fbfd;
-  border: 1px solid #ebf1f7;
+  background: #f6faf8;
+  border: 1px solid #e4eeea;
   border-radius: 8px;
   cursor: pointer;
   text-align: left;
@@ -796,7 +796,7 @@ watch(
 }
 
 .attention-row:hover {
-  border-color: #a9cce8;
+  border-color: #bdd9d3;
 }
 
 .attention-avatar {
@@ -804,8 +804,8 @@ watch(
   width: 27px;
   height: 27px;
   place-items: center;
-  color: #4c7ba0;
-  background: #eaf3fb;
+  color: #0f5f58;
+  background: #d8efe9;
   border-radius: 50%;
 }
 
@@ -922,7 +922,7 @@ watch(
 
 .resource-collapse {
   background: #fff;
-  border: 1px solid #e7eef6;
+  border: 1px solid #e4eeea;
   border-radius: 10px;
   overflow: hidden;
 }
@@ -1001,7 +1001,7 @@ watch(
   align-items: flex-start;
   padding-bottom: 13px;
   margin-bottom: 12px;
-  border-bottom: 1px solid #e9eff6;
+  border-bottom: 1px solid #e4eeea;
 }
 
 .resource-detail-head h3 {
@@ -1024,7 +1024,7 @@ watch(
 }
 
 .resource-detail-metrics strong {
-  color: #276a95;
+  color: var(--workspace-accent);
   font-size: 16px;
 }
 

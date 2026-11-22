@@ -752,7 +752,7 @@ onMounted(() => {
 .editor-section {
   padding-top: 16px;
   margin-top: 8px;
-  border-top: 1px solid #e7edf4;
+  border-top: 1px solid #dce7eb;
 }
 
 .editor-heading {
@@ -782,8 +782,8 @@ onMounted(() => {
   gap: 8px;
   padding: 8px;
   margin-bottom: 8px;
-  background: #f8fafc;
-  border: 1px solid #e5edf5;
+  background: #f6faf8;
+  border: 1px solid #dce7eb;
   border-radius: 8px;
 }
 
@@ -793,18 +793,18 @@ onMounted(() => {
   justify-content: center;
   width: 24px;
   height: 24px;
-  color: #2d5f8b;
+  color: #145a50;
   font-size: 12px;
   font-weight: 700;
-  background: #eaf2fb;
+  background: #e3f3ee;
   border-radius: 6px;
 }
 
 .question-card {
   padding: 15px;
   margin-bottom: 14px;
-  background: #f8fafc;
-  border: 1px solid #e5edf5;
+  background: #f6faf8;
+  border: 1px solid #dce7eb;
   border-radius: 10px;
 }
 
@@ -864,10 +864,10 @@ onMounted(() => {
   width: 24px;
   height: 24px;
   flex: 0 0 auto;
-  color: #2d5f8b;
+  color: #145a50;
   font-size: 12px;
   font-weight: 700;
-  background: #eaf2fb;
+  background: #e3f3ee;
   border-radius: 6px;
 }
 

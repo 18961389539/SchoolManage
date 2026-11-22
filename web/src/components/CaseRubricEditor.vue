@@ -116,7 +116,7 @@ function resetTarget(rule: CaseRubricItem) {
   padding: 12px;
   gap: 0 12px;
   margin-bottom: 12px;
-  border: 1px solid #dce6ef;
+  border: 1px solid #dce7eb;
   border-radius: 8px;
 }
 .guidance {

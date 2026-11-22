@@ -317,6 +317,11 @@ onMounted(load)
   box-shadow: var(--surface-shadow);
   text-align: left;
   color: #1b3548;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
 }
 
 .stat-card:hover,
@@ -324,6 +329,8 @@ onMounted(load)
 .resource-summary > button:hover {
   border-color: #a9cec4;
   background: #f4faf8;
+  box-shadow: 0 8px 20px #17324612;
+  transform: translateY(-1px);
 }
 
 .stat-icon,
@@ -422,6 +429,11 @@ onMounted(load)
   border-radius: 9px;
   background: #fff;
   text-align: left;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
 }
 
 .quick-icon {
@@ -466,8 +478,13 @@ onMounted(load)
   padding: 12px;
   border: 1px solid var(--surface-border);
   border-radius: 9px;
-  background: #f8fafb;
+  background: #f6faf8;
   text-align: left;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
 }
 
 .resource-summary strong {
@@ -544,9 +561,9 @@ onMounted(load)
   align-items: flex-start;
   gap: 7px;
   padding: 12px 14px;
-  border: 1px solid #e8eef4;
+  border: 1px solid #dce7eb;
   border-radius: 9px;
-  background: #f9fbfd;
+  background: #f6faf8;
 }
 
 .start-steps li > div {
@@ -726,7 +743,7 @@ onMounted(load)
 
 .ranking-row + .ranking-row,
 .teacher-activity li + li {
-  border-top: 1px solid #ebf0f3;
+  border-top: 1px solid #e4eeea;
 }
 
 .rank-index {
@@ -734,7 +751,7 @@ onMounted(load)
   width: 24px;
   height: 24px;
   color: var(--text-muted);
-  background: #edf3f5;
+  background: #eef6f4;
   border-radius: 6px;
   place-items: center;
   font-size: 12px;
@@ -895,6 +912,15 @@ onMounted(load)
   .simulation-card p,
   .simulation-actions {
     margin-inline: 19px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stat-card,
+  .quick-actions > button,
+  .resource-summary > button {
+    transition: none;
+    transform: none;
   }
 }
 </style>

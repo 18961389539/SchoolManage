@@ -8,8 +8,15 @@ const isTeacher = computed(() => props.role === 'Teacher')
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="使用帮助" width="min(720px, 95vw)">
+  <el-dialog v-model="visible" title="使用帮助" width="min(720px, 95vw)" class="help-dialog">
     <div v-if="isManager" class="help-content">
+      <p class="help-lead">按下面的顺序即可完成本平台的基础配置。</p>
+      <ol class="help-start">
+        <li>先维护专业与班级，再新增或导入师生档案。</li>
+        <li>在“课程管理”创建课程、配置章节与资源，理论练习配好题目后再发布。</li>
+        <li>到“课堂管理”选择已发布课程组课，开课后即可查看学情。</li>
+        <li>如需实训，可在控制台创建模拟环境，再到设备或虚拟机中操作。</li>
+      </ol>
       <h3>开始配置</h3>
       <p>
         先维护专业与班级，再新增或导入师生档案。导入预览会显示错误的原始行、列和原因，“移除问题行”仅作用于本次待导入数据。
@@ -35,6 +42,12 @@ const isTeacher = computed(() => props.role === 'Teacher')
       <p>师生初始密码首次登录时需要修改。设备密码仅用于后端连接，编辑时留空保留原凭据，列表不显示密码。</p>
     </div>
     <div v-else-if="isTeacher" class="help-content">
+      <p class="help-lead">教师可以按下面的顺序开始授课。</p>
+      <ol class="help-start">
+        <li>在“我的课堂”新建课堂，选择管理员已发布的课程并添加学生。</li>
+        <li>开课后学生才能学习并产生记录；通过“内容”预览课程，通过“学情”查看进度。</li>
+        <li>管理员分配节点后，可在“我的实训资源”查看设备与虚拟机。</li>
+      </ol>
       <h3>我的课堂</h3>
       <p>
         在“我的课堂”新建课堂并选择管理员已发布的课程，可按班级添加学生，也可在“学生”中随时调整名单。开课后学生才能学习并产生记录；结课会保留已完成记录。
@@ -49,6 +62,12 @@ const isTeacher = computed(() => props.role === 'Teacher')
       <p>首次登录需要使用初始密码完成修改。学生初始密码同样需要首次登录时修改。</p>
     </div>
     <div v-else class="help-content">
+      <p class="help-lead">学生可以按下面的顺序开始学习。</p>
+      <ol class="help-start">
+        <li>教师将你加入课堂后，在“我的课堂”进入“进行中”的课堂学习。</li>
+        <li>打开资源后可标记完成；理论练习全部作答后提交，系统保留最佳成绩。</li>
+        <li>完成实训后关闭终端；进度与成绩可在课堂顶部和课程目录中查看。</li>
+      </ol>
       <h3>我的课堂</h3>
       <p>
         授课教师将你加入课堂后，可在“我的课堂”进入学习。课堂处于“进行中”时才能记录学习进度和提交练习；待开课和已结课的课堂可查看内容，但不能新增记录。

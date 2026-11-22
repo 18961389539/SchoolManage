@@ -112,7 +112,7 @@ onBeforeUnmount(() => {
     </el-select>
     <el-button type="primary" :icon="Search" @click="applyFilters">查询</el-button>
     <el-button @click="resetFilters">重置</el-button>
-    <span class="record-count">共 {{ total }} 个课堂</span>
+    <span class="record-count">{{ loading && !total ? '正在加载课堂…' : '共 ' + total + ' 个课堂' }}</span>
   </div>
 
   <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
@@ -190,6 +190,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   padding: 20px;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.classroom-card:hover {
+  border-color: #bdd9d3;
+  box-shadow: 0 8px 20px #17324612;
 }
 
 .classroom-card-top {
@@ -217,8 +225,8 @@ onBeforeUnmount(() => {
   gap: 10px;
   margin: 0 0 16px;
   padding: 13px;
-  background: #f7f9fd;
-  border: 1px solid #e8eef6;
+  background: #f3f8f6;
+  border: 1px solid #e4eeea;
   border-radius: 8px;
 }
 
@@ -253,7 +261,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding-top: 13px;
   margin-top: auto;
-  border-top: 1px solid #edf2f7;
+  border-top: 1px solid #e4eeea;
 }
 
 .classroom-card-foot > span {

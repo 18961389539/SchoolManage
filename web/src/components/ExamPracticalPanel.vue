@@ -6,6 +6,14 @@ import type { CaseDevice } from '../caseWork'
 import VmConsoleDialog from './VmConsoleDialog.vue'
 
 const props = defineProps<{ url: string; readOnly?: boolean; locked?: boolean }>()
+
+function lockedReason(): string | undefined {
+  if (props.locked) return '答题已锁定，不能再连接或修改配置'
+}
+function saveReason(): string | undefined {
+  if (props.locked) return '答题已锁定，不能再修改配置'
+  if (!changed.value) return '没有需要保存的修改'
+}
 const emit = defineEmits<{ saved: [hasWork: boolean]; dirty: [dirty: boolean] }>()
 
 interface Environment {
@@ -75,15 +83,16 @@ onMounted(load)
   <div v-loading="busy" class="exam-practical-panel">
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
     <div class="practical-device-toolbar">
-      <el-button
+      <el-tooltip
         v-if="environment?.virtualMachine"
-        :disabled="locked"
-        type="primary"
-        plain
-        @click="machineVisible = true"
+        :disabled="!lockedReason()"
+        :content="lockedReason()"
+        placement="bottom"
       >
-        连接模拟虚拟机
-      </el-button>
+        <span class="disabled-action-wrap">
+          <el-button :disabled="locked" type="primary" plain @click="machineVisible = true">连接模拟虚拟机</el-button>
+        </span>
+      </el-tooltip>
       <el-select
         v-if="environment"
         :model-value="selectedId"
@@ -118,7 +127,11 @@ onMounted(load)
       </el-form-item>
     </el-form>
     <div v-if="environment && !readOnly" class="practical-device-toolbar">
-      <el-button type="primary" :disabled="busy || locked || !changed" @click="save">保存配置</el-button>
+      <el-tooltip :disabled="busy || !saveReason()" :content="saveReason()" placement="top">
+        <span class="disabled-action-wrap">
+          <el-button type="primary" :disabled="busy || locked || !changed" @click="save">保存配置</el-button>
+        </span>
+      </el-tooltip>
       <el-button v-if="changed" :disabled="busy" @click="select(selectedId)">撤销修改</el-button>
       <span>交卷时以已保存的设备配置计分。</span>
     </div>

@@ -128,7 +128,7 @@ watch(
                 :key="ratio"
                 :points="ringPoints(ratio)"
                 fill="none"
-                stroke="#dbe6f1"
+                stroke="#dce7eb"
                 stroke-width="1"
               />
               <line
@@ -138,7 +138,7 @@ watch(
                 :y1="CY"
                 :x2="point(index, 1)[0]"
                 :y2="point(index, 1)[1]"
-                stroke="#e3ebf4"
+                stroke="#e4eeea"
                 stroke-width="1"
               />
               <polygon :points="scorePoints" fill="rgba(47, 109, 91, 0.22)" stroke="#2f6d5b" stroke-width="2" />
@@ -221,7 +221,7 @@ watch(
   flex: none;
   margin: 0;
   padding: 17px 22px;
-  border-bottom: 1px solid #e7edf4;
+  border-bottom: 1px solid #dce7eb;
 }
 
 :global(.camp-report-drawer .el-drawer__body) {
@@ -289,9 +289,9 @@ watch(
 
 .report-summary > div {
   padding: 9px 11px;
-  border: 1px solid #e4ecf4;
+  border: 1px solid #e4eeea;
   border-radius: 8px;
-  background: #f6f8fb;
+  background: #f3f8f6;
 }
 
 .report-summary dt,
@@ -330,7 +330,7 @@ watch(
 .skill-panel {
   min-width: 0;
   padding: 13px;
-  border: 1px solid #e4ecf4;
+  border: 1px solid #e4eeea;
   border-radius: 9px;
   overflow-wrap: anywhere;
 }
@@ -395,9 +395,9 @@ watch(
   gap: 4px;
   min-width: 0;
   padding: 10px;
-  border: 1px solid #e7edf4;
+  border: 1px solid #e4eeea;
   border-radius: 7px;
-  background: #f8fafc;
+  background: #f6faf8;
 }
 
 .skill-card-heading {

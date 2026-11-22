@@ -196,6 +196,8 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 10px;
   padding: 14px 18px;
+  background: #f8fbfb;
+  border-bottom: 1px solid #dce7eb;
 }
 
 .monitor-summary {

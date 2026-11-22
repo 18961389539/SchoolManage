@@ -1022,10 +1022,10 @@ onMounted(() => load())
   gap: 7px;
   padding: 10px 14px;
   margin-bottom: 14px;
-  background: #edf4fd;
-  border: 1px solid #cfe0f4;
+  background: #eef6f4;
+  border: 1px solid #d6e6e3;
   border-radius: 8px;
-  color: #315d8d;
+  color: #145a50;
   font-size: 13px;
 }
 
@@ -1090,7 +1090,7 @@ onMounted(() => load())
   gap: 8px;
   padding: 17px 17px 12px;
   border-bottom: 1px solid var(--surface-border);
-  background: #f6f9fa;
+  background: #f5f9f8;
 }
 
 .outline-heading h2 {
@@ -1117,7 +1117,7 @@ onMounted(() => load())
 }
 
 .outline-chapter + .outline-chapter {
-  border-top: 1px solid #eaf0f3;
+  border-top: 1px solid #e4eeea;
 }
 
 .outline-chapter h3 {
@@ -1195,7 +1195,7 @@ onMounted(() => load())
   width: 28px;
   height: 28px;
   border-radius: 7px;
-  background: #edf2f5;
+  background: #eef6f4;
   color: #45667a;
   font-size: 15px;
 }
@@ -1256,7 +1256,7 @@ onMounted(() => load())
   align-items: flex-start;
   gap: 14px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #edf2f7;
+  border-bottom: 1px solid #e4eeea;
 }
 
 .resource-heading-text {
@@ -1333,8 +1333,8 @@ onMounted(() => load())
   padding: 14px 16px;
   margin: 0;
   overflow: auto;
-  background: #f6f9fc;
-  border: 1px solid #e5edf5;
+  background: #f5f9f8;
+  border: 1px solid #e4eeea;
   border-radius: 8px;
   color: #3c566e;
   font-family: 'Cascadia Code', Consolas, monospace;
@@ -1399,8 +1399,8 @@ onMounted(() => load())
 .question-card {
   padding: 16px;
   margin-bottom: 12px;
-  background: #fbfcfe;
-  border: 1px solid #e6edf5;
+  background: #f6faf8;
+  border: 1px solid #dce7eb;
   border-radius: 9px;
 }
 
@@ -1416,9 +1416,9 @@ onMounted(() => load())
   justify-content: center;
   flex: 0 0 24px;
   height: 24px;
-  background: #e8f2fc;
+  background: #e3f3ee;
   border-radius: 6px;
-  color: #22669e;
+  color: #145a50;
   font-size: 12px;
   font-weight: 700;
 }
@@ -1454,7 +1454,7 @@ onMounted(() => load())
   gap: 8px;
   padding: 7px 10px;
   background: #fff;
-  border: 1px solid #edf1f6;
+  border: 1px solid #e4eeea;
   border-radius: 6px;
   color: #4e657b;
   font-size: 13px;
@@ -1486,7 +1486,7 @@ onMounted(() => load())
 .analysis-text {
   margin: 7px 0 0;
   padding: 8px 10px;
-  background: #f5f9fd;
+  background: #f3f8f6;
   border-radius: 6px;
   color: #536b82;
   font-size: 12px;
@@ -1500,7 +1500,7 @@ onMounted(() => load())
   height: auto;
   margin-right: 0;
   padding: 7px 10px;
-  border: 1px solid #e9eff6;
+  border: 1px solid #e4eeea;
   border-radius: 6px;
   background: #fff;
   white-space: normal;
@@ -1552,7 +1552,7 @@ onMounted(() => load())
   gap: 12px;
   padding-top: 16px;
   margin-top: 20px;
-  border-top: 1px solid #edf2f8;
+  border-top: 1px solid #e4eeea;
 }
 
 .record-hint {
@@ -1577,7 +1577,7 @@ onMounted(() => load())
   padding: 9px 12px;
   border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #f7fafb;
+  background: #f6faf8;
   color: #264558;
   text-align: left;
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { focusFirstField } from '../focusField'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api, messageOf, post } from '../api'
@@ -16,6 +17,7 @@ const loading = ref(false)
 const importing = ref(false)
 const error = ref('')
 const search = ref('')
+const searchInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
 const selected = ref<CourseImportableResource[]>([])
 
 const selectedIds = computed(() => selected.value.map(item => item.id))
@@ -61,6 +63,12 @@ function onSelectionChange(rows: CourseImportableResource[]) {
   selected.value = rows
 }
 
+function onDialogOpened() {
+  const root = searchInput.value?.$el
+  if (root) focusFirstField(root)
+  else searchInput.value?.focus?.()
+}
+
 function applySearch() {
   selected.value = []
   void load()
@@ -95,12 +103,14 @@ async function confirmImport() {
     :title="`导入资源到「${props.sectionName || targetName || '小节'}」`"
     width="min(880px, 96vw)"
     destroy-on-close
+    @opened="onDialogOpened"
   >
     <el-alert type="info" :closable="false" show-icon class="import-hint">
       从其他小节的课程资源复制一份到当前小节，题目和附件会一并复制，不影响原资源。
     </el-alert>
     <div class="import-toolbar">
       <el-input
+        ref="searchInput"
         v-model="search"
         class="search-box"
         clearable
@@ -119,7 +129,7 @@ async function confirmImport() {
       :data="items"
       row-key="id"
       max-height="460"
-      empty-text="暂无可导入的资源"
+      :empty-text="search.trim() ? '没有符合条件的资源，试试清除搜索。' : '暂无可导入的资源'"
       @selection-change="onSelectionChange"
     >
       <el-table-column type="selection" width="46" />

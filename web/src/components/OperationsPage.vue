@@ -17,6 +17,7 @@ import {
   EditPen
 } from '@element-plus/icons-vue'
 import { api, post, put, listItems, messageOf, dateTime, bytes, type Row } from '../api'
+import { focusFirstField } from '../focusField'
 import { downloadFile } from '../exam'
 import type { BackupItem, LicenseUploadResult, NodeRow, Paged } from '../types'
 import DataRecord from './DataRecord.vue'
@@ -36,6 +37,7 @@ const settings = reactive<Row>({ schoolName: '' }),
   detail = ref<Row | null>(null),
   licenseInput = ref<HTMLInputElement>(),
   uploadResults = ref<Row[]>([])
+const vmNameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
 const vmVisible = ref(false),
   vmEditing = ref(false),
   vmLoading = ref(false),
@@ -58,6 +60,11 @@ let loadVersion = 0,
 function resetSearch() {
   page.value = 1
   void load()
+}
+const searching = computed(() => !!search.value.trim())
+function clearSearch() {
+  search.value = ''
+  resetSearch()
 }
 const titles: Record<string, { title: string; subtitle: string; section: string }> = {
   server: { title: '服务器信息', subtitle: '查看当前管理服务器的真实硬件与网络信息。', section: '运行维护 / 主机状态' },
@@ -182,36 +189,79 @@ async function vmAction(row: Row, action: keyof typeof powerActionNames) {
   }
 }
 
+function vmConnectReason(row: Row) {
+  if (row.detectionStatus === 'reachable') return ''
+  if (row.detectionStatus === 'offline') return '节点离线，无法连接控制台'
+  if (row.detectionStatus === 'unsupported') return '节点未接入，无法连接控制台'
+  return '当前无法连接控制台'
+}
+
+function vmStartReason(row: Row) {
+  if (!row.nodeEnabled) return '节点已停用，不能启动'
+  if (row.status === 'stopped') return ''
+  return row.status === 'running' ? '虚拟机运行中，无需启动' : '仅已停止的虚拟机可以启动'
+}
+
+function vmRestartReason(row: Row) {
+  if (!row.nodeEnabled) return '节点已停用，不能重启'
+  return row.status === 'running' ? '' : '仅运行中的虚拟机可以重启'
+}
+
+function vmEditReason(row: Row) {
+  if (!row.isSimulated) return '只有内置模拟虚拟机可以在此编辑'
+  if (vmLoading.value) return '正在加载配置，请稍候'
+  return row.status === 'running' ? '请先停止虚拟机再编辑' : ''
+}
+
+function vmActionReason(row: Row, action: 'connect' | 'start' | 'stop' | 'restart' | 'edit' | 'destroy') {
+  if (action === 'connect') return vmConnectReason(row)
+  const verbs = { start: '启动', stop: '停止', restart: '重启', edit: '编辑', destroy: '销毁' } as const
+  if (row.isReserved) return `该虚拟机正被实训占用，不能${verbs[action]}`
+  if (saving.value && action !== 'edit') return '正在处理其他操作，请稍候'
+  if (action === 'start') return vmStartReason(row)
+  if (action === 'stop') return row.status === 'running' ? '' : '仅运行中的虚拟机可以停止'
+  if (action === 'restart') return vmRestartReason(row)
+  if (action === 'edit') return vmEditReason(row)
+  if (action === 'destroy' && !row.isSimulated && row.status !== 'stopped') return '请先停止该虚拟机再销毁'
+  return ''
+}
+
 function vmActions(row: Row): EntityRowAction[] {
   return [
     {
       label: '连接',
       icon: Monitor,
       disabled: row.detectionStatus !== 'reachable',
+      reason: vmActionReason(row, 'connect'),
       run: () => void openConsole(row)
     },
     {
       label: '启动',
       icon: VideoPlay,
       disabled: row.status !== 'stopped' || saving.value || !row.nodeEnabled || row.isReserved,
+      reason: vmActionReason(row, 'start'),
       run: () => void vmAction(row, 'start')
     },
     {
       label: '停止',
       icon: VideoPause,
+      type: 'warning',
       disabled: row.status !== 'running' || saving.value || row.isReserved,
+      reason: vmActionReason(row, 'stop'),
       run: () => void vmAction(row, 'stop')
     },
     {
       label: '重启',
       icon: Refresh,
       disabled: row.status !== 'running' || !row.nodeEnabled || row.isReserved || saving.value,
+      reason: vmActionReason(row, 'restart'),
       run: () => void vmAction(row, 'restart')
     },
     {
       label: '编辑',
       icon: EditPen,
       disabled: row.status === 'running' || vmLoading.value || row.isReserved || !row.isSimulated,
+      reason: vmActionReason(row, 'edit'),
       run: () => void openVm(row)
     },
     {
@@ -219,9 +269,19 @@ function vmActions(row: Row): EntityRowAction[] {
       icon: Delete,
       type: 'danger',
       disabled: row.isReserved || (!row.isSimulated && row.status !== 'stopped') || saving.value,
+      reason: vmActionReason(row, 'destroy'),
       run: () => void deleteVm(row)
     }
   ]
+}
+
+function vmButtonType(action: EntityRowAction) {
+  return action.type === 'danger' || action.type === 'warning' ? action.type : 'primary'
+}
+function focusVmName() {
+  const root = vmNameInput.value?.$el
+  if (root) focusFirstField(root)
+  else vmNameInput.value?.focus?.()
 }
 async function openVm(row?: Row) {
   if (vmLoading.value) return
@@ -412,11 +472,19 @@ watch(
             placeholder="搜索名称、UUID 或 IP"
             @keyup.enter="resetSearch"
             @clear="resetSearch"
-          /><el-button @click="resetSearch">搜索</el-button>
+          /><el-button @click="resetSearch">搜索</el-button
+          ><el-button v-if="searching" @click="clearSearch">清除</el-button>
         </div>
         <span class="record-count">{{ total }} 台虚拟机</span>
       </div>
-      <el-table :data="rows" empty-text="暂无虚拟机。请先接入节点或在控制台创建模拟环境。" scrollbar-always-on
+      <el-table
+        :data="rows"
+        :empty-text="
+          searching
+            ? '没有符合条件的虚拟机，试试清除搜索或更换平台。'
+            : '暂无虚拟机。请先接入节点或在控制台创建模拟环境。'
+        "
+        scrollbar-always-on
         ><el-table-column prop="name" label="虚拟机名称" min-width="180"
           ><template #default="{ row }"
             ><span class="table-name">{{ row.name }}</span>
@@ -451,47 +519,24 @@ watch(
           ><template #default="{ row }"
             ><EntityRowMenu v-if="compactVm" :row-name="row.name" :actions="vmActions(row)" />
             <template v-else>
-              <el-button
-                link
-                type="primary"
-                :icon="Monitor"
-                :disabled="row.detectionStatus !== 'reachable'"
-                @click="openConsole(row)"
-                >连接</el-button
+              <el-tooltip
+                v-for="action in vmActions(row)"
+                :key="action.label"
+                :disabled="!(action.disabled && action.reason)"
+                :content="action.reason"
+                placement="top"
               >
-              <el-button
-                link
-                type="primary"
-                :icon="VideoPlay"
-                :disabled="row.status !== 'stopped' || saving || !row.nodeEnabled || row.isReserved"
-                @click="vmAction(row, 'start')"
-                >启动</el-button
-              ><el-button
-                link
-                type="warning"
-                :icon="VideoPause"
-                :disabled="row.status !== 'running' || saving || row.isReserved"
-                @click="vmAction(row, 'stop')"
-                >停止</el-button
-              ><el-button
-                link
-                type="primary"
-                :disabled="row.status !== 'running' || !row.nodeEnabled || row.isReserved || saving"
-                @click="vmAction(row, 'restart')"
-                >重启</el-button
-              ><el-button
-                link
-                type="primary"
-                :disabled="row.status === 'running' || vmLoading || row.isReserved || !row.isSimulated"
-                @click="openVm(row)"
-                >编辑</el-button
-              ><el-button
-                link
-                type="danger"
-                :disabled="row.isReserved || (!row.isSimulated && row.status !== 'stopped') || saving"
-                @click="deleteVm(row)"
-                >销毁</el-button
-              >
+                <span class="disabled-action-wrap">
+                  <el-button
+                    link
+                    :type="vmButtonType(action)"
+                    :icon="action.icon"
+                    :disabled="action.disabled || action.busy"
+                    @click="action.run"
+                    >{{ action.label }}</el-button
+                  >
+                </span>
+              </el-tooltip>
             </template></template
           ></el-table-column
         ></el-table
@@ -518,11 +563,15 @@ watch(
           placeholder="搜索操作、目标或账号"
           @keyup.enter="resetSearch"
           @clear="resetSearch"
-        /><el-button @click="resetSearch">搜索</el-button>
+        /><el-button @click="resetSearch">搜索</el-button
+        ><el-button v-if="searching" @click="clearSearch">清除</el-button>
       </div>
       <span class="record-count">共 {{ total }} 条记录</span>
     </div>
-    <el-table :data="rows" v-loading="loading" empty-text="暂无操作记录"
+    <el-table
+      :data="rows"
+      v-loading="loading"
+      :empty-text="searching ? '没有符合条件的操作记录，试试调整关键词或清除搜索。' : '暂无操作记录'"
       ><el-table-column label="操作时间（北京时间）" width="220"
         ><template #default="{ row }">{{ dateTime(row.at) }}</template></el-table-column
       ><el-table-column prop="userName" label="操作账号" width="130" /><el-table-column
@@ -598,7 +647,7 @@ watch(
         <el-button v-if="data?.machineCode" @click="copyMachineCode">复制设备特征码</el-button>
       </div>
       <DataRecord v-if="licenseMetadata" :data="licenseMetadata" />
-      <el-empty v-else-if="!loading" description="暂未获取授权信息" />
+      <el-empty v-else-if="!loading" description="暂未获取授权信息，可点击右上角上传许可证。" />
     </section>
     <section v-if="data?.quotas" class="surface section-gap">
       <div class="card-heading">
@@ -658,7 +707,7 @@ watch(
     </div>
     <DataRecord v-if="data" :data="data" unavailable-text="不可获取" /><el-empty
       v-else-if="!loading"
-      description="暂未获取服务器信息"
+      description="暂未获取服务器信息，请稍后刷新重试。"
     />
   </section>
   <VmConsoleDialog
@@ -673,6 +722,7 @@ watch(
     :title="vmEditing ? '编辑模拟虚拟机' : '新增模拟虚拟机'"
     width="600px"
     :close-on-click-modal="false"
+    @opened="focusVmName"
     ><el-alert
       title="此处配置的是内置模拟资源，不创建或运行实际操作系统。"
       type="info"
@@ -680,7 +730,8 @@ watch(
       show-icon
       class="section-notice"
     /><el-form label-position="top" class="entity-form"
-      ><el-form-item label="虚拟机名称" required><el-input v-model="vmModel.name" maxlength="100" /></el-form-item
+      ><el-form-item label="虚拟机名称" required
+        ><el-input ref="vmNameInput" v-model="vmModel.name" maxlength="100" /></el-form-item
       ><el-form-item label="所属模拟节点" required
         ><el-select v-model="vmModel.nodeId" filterable placeholder="搜索或选择模拟节点"
           ><el-option

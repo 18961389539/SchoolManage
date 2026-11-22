@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { api, post, del, dateTime, messageOf, type Row } from '../api'
 import type { AccountAssignment, AccountCandidate, NodeAccountsResponse, Paged } from '../types'
+import { focusFirstField } from '../focusField'
 
 const props = defineProps<{ node: Row | null }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
@@ -35,6 +36,22 @@ const activeTab = ref('assigned')
 let assignedVersion = 0,
   candidateVersion = 0
 const accountCount = computed(() => Number(nodeInfo.value.accountCount ?? props.node?.accountCount ?? 0))
+const assignedSearchInput = ref<{ $el?: HTMLElement; focus?: () => void }>()
+function focusAssignedSearch() {
+  const root = assignedSearchInput.value?.$el
+  if (root) focusFirstField(root)
+  else assignedSearchInput.value?.focus?.()
+}
+function assignReason(): string | undefined {
+  if (saving.value) return undefined
+  if (!enabled.value) return '当前节点已停用，无法新增分配'
+  if (available.value <= 0) {
+    return accountQuota.value === 0 ? '账号配额为 0，无法新增分配' : '账号配额已用满，无法新增分配'
+  }
+  if (!selected.value.length) return '请先勾选要分配的师生账号'
+  if (selected.value.length > maxAssignmentBatch) return `每批最多分配 ${maxAssignmentBatch} 个账号`
+  if (selected.value.length > available.value) return `已选数量超过剩余 ${available.value} 个名额`
+}
 const accountQuota = computed(() => Number(nodeInfo.value.accountQuota ?? props.node?.accountQuota ?? 0))
 const available = computed(() => Math.max(0, accountQuota.value - accountCount.value))
 const enabled = computed(() => nodeInfo.value.enabled ?? props.node?.enabled ?? false)
@@ -216,6 +233,7 @@ watch(
     width="min(1100px, 96vw)"
     :close-on-click-modal="false"
     class="node-accounts-dialog"
+    @opened="focusAssignedSearch"
   >
     <el-alert
       title="维护师生账号与节点的资源使用关联，不创建操作系统账号；移除分配不会删除师生档案。"
@@ -273,6 +291,7 @@ watch(
           </div>
           <div class="node-account-search">
             <el-input
+              ref="assignedSearchInput"
               v-model="assignedSearch"
               aria-label="搜索已分配的师生账号"
               clearable
@@ -404,9 +423,13 @@ watch(
               >每批最多分配 {{ maxAssignmentBatch }} 个账号，请分批提交</span
             ><span v-else-if="selected.length > available" class="selection-warning"
               >已选数量超过剩余 {{ available }} 个名额</span
-            ><el-button type="primary" :icon="Plus" :disabled="!canAssign" :loading="saving" @click="assign"
-              >分配选中账号{{ selected.length ? `（${selected.length}）` : '' }}</el-button
-            >
+            ><el-tooltip :disabled="!assignReason()" :content="assignReason()" placement="top">
+              <span class="disabled-action-wrap">
+                <el-button type="primary" :icon="Plus" :disabled="!canAssign" :loading="saving" @click="assign"
+                  >分配选中账号{{ selected.length ? `（${selected.length}）` : '' }}</el-button
+                >
+              </span>
+            </el-tooltip>
           </div>
         </section>
       </el-tab-pane>
@@ -462,7 +485,7 @@ watch(
   gap: 22px;
 }
 .node-account-panel {
-  border: 1px solid #e5eaf1;
+  border: 1px solid #dce7eb;
   border-radius: 9px;
   overflow: hidden;
 }
@@ -517,7 +540,7 @@ watch(
   justify-content: flex-end;
   align-items: center;
   gap: 15px;
-  border-top: 1px solid #edf1f5;
+  border-top: 1px solid #e4eeea;
   padding: 14px 20px;
 }
 .selection-warning {

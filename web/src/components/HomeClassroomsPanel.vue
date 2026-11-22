@@ -132,7 +132,16 @@ const preview = computed(() => {
   padding: 14px;
   border: 1px solid var(--surface-border);
   border-radius: 10px;
-  background: #f8fafb;
+  background: #f6faf8;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+.home-classroom:hover {
+  border-color: #cfe6df;
+  box-shadow: 0 6px 16px #1732460c;
 }
 
 .home-classroom.is-ongoing {

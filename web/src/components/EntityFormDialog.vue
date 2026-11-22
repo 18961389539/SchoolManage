@@ -3,6 +3,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import type { FormInstance, FormItemRule, FormRules } from 'element-plus'
 import type { Row } from '../api'
 import { newEntity, type Entity, type Field } from '../entities'
+import { focusFirstField } from '../focusField'
 
 const visible = defineModel<boolean>({ required: true })
 const props = defineProps<{
@@ -45,6 +46,10 @@ watch(visible, open => {
   void nextTick(() => formRef.value?.clearValidate())
 })
 
+function onDialogOpened() {
+  focusFirstField((formRef.value as { $el?: HTMLElement } | undefined)?.$el)
+}
+
 function fieldOptions(
   field: Field
 ): { label: string; value: string | number | boolean | object; disabled?: boolean }[] {
@@ -74,6 +79,7 @@ async function submit() {
     width="650px"
     :close-on-click-modal="false"
     destroy-on-close
+    @opened="onDialogOpened"
   >
     <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="entity-form">
       <el-form-item

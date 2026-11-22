@@ -297,8 +297,8 @@ function letters(indexes: number[]) {
 
 .detail-summary article {
   padding: 14px;
-  background: #f8fbfe;
-  border: 1px solid #e6eef6;
+  background: #f6faf8;
+  border: 1px solid #e4eeea;
   border-radius: 10px;
 }
 
@@ -341,7 +341,7 @@ function letters(indexes: number[]) {
 
 .kind-item {
   padding: 10px 12px;
-  border: 1px solid #e9eff6;
+  border: 1px solid #e4eeea;
   border-radius: 8px;
 }
 
@@ -354,7 +354,7 @@ function letters(indexes: number[]) {
 }
 
 .kind-item strong {
-  color: #285175;
+  color: var(--workspace-accent);
 }
 
 .kind-item p {
@@ -385,7 +385,7 @@ function letters(indexes: number[]) {
   gap: 15px;
   align-items: flex-start;
   padding-bottom: 13px;
-  border-bottom: 1px solid #e8eef5;
+  border-bottom: 1px solid #e4eeea;
 }
 
 .attempt-head h3,
@@ -409,7 +409,7 @@ function letters(indexes: number[]) {
 }
 
 .attempt-score strong {
-  color: #24517a;
+  color: #1a514c;
   font-size: 18px;
 }
 
@@ -423,8 +423,8 @@ function letters(indexes: number[]) {
 
 .attempt-question {
   padding: 13px;
-  background: #f9fbfd;
-  border: 1px solid #e8eef5;
+  background: #f5f9f8;
+  border: 1px solid #e4eeea;
   border-radius: 9px;
 }
 
@@ -477,7 +477,7 @@ function letters(indexes: number[]) {
   color: #56697c;
   font-size: 11px;
   line-height: 1.6;
-  border-top: 1px dashed #e1e9f1;
+  border-top: 1px dashed #dce7eb;
 }
 
 .case-block {
@@ -496,8 +496,8 @@ function letters(indexes: number[]) {
   overflow: auto;
   color: #4e687f;
   font-size: 11px;
-  background: #f7fafd;
-  border: 1px solid #e7eef6;
+  background: #f6faf8;
+  border: 1px solid #e4eeea;
   border-radius: 7px;
   white-space: pre-wrap;
 }

@@ -230,7 +230,8 @@ const visibleNetworks = computed(() => {
 
 <style scoped>
 .server-empty {
-  padding: 30px;
+  padding: 36px 24px;
+  text-align: center;
 }
 
 .server-summary {
@@ -277,7 +278,7 @@ const visibleNetworks = computed(() => {
   gap: 8px 18px;
   margin-top: 18px;
   padding-top: 14px;
-  border-top: 1px solid #eef2f7;
+  border-top: 1px solid #e4eeea;
   color: #64788a;
   font-size: 12px;
 }
@@ -323,7 +324,7 @@ const visibleNetworks = computed(() => {
   height: 5px;
   margin: 0 22px 14px;
   overflow: hidden;
-  background: #eef3f8;
+  background: #e8eeea;
   border-radius: 4px;
 }
 
@@ -378,7 +379,7 @@ const visibleNetworks = computed(() => {
   gap: 12px;
   align-items: baseline;
   padding: 7px 10px;
-  background: #f7f9fc;
+  background: #f3f8f6;
   border-radius: 6px;
 }
 

@@ -8,6 +8,7 @@ export interface EntityRowAction {
   icon?: Component
   busy?: boolean
   disabled?: boolean
+  reason?: string
 }
 </script>
 
@@ -20,6 +21,11 @@ defineProps<{ rowName: string; actions: EntityRowAction[] }>()
 
 const dropdown = ref<DropdownInstance>()
 const button = ref<ButtonInstance>()
+
+function runAction(action: EntityRowAction) {
+  if (action.disabled || action.busy) return
+  action.run()
+}
 
 function dismiss(event: KeyboardEvent) {
   const trigger = button.value?.ref
@@ -44,9 +50,13 @@ function dismiss(event: KeyboardEvent) {
           :icon="action.icon"
           :disabled="action.disabled || action.busy"
           :divided="action.type === 'danger'"
-          @click="action.run"
+          :title="action.disabled && action.reason ? action.reason : undefined"
+          :class="{ 'has-disabled-reason': action.disabled && action.reason }"
+          @click="runAction(action)"
         >
-          <span :class="{ 'danger-action': action.type === 'danger' }">{{ action.label }}</span>
+          <el-tooltip :disabled="!(action.disabled && action.reason)" :content="action.reason" placement="left">
+            <span :class="{ 'danger-action': action.type === 'danger' }">{{ action.label }}</span>
+          </el-tooltip>
         </el-dropdown-item>
       </el-dropdown-menu>
     </template>
@@ -56,5 +66,10 @@ function dismiss(event: KeyboardEvent) {
 <style scoped>
 .danger-action {
   color: var(--el-color-danger);
+}
+
+:deep(.el-dropdown-menu__item.is-disabled.has-disabled-reason) {
+  pointer-events: auto;
+  cursor: not-allowed;
 }
 </style>

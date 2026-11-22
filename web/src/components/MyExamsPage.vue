@@ -75,6 +75,8 @@ function clearFilters() {
   statusFilter.value = ''
 }
 
+const filtering = computed(() => !!search.value.trim() || !!statusFilter.value)
+
 function remainingSeconds(item: ExamHallItem): number {
   if (item.attemptStatus === 'inProgress' && item.deadline) {
     return Math.max(0, Math.floor((parseApiDate(item.deadline).getTime() - now.value) / 1000))
@@ -172,7 +174,10 @@ onBeforeUnmount(() => {
     <el-select v-model="statusFilter" class="table-filter" aria-label="考试状态" placeholder="全部状态" clearable>
       <el-option v-for="option in examStatusOptions" :key="option.value" :label="option.label" :value="option.value" />
     </el-select>
-    <span class="record-count">共 {{ filtered.length }} 场考试</span>
+    <el-button v-if="filtering" @click="clearFilters">清除筛选</el-button>
+    <span class="record-count">{{
+      loading && !items.length ? '正在加载考试…' : '共 ' + filtered.length + ' 场考试'
+    }}</span>
   </div>
 
   <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
@@ -260,9 +265,10 @@ onBeforeUnmount(() => {
 
   <el-empty
     v-if="!loading && !error && !filtered.length"
-    :description="items.length ? '没有符合筛选条件的考试' : '暂时没有安排给你的考试'"
+    :description="filtering ? '没有符合条件的考试' : '暂时没有安排给你的考试'"
   >
-    <el-button v-if="items.length" @click="clearFilters">清除筛选</el-button>
+    <el-button v-if="filtering" @click="clearFilters">清除筛选</el-button>
+    <p v-else class="empty-hint">请联系授课教师，确认考试已经发布并分配给你。</p>
   </el-empty>
 </template>
 
@@ -280,9 +286,9 @@ onBeforeUnmount(() => {
   gap: 10px 18px;
   margin: 0 0 12px;
   padding: 12px;
-  border: 1px solid #edf1f5;
+  border: 1px solid #e4eeea;
   border-radius: 8px;
-  background: #f5f8fa;
+  background: #f5f9f8;
 }
 
 .exam-meta > div {
@@ -314,5 +320,13 @@ onBeforeUnmount(() => {
   font-size: 15px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+}
+
+.empty-hint {
+  max-width: 28ch;
+  margin: 8px auto 0;
+  color: #56697c;
+  font-size: 13px;
+  line-height: 1.6;
 }
 </style>

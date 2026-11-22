@@ -172,10 +172,10 @@ onMounted(load)
 }
 
 .kind-card {
-  padding: 12px;
+  padding: 14px;
   border: 1px solid var(--surface-border);
-  border-radius: 9px;
-  background: #f8fafb;
+  border-radius: 10px;
+  background: #f6faf8;
 }
 
 .kind-card-title {

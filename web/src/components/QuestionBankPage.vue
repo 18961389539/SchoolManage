@@ -14,6 +14,7 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError, api, dateTime, del, limits, listItems, maxUploadMegabytes, messageOf, post, put } from '../api'
 import { examQuestionTypeLabel, examQuestionTypeOptions, optionLetters } from '../exam'
+import { focusFirstField } from '../focusField'
 import type {
   ExamQuestionDetail,
   ExamQuestionInput,
@@ -95,6 +96,21 @@ const previewPage = ref(1)
 const removedInvalidRows = ref(false)
 const previewPageSize = 25
 const fileInput = ref<HTMLInputElement>()
+const questionForm = ref<{ $el?: HTMLElement }>()
+const chooseFileButton = ref<{ ref?: HTMLElement; $el?: HTMLElement }>()
+function focusQuestionForm() {
+  focusFirstField(questionForm.value?.$el)
+}
+function focusChooseFile() {
+  const button = chooseFileButton.value?.ref || chooseFileButton.value?.$el
+  button?.focus?.()
+}
+function previewImportReason(): string | undefined {
+  if (!importFile.value) return '请先选择要导入的文件'
+}
+function confirmImportReason(): string | undefined {
+  if (importPreview.value && !importPreview.value.validCount) return '没有可导入的有效题目'
+}
 
 const isObjective = computed(() => form.type !== 'practical')
 
@@ -553,9 +569,10 @@ onMounted(load)
     :title="editing ? '编辑题目' : '新建题目'"
     width="min(760px, 96vw)"
     destroy-on-close
+    @opened="focusQuestionForm"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
-    <el-form v-loading="loadingPractical" label-position="top" class="entity-form">
+    <el-form ref="questionForm" v-loading="loadingPractical" label-position="top" class="entity-form">
       <div class="question-form-grid">
         <el-form-item label="题型" required>
           <el-select v-model="form.type" @change="changeType">
@@ -717,6 +734,7 @@ onMounted(load)
     :close-on-press-escape="!importBusy"
     :show-close="!importBusy"
     @closed="resetImport"
+    @opened="focusChooseFile"
   >
     <div class="import-hint">
       <p>支持 .xlsx 与 UTF-8 编码的 .csv，表头为：题型、题干、选项、正确答案、分值、解析。</p>
@@ -725,7 +743,9 @@ onMounted(load)
     </div>
     <input ref="fileInput" class="hidden-file" type="file" accept=".xlsx,.csv" @change="chooseImportFile" />
     <div class="import-picker">
-      <el-button :icon="UploadFilled" :disabled="importBusy" @click="fileInput?.click()">选择文件</el-button>
+      <el-button ref="chooseFileButton" :icon="UploadFilled" :disabled="importBusy" @click="fileInput?.click()"
+        >选择文件</el-button
+      >
       <span>{{ importFileName || '尚未选择文件' }}</span>
     </div>
     <el-alert v-if="importError" :title="importError" type="error" show-icon :closable="false" class="section-notice" />
@@ -764,15 +784,18 @@ onMounted(load)
     </div>
     <template #footer>
       <el-button :disabled="importBusy" @click="importVisible = false">取消</el-button>
-      <el-button
+      <el-tooltip
         v-if="!importPreview"
-        type="primary"
-        :disabled="!importFile"
-        :loading="importBusy"
-        @click="checkImport()"
+        :disabled="!previewImportReason()"
+        :content="previewImportReason()"
+        placement="top"
       >
-        预览校验
-      </el-button>
+        <span class="disabled-action-wrap">
+          <el-button type="primary" :disabled="!importFile" :loading="importBusy" @click="checkImport()">
+            预览校验
+          </el-button>
+        </span>
+      </el-tooltip>
       <el-button
         v-else-if="importPreview.invalidCount && !removedInvalidRows"
         type="warning"
@@ -781,9 +804,13 @@ onMounted(load)
       >
         一键移除问题数据
       </el-button>
-      <el-button v-else type="primary" :disabled="!importPreview.validCount" :loading="importBusy" @click="runImport">
-        确认导入 {{ importPreview.validCount }} 道
-      </el-button>
+      <el-tooltip v-else :disabled="!confirmImportReason()" :content="confirmImportReason()" placement="top">
+        <span class="disabled-action-wrap">
+          <el-button type="primary" :disabled="!importPreview.validCount" :loading="importBusy" @click="runImport">
+            确认导入 {{ importPreview.validCount }} 道
+          </el-button>
+        </span>
+      </el-tooltip>
     </template>
   </el-dialog>
 </template>
@@ -845,8 +872,8 @@ onMounted(load)
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #edf3fa;
-  color: #4d6881;
+  background: #e3f3ee;
+  color: #145a50;
   font-size: 12px;
 }
 
@@ -892,7 +919,7 @@ onMounted(load)
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid #e4ebf3;
+  border: 1px solid #dce7eb;
   border-radius: 8px;
 }
 
@@ -908,8 +935,8 @@ onMounted(load)
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #eef3f9;
-  color: #536b83;
+  background: #e8f3ef;
+  color: #145a50;
   font-size: 12px;
 }
 

@@ -15,7 +15,11 @@ defineProps<{ rows: HomeLeaderboardRow[]; teacher?: boolean }>()
     </header>
     <ol v-if="rows.length" class="leaderboard" role="list">
       <li v-for="(row, index) in rows" :key="row.userId" class="leaderboard-row" :class="{ 'is-self': row.isMe }">
-        <span class="leaderboard-rank" :class="{ 'is-first': index === 0 }">{{ index + 1 }}</span>
+        <span
+          class="leaderboard-rank"
+          :class="{ 'is-first': index === 0, 'is-second': index === 1, 'is-third': index === 2 }"
+          >{{ index + 1 }}</span
+        >
         <div class="leaderboard-person">
           <strong>{{ row.name }} <span v-if="row.isMe" class="leaderboard-self">我</span></strong>
           <small>{{
@@ -51,7 +55,13 @@ defineProps<{ rows: HomeLeaderboardRow[]; teacher?: boolean }>()
   align-items: center;
   gap: 10px;
   padding: 9px 8px;
-  border-top: 1px solid #eaf0f3;
+  border-top: 1px solid #e4eeea;
+  border-radius: 8px;
+  transition: background 0.16s ease;
+}
+
+.leaderboard-row:hover {
+  background: #f5f9f8;
 }
 
 .leaderboard-row.is-self {
@@ -66,7 +76,7 @@ defineProps<{ rows: HomeLeaderboardRow[]; teacher?: boolean }>()
   width: 25px;
   height: 25px;
   border-radius: 7px;
-  background: #eef3f5;
+  background: #eef6f4;
   color: var(--text-muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -75,6 +85,16 @@ defineProps<{ rows: HomeLeaderboardRow[]; teacher?: boolean }>()
 .leaderboard-rank.is-first {
   background: #f9edcf;
   color: #77530d;
+}
+
+.leaderboard-rank.is-second {
+  background: #e8eef2;
+  color: #4a5d6d;
+}
+
+.leaderboard-rank.is-third {
+  background: #f3e6d8;
+  color: #7a5330;
 }
 
 .leaderboard-person,

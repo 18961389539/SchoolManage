@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { CircleClose, EditPen, MoreFilled, Plus, Refresh, Search, Tickets, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, del, messageOf, post, put } from '../api'
@@ -14,6 +14,7 @@ import ExamRosterDrawer from './ExamRosterDrawer.vue'
 import ExamScoresDrawer from './ExamScoresDrawer.vue'
 import ExamStatisticsDrawer from './ExamStatisticsDrawer.vue'
 import TableEmpty from './TableEmpty.vue'
+import { focusFirstField } from '../focusField'
 
 const props = defineProps<{ admin: boolean }>()
 
@@ -34,6 +35,12 @@ const papers = ref<ExamPaperSummary[]>([])
 const teaching = ref<TeachingClassesResponse>({ professions: [], classes: [] })
 
 const dialogVisible = ref(false)
+const nameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
+function focusNameInput() {
+  const root = nameInput.value?.$el
+  if (root) focusFirstField(root)
+  else nameInput.value?.focus?.()
+}
 const editing = ref<TrainingExamSummary | null>(null)
 const saving = ref(false)
 const formError = ref('')
@@ -57,6 +64,15 @@ const analysisVisible = ref(false)
 
 function canEdit(item: TrainingExamSummary): boolean {
   return item.storedStatus === 'scheduled' && item.attemptCount === 0
+}
+
+function examEditReason(item: TrainingExamSummary): string | undefined {
+  if (canEdit(item)) return undefined
+  if (item.attemptCount > 0) return '已有作答记录的考试不能编辑'
+  return '开考后考试信息已锁定，不能编辑'
+}
+function examDeleteReason(item: TrainingExamSummary): string | undefined {
+  if (item.attemptCount > 0) return '已有作答记录的考试不能删除'
 }
 
 async function load() {
@@ -99,6 +115,8 @@ function resetFilters() {
   statusFilter.value = ''
   applyFilters()
 }
+
+const filtering = computed(() => !!search.value.trim() || !!statusFilter.value)
 
 function defaultWindow() {
   const now = new Date()
@@ -264,8 +282,13 @@ function handleCommand(command: string, item: TrainingExamSummary) {
   else if (command === 'monitor') monitorVisible.value = true
   else if (command === 'statistics') statsVisible.value = true
   else if (command === 'analysis') analysisVisible.value = true
-  else if (command === 'edit') openEdit(item)
-  else if (command === 'delete') void removeExam(item)
+  else if (command === 'edit') {
+    if (!canEdit(item)) return
+    openEdit(item)
+  } else if (command === 'delete') {
+    if (item.attemptCount > 0) return
+    void removeExam(item)
+  }
 }
 
 async function onChanged() {
@@ -291,9 +314,22 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     </div>
     <div class="heading-actions">
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      <el-button type="primary" :icon="Plus" @click="openCreate">新建考试</el-button>
+      <el-tooltip :disabled="papers.length > 0" content="请先在试卷管理中创建含题目的试卷" placement="bottom">
+        <span class="disabled-action-wrap">
+          <el-button type="primary" :icon="Plus" :disabled="!papers.length" @click="openCreate">新建考试</el-button>
+        </span>
+      </el-tooltip>
     </div>
   </section>
+
+  <el-alert
+    v-if="!papers.length && !loading"
+    title="尚无可用试卷，请先在试卷管理中创建含题目的试卷后再新建考试。"
+    type="info"
+    show-icon
+    :closable="false"
+    class="section-notice"
+  />
 
   <section class="surface management-table">
     <div class="table-toolbar">
@@ -318,7 +354,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
         <el-button type="primary" :icon="Search" @click="applyFilters">查询</el-button>
         <el-button @click="resetFilters">重置</el-button>
       </div>
-      <span class="record-count">共 {{ loading && !total ? '—' : total }} 场考试</span>
+      <span class="record-count">{{ loading && !total ? '正在加载考试…' : '共 ' + total + ' 场考试' }}</span>
     </div>
 
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="table-error" />
@@ -334,9 +370,21 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       <template #empty>
         <TableEmpty
           v-if="!loading"
-          :title="error ? '考试加载失败' : '暂无考试'"
-          :hint="error ? '请检查服务状态后刷新重试' : '点击右上角「新建考试」，从试卷创建并分配学生。'"
-        />
+          :title="error ? '考试加载失败' : filtering ? '没有符合条件的考试' : '暂无考试'"
+          :hint="
+            error
+              ? '请检查服务状态后刷新重试'
+              : filtering
+                ? '试试调整关键词或状态筛选，也可清除后查看全部考试。'
+                : papers.length
+                  ? '点击右上角「新建考试」，从试卷创建并分配学生。'
+                  : '请先在试卷管理中创建含题目的试卷，再来新建考试。'
+          "
+        >
+          <template v-if="!error && filtering" #action>
+            <el-button type="primary" plain @click="resetFilters">清除筛选</el-button>
+          </template>
+        </TableEmpty>
       </template>
       <el-table-column label="考试" min-width="230">
         <template #default="{ row }">
@@ -394,10 +442,35 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
                   <el-dropdown-item command="monitor">考试监控</el-dropdown-item>
                   <el-dropdown-item command="statistics">统计分析</el-dropdown-item>
                   <el-dropdown-item command="analysis">试题分析</el-dropdown-item>
-                  <el-dropdown-item command="edit" :disabled="!canEdit(row as TrainingExamSummary)" divided>
-                    编辑考试
+                  <el-dropdown-item
+                    command="edit"
+                    :disabled="!canEdit(row as TrainingExamSummary)"
+                    :title="examEditReason(row as TrainingExamSummary)"
+                    :class="{ 'has-disabled-reason': !canEdit(row as TrainingExamSummary) }"
+                    divided
+                  >
+                    <el-tooltip
+                      :disabled="canEdit(row as TrainingExamSummary)"
+                      :content="examEditReason(row as TrainingExamSummary)"
+                      placement="left"
+                    >
+                      <span>编辑考试</span>
+                    </el-tooltip>
                   </el-dropdown-item>
-                  <el-dropdown-item command="delete" :disabled="row.attemptCount > 0">删除考试</el-dropdown-item>
+                  <el-dropdown-item
+                    command="delete"
+                    :disabled="(row as TrainingExamSummary).attemptCount > 0"
+                    :title="examDeleteReason(row as TrainingExamSummary)"
+                    :class="{ 'has-disabled-reason': (row as TrainingExamSummary).attemptCount > 0 }"
+                  >
+                    <el-tooltip
+                      :disabled="!(row as TrainingExamSummary).attemptCount"
+                      :content="examDeleteReason(row as TrainingExamSummary)"
+                      placement="left"
+                    >
+                      <span>删除考试</span>
+                    </el-tooltip>
+                  </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -418,12 +491,23 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     </div>
   </section>
 
-  <el-dialog v-model="dialogVisible" :title="editing ? '编辑考试' : '新建考试'" width="min(720px, 96vw)">
+  <el-dialog
+    v-model="dialogVisible"
+    :title="editing ? '编辑考试' : '新建考试'"
+    width="min(720px, 96vw)"
+    @opened="focusNameInput"
+  >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
     <el-form label-position="top" class="entity-form">
       <div class="exam-form-grid">
         <el-form-item label="考试名称" required>
-          <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="例如：网络安全期中考试" />
+          <el-input
+            ref="nameInput"
+            v-model="form.name"
+            maxlength="100"
+            show-word-limit
+            placeholder="例如：网络安全期中考试"
+          />
         </el-form-item>
         <el-form-item label="使用试卷" required>
           <el-select v-model="form.paperId" filterable placeholder="选择试卷">

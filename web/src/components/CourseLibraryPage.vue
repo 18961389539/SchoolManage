@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
@@ -7,6 +7,7 @@ import { courseStatusOptions, courseTypeOptions, durationText, labelOf } from '.
 import type { CoreCourseSeries, CourseSummary, Paged } from '../types'
 import CourseTreeEditor from './CourseTreeEditor.vue'
 import TableEmpty from './TableEmpty.vue'
+import { focusFirstField } from '../focusField'
 
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>]; 'activation-changed': [] }>()
 
@@ -21,6 +22,12 @@ const statusFilter = ref('')
 const typeFilter = ref('')
 
 const dialogVisible = ref(false)
+const nameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
+function focusNameInput() {
+  const root = nameInput.value?.$el
+  if (root) focusFirstField(root)
+  else nameInput.value?.focus?.()
+}
 const editing = ref<CourseSummary | null>(null)
 const saving = ref(false)
 const formError = ref('')
@@ -29,6 +36,13 @@ const series = ref<CoreCourseSeries[]>([])
 const seriesVisible = ref(false)
 const seriesForm = reactive({ id: '', name: '', description: '' })
 const seriesSaving = ref(false)
+
+const seriesNameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
+function focusSeriesName() {
+  const root = seriesNameInput.value?.$el
+  if (root) focusFirstField(root)
+  else seriesNameInput.value?.focus?.()
+}
 
 async function loadSeries() {
   try {
@@ -109,6 +123,8 @@ function resetFilters() {
   typeFilter.value = ''
   applyFilters()
 }
+
+const filtering = computed(() => !!search.value.trim() || !!statusFilter.value || !!typeFilter.value)
 
 function openCreate() {
   editing.value = null
@@ -270,7 +286,7 @@ onMounted(() => {
         <el-button type="primary" :icon="Search" @click="applyFilters">查询</el-button>
         <el-button @click="resetFilters">重置</el-button>
       </div>
-      <span class="record-count">共 {{ loading && !total ? '—' : total }} 门课程</span>
+      <span class="record-count">{{ loading && !total ? '正在加载课程…' : '共 ' + total + ' 门课程' }}</span>
     </div>
 
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="table-error" />
@@ -278,9 +294,19 @@ onMounted(() => {
       <template #empty>
         <TableEmpty
           v-if="!loading"
-          :title="error ? '课程加载失败' : '暂无课程'"
-          :hint="error ? '请检查服务状态后刷新重试' : '点击右上角「新建课程」，配置章节资源后发布。'"
-        />
+          :title="error ? '课程加载失败' : filtering ? '没有符合条件的课程' : '暂无课程'"
+          :hint="
+            error
+              ? '请检查服务状态后刷新重试'
+              : filtering
+                ? '试试调整关键词、类型或状态筛选，也可清除后查看全部课程。'
+                : '点击右上角「新建课程」，配置章节资源后发布。'
+          "
+        >
+          <template v-if="!error && filtering" #action>
+            <el-button type="primary" plain @click="resetFilters">清除筛选</el-button>
+          </template>
+        </TableEmpty>
       </template>
       <el-table-column prop="name" label="课程" min-width="210">
         <template #default="{ row }">
@@ -349,12 +375,23 @@ onMounted(() => {
     </div>
   </section>
 
-  <el-dialog v-model="dialogVisible" :title="editing ? '编辑课程' : '新建课程'" width="min(620px, 94vw)">
+  <el-dialog
+    v-model="dialogVisible"
+    :title="editing ? '编辑课程' : '新建课程'"
+    width="min(620px, 94vw)"
+    @opened="focusNameInput"
+  >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
     <el-form label-position="top" class="entity-form">
       <div class="course-form-grid">
         <el-form-item label="课程名称" required>
-          <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="例如：计算机网络基础" />
+          <el-input
+            ref="nameInput"
+            v-model="form.name"
+            maxlength="100"
+            show-word-limit
+            placeholder="例如：计算机网络基础"
+          />
         </el-form-item>
         <el-form-item label="课程类型" required>
           <el-select v-model="form.type">
@@ -394,8 +431,8 @@ onMounted(() => {
     </template>
   </el-dialog>
 
-  <el-dialog v-model="seriesVisible" title="专业核心课系列" width="min(720px, 94vw)">
-    <el-table :data="series" row-key="id" empty-text="暂无系列">
+  <el-dialog v-model="seriesVisible" title="专业核心课系列" width="min(720px, 94vw)" @opened="focusSeriesName">
+    <el-table :data="series" row-key="id" empty-text="暂无系列，可在下方输入名称后新增。">
       <el-table-column prop="name" label="系列名称" min-width="140" />
       <el-table-column prop="description" label="介绍" min-width="180" show-overflow-tooltip />
       <el-table-column prop="courseCount" label="课程数" width="75" />
@@ -408,7 +445,7 @@ onMounted(() => {
     </el-table>
     <el-form label-position="top" class="entity-form section-gap" @submit.prevent="saveSeries">
       <el-form-item :label="seriesForm.id ? '编辑系列名称' : '新增系列名称'">
-        <el-input v-model="seriesForm.name" maxlength="100" />
+        <el-input ref="seriesNameInput" v-model="seriesForm.name" maxlength="100" />
       </el-form-item>
       <el-form-item label="系列介绍"
         ><el-input v-model="seriesForm.description" type="textarea" maxlength="2000"

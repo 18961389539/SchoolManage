@@ -180,7 +180,7 @@ onMounted(load)
   align-items: center;
   gap: 14px;
   padding-bottom: 18px;
-  border-bottom: 1px solid #e7edf4;
+  border-bottom: 1px solid #dce7eb;
   margin-bottom: 18px;
 }
 
@@ -207,7 +207,7 @@ onMounted(load)
   border-radius: 14px;
   display: grid;
   place-items: center;
-  background: linear-gradient(145deg, #1f5c88, #2b82b4);
+  background: linear-gradient(145deg, #164b4c, #1a7a6a);
   color: #fff;
   font-size: 20px;
   font-weight: 700;
@@ -237,7 +237,7 @@ onMounted(load)
 
 .side-icon {
   font-size: 26px;
-  color: #2b82b4;
+  color: var(--workspace-accent);
 }
 
 .profile-side h2 {

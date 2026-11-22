@@ -4,6 +4,7 @@ import { Delete, EditPen, Plus, Refresh, Search, View } from '@element-plus/icon
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
 import { examQuestionBankLabels } from '../questionBanks'
+import { focusFirstField } from '../focusField'
 import type { ExamQuestionBank, ExamQuestionBankType, Paged } from '../types'
 
 const QuestionBankPage = defineAsyncComponent(() => import('./QuestionBankPage.vue'))
@@ -17,6 +18,12 @@ const loading = ref(false)
 const error = ref('')
 const activeBank = ref<ExamQuestionBank | null>(null)
 const editor = ref(false)
+const bankNameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
+function focusBankName() {
+  const root = bankNameInput.value?.$el
+  if (root) focusFirstField(root)
+  else bankNameInput.value?.focus?.()
+}
 const editing = ref<ExamQuestionBank | null>(null)
 const form = reactive({ name: '', type: 'theory' as ExamQuestionBankType })
 const formError = ref('')
@@ -208,10 +215,17 @@ onMounted(load)
       </div>
     </section>
   </template>
-  <el-dialog v-model="editor" :title="editing ? '编辑题库' : '新建题库'" width="min(510px, 94vw)">
+  <el-dialog
+    v-model="editor"
+    :title="editing ? '编辑题库' : '新建题库'"
+    width="min(510px, 94vw)"
+    @opened="focusBankName"
+  >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" />
     <el-form label-position="top" @submit.prevent="save">
-      <el-form-item label="题库名称" required><el-input v-model="form.name" maxlength="100" /></el-form-item>
+      <el-form-item label="题库名称" required
+        ><el-input ref="bankNameInput" v-model="form.name" maxlength="100"
+      /></el-form-item>
       <el-form-item label="题库类型" required>
         <el-select v-model="form.type" :disabled="editing?.isDefault">
           <el-option v-for="(label, key) in examQuestionBankLabels" :key="key" :label="label" :value="key" />

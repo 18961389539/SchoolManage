@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { Connection, Delete, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { focusFirstField } from '../focusField'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, messageOf, post } from '../api'
 import type {
@@ -28,6 +29,21 @@ const dialogVisible = ref(false)
 const saving = ref(false)
 const formError = ref('')
 const form = reactive({ groupId: '', resourceId: '', cabinetIds: [] as string[] })
+
+const assignForm = ref<{ $el?: HTMLElement }>()
+function focusAssignForm() {
+  focusFirstField(assignForm.value?.$el)
+}
+function assignCabinetReason(): string | undefined {
+  if (!options.value.groups.length && !options.value.resources.length) {
+    return '请先创建课堂小组，并在课程中配置案例实操题目后再分配机柜'
+  }
+  if (!options.value.groups.length) return '请先在“小组管理”中创建小组后再分配机柜'
+  if (!options.value.resources.length) return '请先在课程中配置案例实操题目后再分配机柜'
+}
+function cabinetSelectionReason(action: string): string | undefined {
+  if (!selected.value.length) return `请先勾选要${action}的机柜`
+}
 
 async function loadOptions() {
   if (!props.classroomId) return
@@ -184,20 +200,40 @@ watch(
     @update:model-value="value => emit('update:visible', value)"
   >
     <div class="drawer-toolbar">
-      <el-button
-        type="primary"
-        :icon="Plus"
-        :disabled="!options.groups.length || !options.resources.length"
-        @click="openAssign"
+      <el-tooltip :disabled="!assignCabinetReason()" :content="assignCabinetReason()" placement="bottom">
+        <span class="disabled-action-wrap">
+          <el-button
+            type="primary"
+            :icon="Plus"
+            :disabled="!options.groups.length || !options.resources.length"
+            @click="openAssign"
+          >
+            分配机柜
+          </el-button>
+        </span>
+      </el-tooltip>
+      <el-tooltip
+        :disabled="!cabinetSelectionReason('测试')"
+        :content="cabinetSelectionReason('测试')"
+        placement="bottom"
       >
-        分配机柜
-      </el-button>
-      <el-button :icon="Connection" :loading="testing" :disabled="!selected.length" @click="testSelected"
-        >批量测试</el-button
+        <span class="disabled-action-wrap">
+          <el-button :icon="Connection" :loading="testing" :disabled="!selected.length" @click="testSelected"
+            >批量测试</el-button
+          >
+        </span>
+      </el-tooltip>
+      <el-tooltip
+        :disabled="!cabinetSelectionReason('取消分配')"
+        :content="cabinetSelectionReason('取消分配')"
+        placement="bottom"
       >
-      <el-button type="danger" plain :icon="Delete" :disabled="!selected.length" @click="cancelSelected"
-        >取消分配</el-button
-      >
+        <span class="disabled-action-wrap">
+          <el-button type="danger" plain :icon="Delete" :disabled="!selected.length" @click="cancelSelected"
+            >取消分配</el-button
+          >
+        </span>
+      </el-tooltip>
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       <el-input
         v-model="search"
@@ -254,9 +290,15 @@ watch(
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" title="分配机柜" width="min(620px, 94vw)" append-to-body>
+    <el-dialog
+      v-model="dialogVisible"
+      title="分配机柜"
+      width="min(620px, 94vw)"
+      append-to-body
+      @opened="focusAssignForm"
+    >
       <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
-      <el-form label-position="top" class="entity-form">
+      <el-form ref="assignForm" label-position="top" class="entity-form">
         <el-form-item label="小组" required>
           <el-select v-model="form.groupId" filterable placeholder="选择本课堂小组">
             <el-option v-for="group in options.groups" :key="group.id" :label="group.name" :value="group.id" />

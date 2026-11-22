@@ -6,6 +6,7 @@ import { api, dateTime, messageOf, post } from '../api'
 import { attemptStatusLabel, attemptStatusType, deploymentLabel, deploymentType } from '../exam'
 import type { ExamRosterStudent, ExamStudentOption } from '../types'
 import ExamDeploymentDialog from './ExamDeploymentDialog.vue'
+import { focusFirstField } from '../focusField'
 
 const props = defineProps<{
   modelValue: boolean
@@ -14,6 +15,27 @@ const props = defineProps<{
   editable: boolean
   deployable: boolean
 }>()
+
+const addStudentSelect = ref<{ $el?: HTMLElement }>()
+function focusAddStudent() {
+  focusFirstField(addStudentSelect.value?.$el)
+}
+function deployAllReason(): string | undefined {
+  if (!props.deployable) return '考试已结束，不能再部署环境'
+  if (!items.value.length) return '请先添加考生后再部署环境'
+  if (rowDeploying.value) return '正在部署个别考生环境，请稍后再试'
+}
+function deploySelectedReason(): string | undefined {
+  if (!props.deployable) return '考试已结束，不能再部署环境'
+  if (!selection.value.length) return '请先勾选要部署的学生'
+  if (deploying.value) return '正在部署环境，请稍后再试'
+}
+function removeStudentsReason(): string | undefined {
+  if (!selection.value.length) return '请先勾选要移除的学生'
+}
+function addStudentsReason(): string | undefined {
+  if (!addSelection.value.length) return '请先搜索并选择要加入的学生'
+}
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; changed: [] }>()
 
 const visible = computed({
@@ -198,30 +220,43 @@ watch(
       <el-button :icon="Refresh" :loading="loading" @click="load()">刷新</el-button>
       <el-switch v-model="autoRefresh" active-text="自动刷新" />
       <el-button v-if="editable" :icon="Plus" @click="openAdd">添加学生</el-button>
-      <el-button
-        v-if="editable"
-        :disabled="!selection.length || !!removingId"
-        type="danger"
-        plain
-        @click="removeStudents(selection)"
-        >移除所选</el-button
-      >
-      <el-button
-        v-if="projectCount"
-        type="primary"
-        :loading="deploying && !rowDeploying"
-        :disabled="!deployable || !items.length || !!rowDeploying"
-        @click="deploy()"
-      >
-        一键部署环境
-      </el-button>
-      <el-button
-        v-if="projectCount"
-        :disabled="!deployable || !selection.length || deploying"
-        @click="deploy(selection.map(item => item.studentUserId))"
-      >
-        部署所选
-      </el-button>
+      <template v-if="editable">
+        <el-tooltip :disabled="!removeStudentsReason()" :content="removeStudentsReason()" placement="bottom">
+          <span class="disabled-action-wrap">
+            <el-button
+              :disabled="!selection.length || !!removingId"
+              type="danger"
+              plain
+              @click="removeStudents(selection)"
+              >移除所选</el-button
+            >
+          </span>
+        </el-tooltip>
+      </template>
+      <template v-if="projectCount">
+        <el-tooltip :disabled="!deployAllReason()" :content="deployAllReason()" placement="bottom">
+          <span class="disabled-action-wrap">
+            <el-button
+              type="primary"
+              :loading="deploying && !rowDeploying"
+              :disabled="!deployable || !items.length || !!rowDeploying"
+              @click="deploy()"
+            >
+              一键部署环境
+            </el-button>
+          </span>
+        </el-tooltip>
+        <el-tooltip :disabled="!deploySelectedReason()" :content="deploySelectedReason()" placement="bottom">
+          <span class="disabled-action-wrap">
+            <el-button
+              :disabled="!deployable || !selection.length || deploying"
+              @click="deploy(selection.map(item => item.studentUserId))"
+            >
+              部署所选
+            </el-button>
+          </span>
+        </el-tooltip>
+      </template>
       <span class="record-count">共 {{ items.length }} 人 · 已部署 {{ deployedCount }} 人</span>
     </div>
 
@@ -318,9 +353,16 @@ watch(
       />
     </el-dialog>
 
-    <el-dialog v-model="addVisible" title="添加考试学生" width="min(600px, 94vw)" append-to-body>
+    <el-dialog
+      v-model="addVisible"
+      title="添加考试学生"
+      width="min(600px, 94vw)"
+      append-to-body
+      @opened="focusAddStudent"
+    >
       <div class="add-student-form">
         <el-select
+          ref="addStudentSelect"
           v-model="addSelection"
           multiple
           filterable
@@ -344,9 +386,13 @@ watch(
       </div>
       <template #footer>
         <el-button @click="addVisible = false">取消</el-button>
-        <el-button type="primary" :loading="adding" :disabled="!addSelection.length" @click="addStudents">
-          加入 {{ addSelection.length }} 名学生
-        </el-button>
+        <el-tooltip :disabled="!addStudentsReason()" :content="addStudentsReason()" placement="top">
+          <span class="disabled-action-wrap">
+            <el-button type="primary" :loading="adding" :disabled="!addSelection.length" @click="addStudents">
+              加入 {{ addSelection.length }} 名学生
+            </el-button>
+          </span>
+        </el-tooltip>
       </template>
     </el-dialog>
   </el-drawer>

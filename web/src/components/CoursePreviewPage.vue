@@ -177,6 +177,11 @@ function machineStatus(status: string) {
   return status === 'running' ? '运行中' : status === 'stopped' ? '已停止' : status || '未知'
 }
 
+function previewMachineReason(row: { canConnect: boolean; status?: string }): string | undefined {
+  if (row.canConnect) return undefined
+  return row.status && row.status !== 'running' ? '虚拟机未运行，无法连接' : '当前无法连接'
+}
+
 function answerText(resource: CoursePreviewResource, questionId: string) {
   const question = resource.questions.find(item => item.id === questionId)
   return question ? selectedText({ options: question.options, answers: practiceAnswers[questionId] }) : '未作答'
@@ -401,14 +406,22 @@ function resultTagType(questionId: string): 'success' | 'danger' {
                 </el-table-column>
                 <el-table-column label="操作" width="92">
                   <template #default="{ row }">
-                    <el-button
-                      link
-                      type="primary"
-                      :disabled="!row.canConnect"
-                      @click="connectMachine(row as { id: string; name: string })"
+                    <el-tooltip
+                      :disabled="!previewMachineReason(row as { canConnect: boolean; status?: string })"
+                      :content="previewMachineReason(row as { canConnect: boolean; status?: string })"
+                      placement="top"
                     >
-                      连接
-                    </el-button>
+                      <span class="disabled-action-wrap">
+                        <el-button
+                          link
+                          type="primary"
+                          :disabled="!row.canConnect"
+                          @click="connectMachine(row as { id: string; name: string })"
+                        >
+                          连接
+                        </el-button>
+                      </span>
+                    </el-tooltip>
                   </template>
                 </el-table-column>
               </el-table>
@@ -469,7 +482,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
   justify-content: space-between;
   gap: 8px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #e7edf4;
+  border-bottom: 1px solid #dce7eb;
   color: #1c334e;
   font-weight: 600;
 }
@@ -493,7 +506,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 .outline-section {
   padding-left: 8px;
   margin-bottom: 10px;
-  border-left: 2px solid #e2ebf4;
+  border-left: 2px solid #dce7eb;
 }
 
 .outline-section-title {
@@ -534,13 +547,13 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 }
 
 .outline-resource:hover {
-  background: #f5f9fd;
+  background: #eef6f4;
 }
 
 .outline-resource.active {
-  color: #1f4f7a;
-  background: #eaf3fc;
-  border-color: #cfe2f4;
+  color: #145a50;
+  background: #e3f3ee;
+  border-color: #cfe6df;
 }
 
 .outline-empty {
@@ -559,7 +572,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
   justify-content: space-between;
   gap: 16px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #e7edf4;
+  border-bottom: 1px solid #dce7eb;
 }
 
 .content-tags {
@@ -589,8 +602,8 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 
 .content-body.topology {
   padding: 10px 12px;
-  background: #f7fafd;
-  border: 1px solid #e8eef5;
+  background: #f5f9f8;
+  border: 1px solid #e4eeea;
   border-radius: 8px;
   font-size: 13px;
 }
@@ -604,7 +617,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 .content-block {
   margin-top: 22px;
   padding-top: 16px;
-  border-top: 1px solid #e7edf4;
+  border-top: 1px solid #dce7eb;
 }
 
 .content-block h3 {
@@ -627,8 +640,8 @@ function resultTagType(questionId: string): 'success' | 'danger' {
   flex-wrap: wrap;
   gap: 8px;
   padding: 8px 10px;
-  background: #f7fafd;
-  border: 1px solid #e8eef5;
+  background: #f5f9f8;
+  border: 1px solid #e4eeea;
   border-radius: 7px;
   color: #3e566f;
   font-size: 12px;
@@ -663,8 +676,8 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 .practice-question {
   padding: 14px;
   margin-bottom: 12px;
-  background: #f8fafc;
-  border: 1px solid #e5edf5;
+  background: #f6faf8;
+  border: 1px solid #dce7eb;
   border-radius: 9px;
 }
 
@@ -728,8 +741,8 @@ function resultTagType(questionId: string): 'success' | 'danger' {
   margin-bottom: 10px;
   color: #56697c;
   font-size: 12px;
-  background: #f7fafd;
-  border: 1px solid #e8eef5;
+  background: #f5f9f8;
+  border: 1px solid #e4eeea;
   border-radius: 7px;
 }
 

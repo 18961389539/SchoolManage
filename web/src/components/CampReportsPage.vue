@@ -143,6 +143,8 @@ onMounted(load)
   flex-wrap: wrap;
   gap: 12px;
   padding: 14px 18px;
+  background: #f8fbfb;
+  border-bottom: 1px solid #dce7eb;
 }
 
 .staff-summary {

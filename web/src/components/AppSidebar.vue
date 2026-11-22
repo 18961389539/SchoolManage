@@ -159,6 +159,7 @@ function onTab(event: KeyboardEvent) {
             type="button"
             :class="{ active: route === item.key }"
             :aria-current="route === item.key ? 'page' : undefined"
+            :title="item.label"
             @click="emit('navigate', item.key)"
           >
             <el-icon :size="18" aria-hidden="true"><component :is="item.icon" /></el-icon><span>{{ item.label }}</span>
