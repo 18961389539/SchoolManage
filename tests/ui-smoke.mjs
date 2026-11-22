@@ -112,7 +112,16 @@ async function captureScreenshot(target, filename, {fullPage = true, mask = [], 
 const capture = nodeAccountWorkflows && !cabinetWorkflows ? async () => {} : captureScreenshot;
 
 function entityUi(page) {
-  const openPage = name => page.getByRole('button', {name, exact: true}).click();
+  // Sidebar groups start collapsed for every group except the current page, so open
+  // them before asking Playwright to click an item that may not be visible yet.
+  const expandNavigation = async () => {
+    const collapsedGroups = page.locator('.nav-group-toggle[aria-expanded="false"]');
+    while (await collapsedGroups.count()) await collapsedGroups.first().click();
+  };
+  const openPage = async name => {
+    await expandNavigation();
+    await page.getByRole('button', {name, exact: true}).click();
+  };
   const rowNamed = name => page.getByRole('row').filter({
     has: page.getByRole('cell', {name, exact: true})
       .or(page.getByRole('cell', {name: `${name} 模拟`, exact: true}))
@@ -276,7 +285,7 @@ async function verifyNavigationIsolation(page, ui, adminApi) {
     })
   ]);
   const preview = await previewResponse.json();
-  await studentImport.getByPlaceholder('输入统一初始密码').fill(password);
+  await studentImport.locator('input[type="password"]').fill(password);
   await studentImport.getByRole('button', {name: '导入 1 条有效记录'}).click();
   const confirmImport = page.getByRole('dialog', {name: '确认导入'});
   await holdNextResponse(`/api/imports/${preview.batchId}/commit`, 'POST',
@@ -352,7 +361,7 @@ try {
     await verifyNavigationIsolation(page, ui, adminApi);
     mark('切换页面时忽略旧表单与导入预览、作废旧删除确认，待导入提交确认后才显示取消选项');
   }
-  await page.getByRole('button', {name: '实训设备', exact: true}).click();
+  await openPage('实训设备');
   const routerRow = page.getByRole('row').filter({hasText: '模拟路由器 RT-01'}).first();
   await routerRow.getByRole('button', {name: '编辑', exact: true}).click();
   const deviceEdit = page.getByRole('dialog', {name: '编辑设备'});
@@ -610,7 +619,7 @@ try {
       assert.equal((await personSession.request.get(`${base}/api/auth/me`)).status(), 200);
       await rowNamed(edit.name).getByRole('button', {name: '重置密码'}).click();
       const resetDialog = page.getByRole('dialog', {name: '重置账号密码'});
-      await resetDialog.getByPlaceholder('请输入至少 12 位的新密码').fill(newPassword);
+      await resetDialog.locator('input[type="password"]').fill(newPassword);
       await resetDialog.getByRole('button', {name: '确认重置'}).click();
       await resetDialog.waitFor({state: 'hidden'});
       assert.equal((await personSession.request.get(`${base}/api/auth/me`)).status(), 401);
@@ -688,7 +697,7 @@ try {
     await capture(page, `${kind}-import-validation.jpg`, {fullPage: false});
     await importDialog.getByRole('button', {name: '移除问题行'}).click();
     await invalidImportRow.waitFor({state: 'hidden'});
-    await importDialog.getByPlaceholder('输入统一初始密码').fill(password);
+    await importDialog.locator('input[type="password"]').fill(password);
     await importDialog.getByRole('button', {name: '导入 1 条有效记录'}).click();
     await page.getByRole('dialog', {name: '确认导入'}).getByRole('button', {name: '开始导入'}).click();
     await importDialog.waitFor({state: 'hidden'});
