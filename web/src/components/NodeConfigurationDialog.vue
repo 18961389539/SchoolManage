@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, reactive, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Row } from '../api'
 import { shanghaiInputTime, shanghaiInputToIso } from '../time'
 import { focusFirstField } from '../focusField'
@@ -11,6 +11,10 @@ const emit = defineEmits<{ submit: [payload: Row] }>()
 
 const configuration = reactive({ ipAddress: '', subnetMask: '', gateway: '', systemTime: '' })
 const updateSystemTime = ref(false)
+const baseline = ref('')
+const dirty = computed(
+  () => JSON.stringify({ ...configuration, updateSystemTime: updateSystemTime.value }) !== baseline.value
+)
 
 const configForm = ref<{ $el?: HTMLElement }>()
 function focusConfigForm() {
@@ -21,7 +25,31 @@ watch(visible, open => {
   if (!open) return
   Object.assign(configuration, props.value, { systemTime: shanghaiInputTime(props.value.systemTime) })
   updateSystemTime.value = false
+  baseline.value = JSON.stringify({ ...configuration, updateSystemTime: false })
 })
+
+async function confirmDiscard() {
+  if (props.saving) return false
+  if (!dirty.value) return true
+  try {
+    await ElMessageBox.confirm('节点配置还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
+      type: 'warning',
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续编辑'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function handleBeforeClose(done: () => void) {
+  if (await confirmDiscard()) done()
+}
+
+async function cancel() {
+  if (await confirmDiscard()) visible.value = false
+}
 
 function submit() {
   if (!configuration.ipAddress || !configuration.subnetMask) {
@@ -51,6 +79,7 @@ function submit() {
     :title="`${node?.name || '节点'} · 系统配置`"
     width="600px"
     :close-on-click-modal="false"
+    :before-close="handleBeforeClose"
     @opened="focusConfigForm"
   >
     <el-alert
@@ -76,7 +105,7 @@ function submit() {
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
+      <el-button @click="cancel">取消</el-button>
       <el-button type="primary" :loading="saving" @click="submit">保存模拟配置</el-button>
     </template>
   </el-dialog>
