@@ -7,22 +7,22 @@ Every endpoint binds the client disconnect signal (`HttpContext.RequestAborted`)
 Frontend response contracts live in `web/src/types.ts`. `api<T>`, `post<T>` and `put<T>` have no `any` default, so each call site must name the expected payload; `Row` is reserved for runtime-configured entity forms and tables.
 
 ## Setup and session
-- GET `/status`: `{initialized, product, version, schemaVersion, logWriteFailures, schoolName}` anonymous
+- GET `/status`: `{initialized, product, version, schemaVersion, logWriteFailures, maxUploadBytes, schoolName}` anonymous. `maxUploadBytes` is the single source for the upload limit the web client enforces.
 - POST `/setup`: `{schoolName, userName, displayName,password}` -> session, first admin, loopback only
 - POST `/auth/login`: `{userName,password}` -> `{user:{id,userName,displayName,role},csrfToken}`
 - GET `/auth/me`: same session response
 - POST `/auth/logout`
 - POST `/auth/password`: `{currentPassword,newPassword}`
-- GET `/dashboard`: `{schoolName,counts:{professions,classes,teachers,students,cabinets,devices,nodes},recentAudits:[],server:{...}}` actual data only
+- GET `/dashboard`: `{schoolName,counts:{professions,classes,teachers,students,cabinets,devices,nodes},recentAudits:[],server:{...}}` actual data only. Aggregate counts are readable by any signed-in account; `recentAudits` is empty unless the caller is an administrator.
 
 ## Academics (admin)
 - GET/POST `/professions`, PUT/DELETE `/professions/{id}`
   fields `{id,name,code,remark}`
 - GET/POST `/classes`, PUT/DELETE `/classes/{id}`
-  fields `{id,name,professionId,professionName,remark}`
+  fields `{id,name,professionId,professionName,remark}`. The GET list combines `?professionId=...` with the name or profession keyword search.
 - GET/POST `/people?kind=teacher|student`, PUT/DELETE `/people/{id}`
   fields `{id,kind,name,userName,number,classId,className,gender,phone,email,role}`
-  create also accepts `password` (required >=12); roles `Admin|Teacher|Student`.
+  create also accepts `password` (required >=12); roles `Admin|Teacher|Student`. The GET list combines `classId`, `role` and `search` with `kind`. Search matches name, account, staff or student number, and phone. Teacher management exposes the `Admin|Teacher` role choices; student management exposes the class filter.
 - POST `/people/batch-delete`: `{ids:[]}` atomic after reference checks
 - POST `/people/{id}/reset-password`: `{newPassword}`
 - POST `/imports/preview?kind=teacher|student`: multipart `file` (.xlsx/.csv)
@@ -32,32 +32,39 @@ Frontend response contracts live in `web/src/types.ts`. `api<T>`, `post<T>` and 
 - POST `/imports/{batchId}/cancel`: request cooperative cancellation; completed batches return 409
 - GET `/imports/template?kind=teacher|student`: CSV template
 
-## Infrastructure (admin; agent implements)
+## Infrastructure
 - GET/POST `/device-types`, PUT/DELETE `/device-types/{id}`
   fields `{id,name,newline,backspace,remark}`
 - GET/POST `/cabinets`, PUT/DELETE `/cabinets/{id}`
   fields `{id,name,host,port,jumpHost,jumpPort,jumpUserName,jumpPassword,remark}`
   jumpPassword write-only; responses `hasJumpPassword`.
-- POST `/cabinets/test-connections`: `{ids:[]}` real timed probes -> `{items:[{id,success,message}]}`; writes an audit entry. Targets that resolve to loopback, link-local, multicast or unspecified addresses are refused with `success:false` instead of being probed.
-- POST `/cabinets/{id}/reclaim`: release platform sessions/reservations; never pretend hardware reset
+- POST `/cabinets/test-connections`: `{ids:[]}` -> `{items:[{id,name,success,message,isSimulated,level}]}`. Results are ordered by cabinet name and ID. Writes an audit entry. The simulator reports an in-process response. External probes report timed TCP reachability only, including jump host reachability when configured. The outbound target policy applies to external probes.
+- POST `/cabinets/{id}/reclaim`: closes current platform terminal sessions and releases their leases. Saved simulator configuration is retained.
 - GET/POST `/devices?cabinetId=...`, PUT/DELETE `/devices/{id}`
-  fields `{id,name,cabinetId,deviceTypeId,host,port,connectionType,serialPortNumber,webPort,webProtocol,userName,password,remark}`
-  password write-only; connectionType `ssh|telnet|tcp`; responses `hasPassword`.
-- POST `/devices/{id}/connect-test`: real timed probe with the same target policy and audit entry as `/cabinets/test-connections`
-- GET `/terminal/{deviceId}` WebSocket; validate same origin, admin cookie, and the same outbound target policy. Input/output raw terminal text; xterm UI. No credentials in URL.
+  fields `{id,name,cabinetId,deviceTypeId,nodeId,host,port,connectionType,serialPortNumber,webPort,webProtocol,userName,password,remark}`
+  password write-only; connectionType `simulated|ssh|telnet|tcp`; responses include `hasPassword`. Administrators may link a simulated device to a simulated node via nullable `nodeId`. The v5 migration associates built-in simulated devices, and operators can link other simulated devices explicitly.
+  List responses include `cabinet: {id,name}` when a matching cabinet scope is supplied, even if the device list is empty. Other requests return `cabinet: null`.
+- POST `/devices/{id}/connect-test`: returns simulated connectivity for built-in devices. External direct probes are subject to the same outbound policy as cabinet probes. A real device behind a jump host returns an unsupported result.
+- GET `/devices/{id}/web-console`: simulated devices only, with the same device scope as the terminal. Returns `{id,name,isSimulated,hostname,interfaces:[{name,enabled,description}],enabledInterfaceCount,busy,hasStartupConfiguration,startupHostname,unsavedChanges,version}`. Busy devices remain readable.
+- PUT `/devices/{id}/web-console`: `{version,hostname,interfaces:[{name,enabled,description}]}` updates the simulated running configuration. PUT `/devices/{id}/web-console/startup`: `{version}` saves the running configuration as startup configuration. Both return the updated snapshot and reject active sessions or stale versions with 409. The Web console and CLI use the same settings. Unknown and out-of-scope devices return 404.
+- GET `/terminal/{deviceId}` WebSocket; validates same origin and the caller's current session. Administrators may manage all supported devices. Teachers and students can open simulated devices linked to their active assigned node. The server rechecks authorization during the lease. External terminal targets use the same outbound target policy.
+- GET `/my-resources`: `{nodes,devices,virtualMachines}` scoped to the signed-in teacher's or student's assigned simulated nodes. Disabled nodes are listed without terminal or Web write access. VM power controls remain administrator-only.
 - GET `/server/info`: actual management-host CPU/memory/network inventory and status
 - GET/POST `/nodes`, PUT/DELETE `/nodes/{id}`
-  fields `{id,name,host,provider,port,userName,password,enabled,remark}`; provider `hyperv|proxmox`; write-only secrets
-- GET `/nodes/{id}/status`: live provider response or explicit unavailable/unsupported, never fabricated
-- GET `/virtual-machines`: actual connected-provider list; no fabricated data
+  The paginated GET list combines `provider=simulated|hyperv|proxmox` with node name/address search. Each row includes `enabled`, `healthStatus`, `cpuUsagePercent`, `memoryUsagePercent`, `diskUsagePercent`, `virtualMachineCount`, `virtualMachineQuota`, `accountCount` and `accountQuota`. Simulated health is `healthy` independently of scheduling status. The four metric fields are `null` for unconnected providers. Provider credentials are write-only.
+- GET `/nodes/{id}/status`: simulated node details use the same resource calculations as the list. CPU and memory percentages measure running VM reservations, and disk counts all VM reservations. Unconnected provider details return 501.
+- POST `/nodes/{id}/enable` and `/nodes/{id}/disable`: change simulated node scheduling eligibility. A disabled node blocks new resource assignments and VM starts. Its running VMs retain their current state.
+- GET/PUT `/nodes/{id}/configuration`: simulated node IPv4 address, subnet mask, gateway and clock. PUT accepts `{ipAddress,subnetMask,gateway,systemTime?}`, with a timezone-qualified ISO timestamp for clock changes. The Windows management host remains read-only.
+- GET/POST `/virtual-machines`, PUT/DELETE `/virtual-machines/{id}`: the list is paginated and supports name search and `nodeId` filtering. Administrators can create and edit simulated virtual machines with `{name,nodeId,cpuCount,memoryMb,diskGb,remark}`. POST `/virtual-machines/{id}/start` and `/virtual-machines/{id}/stop` change simulation state. Edits and deletion require a stopped VM.
 
 ## Operations
 - GET `/audits`: `{items:[{id,at,userName,action,target,detail}],total}` ordered by `at` then `id` descending so pages stay stable when timestamps repeat; backed by `IX_Audits_At_Id`. Records are retained until an operator archives or removes them.
 - GET `/settings`: `{schoolName,backupDirectory,...}`; PUT `/settings`: admin
 - POST `/backups`: create consistent local SQLite backup -> `{fileName,createdAt,size}`; returns 507 before writing when the free-space probe reports insufficient space or cannot read the volume
 - GET `/backups`: list; GET `/backups/{fileName}` authorized file download
-- GET `/licenses`: signed license metadata, resource counts, machine code (private keys never shipped)
-- POST `/licenses`: multipart `file` for signed license upload; reject unsigned/invalid resources
+- GET `/licenses`: signed license metadata, machine code and five quota rows `{code,name,used,limit}`. `limit:null` means the dimension has never been enabled. `limit:0` forbids new allocation for that dimension.
+- POST `/licenses`: multipart `file` accepts 1–20 signed files, atomically. Resource codes `TRAINING.CABINETS`, `TRAINING.DEVICES`, `TRAINING.NODES`, `TRAINING.VMS` and `TRAINING.ASSIGNMENTS` enable corresponding limits. The highest currently valid grant determines the cap. Expired, corrupted or unverifiable grants give no capacity. Administrators can still manage and remove existing records. Legacy records remain readable and can be re-uploaded with the original signature to activate limits.
+- GET `/licenses/guide`: download usage and quota code instructions.
 
 ## UI principles
 Chinese UI, navy sidebar / crisp light workspace, accessible text, actual counts and empty states. No fake demo data, misleading connection states, or controls that silently do nothing. Show actionable API errors. Reusable searchable tables, form validation, explicit destructive confirmation. Sensitive inputs blank on edit means unchanged; never repopulate secrets.

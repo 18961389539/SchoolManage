@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using School.Training;
 
 namespace School.Training.Tests;
@@ -55,4 +56,21 @@ public sealed class StorageOptionsTests
     [Fact]
     public void Load_ClampsPreMigrationBackupCount()
         => Assert.Equal(100, Load(("School:Migrations:PreMigrationBackupCount", "500")).PreMigrationBackupCount);
+
+    [Fact]
+    public void Load_DefaultsFileLogLevelToInformation()
+        => Assert.Equal(LogLevel.Information, Load().LogMinimumLevel);
+
+    [Theory]
+    [InlineData("warning", LogLevel.Warning)]
+    [InlineData("Error", LogLevel.Error)]
+    [InlineData("None", LogLevel.None)]
+    public void Load_ReadsConfiguredFileLogLevel(string configured, LogLevel expected)
+        => Assert.Equal(expected, Load(("School:Logs:MinimumLevel", configured)).LogMinimumLevel);
+
+    [Theory]
+    [InlineData("verbose-ish")]
+    [InlineData("")]
+    public void Load_FallsBackToInformationForUnknownFileLogLevel(string configured)
+        => Assert.Equal(LogLevel.Information, Load(("School:Logs:MinimumLevel", configured)).LogMinimumLevel);
 }

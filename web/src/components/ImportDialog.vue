@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, Download, CircleCheck, Warning, Delete } from '@element-plus/icons-vue'
-import { api, post, messageOf, passwordIssue, ApiError, type Row } from '../api'
+import { api, post, messageOf, passwordIssue, ApiError, limits, maxUploadMegabytes, type Row } from '../api'
 import type { ImportIssue, ImportJobState, ImportPreviewResponse, ImportRow, ImportStatusResponse } from '../types'
 const props = defineProps<{ modelValue: boolean; kind: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; committed: [] }>()
@@ -21,6 +21,7 @@ const jobStatus = ref<ImportJobState | ''>(''),
   jobTotal = ref(0),
   cancelBusy = ref(false)
 let pollRun = 0
+let previewRun = 0
 const fileInput = ref<HTMLInputElement>()
 const progressText = computed(() => {
   if (jobStatus.value === 'queued') return '等待导入任务'
@@ -68,10 +69,12 @@ watch([removedInvalid, onlyInvalid], () => {
 async function chooseFile(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
-  if (file.size > 10 * 1024 * 1024) {
-    ElMessage.error('文件大小不能超过 10 MB')
+  if (file.size > limits.maxUploadBytes) {
+    ElMessage.error(`文件大小不能超过 ${maxUploadMegabytes()} MB`)
+    if (fileInput.value) fileInput.value.value = ''
     return
   }
+  const run = ++previewRun
   fileName.value = file.name
   busy.value = true
   error.value = ''
@@ -80,16 +83,18 @@ async function chooseFile(event: Event) {
   const data = new FormData()
   data.append('file', file)
   try {
-    preview.value = await api<ImportPreviewResponse>(`/imports/preview?kind=${props.kind}`, {
+    const result = await api<ImportPreviewResponse>(`/imports/preview?kind=${props.kind}`, {
       method: 'POST',
       body: data
     })
+    if (run !== previewRun) return
+    preview.value = result
     page.value = 1
     onlyInvalid.value = false
   } catch (err) {
-    error.value = messageOf(err)
+    if (run === previewRun) error.value = messageOf(err)
   } finally {
-    busy.value = false
+    if (run === previewRun) busy.value = false
     if (fileInput.value) fileInput.value.value = ''
   }
 }
@@ -102,11 +107,13 @@ async function waitForImport(batchId: string, run: number) {
       job = await api<ImportStatusResponse>(`/imports/${batchId}`)
       consecutiveErrors = 0
     } catch (err) {
+      if (run !== pollRun) throw err
       consecutiveErrors++
       if (consecutiveErrors >= 3) throw err
       await new Promise(resolve => setTimeout(resolve, 1500))
       continue
     }
+    if (run !== pollRun) return job
     jobStatus.value = job.status
     jobProcessed.value = Number(job.processedCount || 0)
     jobTotal.value = Number(job.totalCount || validCount.value)
@@ -139,49 +146,69 @@ function applyServerFeedback(err: unknown) {
     removedInvalid.value = false
   }
 }
-async function commit() {
-  if (!validateBeforeCommit()) return
+async function startImport(target: ImportPreviewResponse) {
+  busy.value = true
+  error.value = ''
+  jobStatus.value = ''
+  jobProcessed.value = 0
+  jobTotal.value = validCount.value
+  const run = ++pollRun
   try {
-    await ElMessageBox.confirm(
-      `将创建 ${validCount.value} 个${props.kind === 'teacher' ? '教师' : '学生'}档案及账号。账号首次登录需要修改密码。`,
-      '确认导入',
-      { confirmButtonText: '开始导入', cancelButtonText: '取消' }
-    )
-    busy.value = true
-    error.value = ''
-    jobStatus.value = 'queued'
-    jobProcessed.value = 0
-    jobTotal.value = validCount.value
-    const run = ++pollRun
-    const started = await post<ImportStatusResponse>(`/imports/${preview.value!.batchId}/commit`, {
+    const started = await post<ImportStatusResponse>(`/imports/${target.batchId}/commit`, {
       removeInvalidRows: removedInvalid.value,
       initialPassword: password.value
     })
+    if (run !== pollRun) return
     jobStatus.value = started.status
-    const result = await waitForImport(String(preview.value!.batchId), run)
+    const result = await waitForImport(String(target.batchId), run)
     if (run !== pollRun) return
     ElMessage.success(result.message || `已导入 ${result.importedCount ?? validCount.value} 条记录`)
     emit('committed')
+    jobStatus.value = ''
+    busy.value = false
     visible.value = false
   } catch (err) {
+    if (run !== pollRun) return
     if (jobStatus.value === 'cancelled') ElMessage.info('导入任务已取消')
-    else if (err !== 'cancel' && err !== 'close') applyServerFeedback(err)
+    else applyServerFeedback(err)
   } finally {
-    busy.value = false
-    jobStatus.value = ''
+    if (run === pollRun) {
+      busy.value = false
+      jobStatus.value = ''
+    }
   }
 }
+async function commit() {
+  if (!validateBeforeCommit()) return
+  const target = preview.value!
+  const kind = props.kind
+  const context = pollRun
+  try {
+    await ElMessageBox.confirm(
+      `将创建 ${validCount.value} 个${kind === 'teacher' ? '教师' : '学生'}档案及账号。账号首次登录需要修改密码。`,
+      '确认导入',
+      { confirmButtonText: '开始导入', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  if (pollRun !== context || props.kind !== kind || preview.value !== target) return
+  await startImport(target)
+}
 async function cancelImport() {
-  if (!preview.value || !activeJob.value || cancelBusy.value) return
+  const target = preview.value
+  if (!target || !activeJob.value || cancelBusy.value) return
+  const run = pollRun
   cancelBusy.value = true
   try {
-    const job = await post<ImportStatusResponse>(`/imports/${preview.value.batchId}/cancel`)
+    const job = await post<ImportStatusResponse>(`/imports/${target.batchId}/cancel`)
+    if (run !== pollRun || preview.value !== target) return
     jobStatus.value = job.status
     ElMessage.info(job.message || '正在取消导入任务')
   } catch (err) {
-    ElMessage.error(messageOf(err))
+    if (run === pollRun && preview.value === target) ElMessage.error(messageOf(err))
   } finally {
-    cancelBusy.value = false
+    if (run === pollRun) cancelBusy.value = false
   }
 }
 function beforeClose(done: () => void) {
@@ -215,6 +242,7 @@ watch(
   () => props.modelValue,
   value => {
     pollRun++
+    previewRun++
     if (value) {
       preview.value = null
       fileName.value = ''
@@ -226,11 +254,14 @@ watch(
       jobStatus.value = ''
       jobProcessed.value = 0
       jobTotal.value = 0
+      busy.value = false
+      cancelBusy.value = false
     }
   }
 )
 onBeforeUnmount(() => {
   pollRun++
+  previewRun++
 })
 </script>
 <template>
@@ -252,7 +283,7 @@ onBeforeUnmount(() => {
         <el-icon :size="30"><UploadFilled /></el-icon>
         <div>
           <strong>{{ fileName || '上传师生档案文件' }}</strong>
-          <p>支持 .xlsx / .csv，最大 10 MB。请使用模板中的列名填写。</p>
+          <p>支持 .xlsx / .csv，最大 {{ maxUploadMegabytes() }} MB。请使用模板中的列名填写。</p>
         </div>
       </div>
       <div class="heading-actions">

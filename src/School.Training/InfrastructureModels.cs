@@ -18,7 +18,10 @@ public partial class SchoolDbContext
         modelBuilder.Entity<TrainingNode>().HasIndex(x => x.Name).IsUnique();
         modelBuilder.Entity<TrainingDevice>().HasOne<Cabinet>().WithMany().HasForeignKey(x => x.CabinetId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<TrainingDevice>().HasOne<DeviceType>().WithMany().HasForeignKey(x => x.DeviceTypeId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<TrainingDevice>().HasOne<TrainingNode>().WithMany().HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<TrainingVirtualMachine>().HasOne<TrainingNode>().WithMany().HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<TrainingVirtualMachine>().HasIndex(x => x.Uuid).IsUnique();
+        modelBuilder.Entity<TrainingVirtualMachine>().HasIndex(x => x.IpAddress).IsUnique();
         modelBuilder.Entity<NodeAccountAssignment>().HasIndex(x => new { x.NodeId, x.UserId }).IsUnique();
         modelBuilder.Entity<NodeAccountAssignment>().HasOne<TrainingNode>().WithMany().HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<NodeAccountAssignment>().HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
@@ -54,9 +57,10 @@ public sealed class TrainingDevice
     public string Name { get; set; } = "";
     public string CabinetId { get; set; } = "";
     public string DeviceTypeId { get; set; } = "";
+    public string? NodeId { get; set; }
     public string Host { get; set; } = "";
     public int Port { get; set; } = 23;
-    public string ConnectionType { get; set; } = "simulated";
+    public string ConnectionType { get; set; } = ResourceProviders.Simulated;
     public int SerialPortNumber { get; set; } = 1;
     public int WebPort { get; set; } = 80;
     public string WebProtocol { get; set; } = "http";
@@ -72,7 +76,7 @@ public sealed class TrainingNode
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string Host { get; set; } = "";
-    public string Provider { get; set; } = "simulated";
+    public string Provider { get; set; } = ResourceProviders.Simulated;
     public int Port { get; set; } = 8006;
     public string UserName { get; set; } = "";
     public string PasswordProtected { get; set; } = "";
@@ -100,6 +104,8 @@ public sealed class NodeAccountAssignment
 public sealed class TrainingVirtualMachine
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Uuid { get; set; } = Guid.NewGuid().ToString();
+    public string IpAddress { get; set; } = "";
     public string NodeId { get; set; } = "";
     public string Name { get; set; } = "";
     public string Status { get; set; } = "stopped";
@@ -113,8 +119,8 @@ public sealed class TrainingVirtualMachine
 
 public sealed record DeviceTypeInput(string Name, string? Newline = null, string? Backspace = null, string? Remark = null);
 public sealed record CabinetInput(string Name, string? Host = null, int Port = 23, string? JumpHost = null, int JumpPort = 22, string? JumpUserName = null, string? JumpPassword = null, string? Remark = null, bool IsSimulated = false);
-public sealed record DeviceInput(string Name, string CabinetId, string DeviceTypeId, string? Host = null, int Port = 23, string ConnectionType = "simulated", int SerialPortNumber = 1, int WebPort = 80, string WebProtocol = "http", string? UserName = null, string? Password = null, string? Remark = null);
-public sealed record NodeInput(string Name, string? Host = null, string Provider = "simulated", int Port = 8006, string? UserName = null, string? Password = null, bool Enabled = true, string? Remark = null, int TotalCpu = 16, int TotalMemoryMb = 32768, int TotalDiskGb = 512, int AccountQuota = 200, int VirtualMachineQuota = 50);
+public sealed record DeviceInput(string Name, string CabinetId, string DeviceTypeId, string? Host = null, int Port = 23, string ConnectionType = ResourceProviders.Simulated, int SerialPortNumber = 1, int WebPort = 80, string WebProtocol = "http", string? UserName = null, string? Password = null, string? Remark = null, string? NodeId = null);
+public sealed record NodeInput(string Name, string? Host = null, string Provider = ResourceProviders.Simulated, int Port = 8006, string? UserName = null, string? Password = null, bool Enabled = true, string? Remark = null, int TotalCpu = 16, int TotalMemoryMb = 32768, int TotalDiskGb = 512, int AccountQuota = 200, int VirtualMachineQuota = 50);
 public sealed record VirtualMachineInput(string Name, string NodeId, int CpuCount = 2, int MemoryMb = 2048, int DiskGb = 20, string? Remark = null);
 public sealed record InfrastructureIds(string[] Ids);
 public sealed record NodeConfigurationInput(string IpAddress, string SubnetMask, string? Gateway = null, string? SystemTime = null);

@@ -7,6 +7,8 @@ public sealed class AppPaths
     public string Backups => Path.Combine(Data, "backups");
     public string Keys => Path.Combine(Data, "keys");
     public string Logs => Path.Combine(Data, "logs");
+    public string CourseFiles => Path.Combine(Data, "course-files");
+    public string CaseEvidence => Path.Combine(Data, "case-evidence");
     public AppPaths(string data)
     {
         Data = Path.GetFullPath(data);
@@ -23,7 +25,7 @@ public sealed class AppPaths
             if (Directory.EnumerateFileSystemEntries(Data).Any()) throw new InvalidOperationException("数据目录已有未知文件，请选择专用空目录；不要覆盖其他文件");
             File.WriteAllText(marker, "{\"product\":\"SchoolTraining\",\"schemaVersion\":1}");
         }
-        foreach (var path in new[] { Data, Backups, Keys, Logs }) Directory.CreateDirectory(path);
+        foreach (var path in new[] { Data, Backups, Keys, Logs, CourseFiles, CaseEvidence }) Directory.CreateDirectory(path);
     }
 }
 

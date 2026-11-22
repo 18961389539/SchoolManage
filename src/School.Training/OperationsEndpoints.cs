@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -26,6 +27,8 @@ public static class OperationsEndpoints
     static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { RespectNullableAnnotations = true, RespectRequiredConstructorParameters = true };
     public static void MapOperationsEndpoints(this RouteGroupBuilder all)
     {
+        // Counts are readable by any signed-in account (the smoke suite asserts this); the audit
+        // feed is administrator-only, and the console UI is only rendered for administrators.
         all.MapGet("/dashboard", async (HttpContext ctx, SchoolDbContext db, CancellationToken ct) => Results.Ok(new
         {
             schoolName = await db.Settings.Where(x => x.Id == "schoolName").Select(x => x.Value).FirstOrDefaultAsync(ct) ?? "实训资源管理平台",
@@ -49,95 +52,88 @@ public static class OperationsEndpoints
             Audit.Add(db, ctx, "修改系统设置", "schoolName"); await db.SaveChangesAsync(ctx.RequestAborted); return Results.Ok(new { message = "已保存" });
         });
         api.MapGet("/backups", (AppPaths paths) => Results.Ok(new { items = Directory.EnumerateFiles(paths.Backups, "school-*.zip").Select(f => new FileInfo(f)).OrderByDescending(f => f.CreationTimeUtc).Select(f => new { fileName = f.Name, createdAt = f.CreationTimeUtc, size = f.Length }).ToArray() }));
-        api.MapPost("/backups", async (AppPaths paths, SchoolDbContext db, StorageOptions storage, HttpContext ctx) =>
-        {
-            var ct = ctx.RequestAborted;
-            var free = AvailableFreeBytes(paths.Backups);
-            if (free is null) return Results.Json(new { message = "无法读取备份目录所在磁盘的剩余空间，请人工检查磁盘后再试" }, statusCode: 507);
-            if (free < storage.BackupMinimumFreeBytes)
-            {
-                FileRetention.Apply(paths.Backups, "school-*.zip", storage.BackupRetentionCount, long.MaxValue);
-                var afterRetention = AvailableFreeBytes(paths.Backups);
-                if (afterRetention is null) return Results.Json(new { message = "无法读取备份目录所在磁盘的剩余空间，请人工检查磁盘后再试" }, statusCode: 507);
-                if (afterRetention < storage.BackupMinimumFreeBytes)
-                    return Results.Json(new { message = "备份目录所在磁盘剩余空间不足，请清理后重试" }, statusCode: 507);
-            }
-            var suffix = DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "-" + Guid.NewGuid().ToString("N")[..8];
-            var dbPath = Path.Combine(paths.Backups, "pending-" + suffix + ".db");
-            var finalPath = Path.Combine(paths.Backups, "school-" + suffix + ".zip");
-            var pendingPath = finalPath + ".pending";
-            try
-            {
-                Audit.Add(db, ctx, "创建备份", Path.GetFileName(finalPath)); await db.SaveChangesAsync(ct);
-                await using (var source = new SqliteConnection(db.Database.GetConnectionString()))
-                await using (var destination = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = dbPath, Pooling = false }.ToString()))
-                { await source.OpenAsync(ct); await destination.OpenAsync(ct); source.BackupDatabase(destination); }
-                using (var zip = ZipFile.Open(pendingPath, ZipArchiveMode.Create))
-                {
-                    zip.CreateEntryFromFile(dbPath, "school.db", CompressionLevel.Optimal);
-                    zip.CreateEntryFromFile(Path.Combine(paths.Data, ".schooltraining-data.json"), ".schooltraining-data.json", CompressionLevel.Optimal);
-                    foreach (var key in Directory.EnumerateFiles(paths.Keys, "*.xml")) zip.CreateEntryFromFile(key, "keys/" + Path.GetFileName(key), CompressionLevel.Optimal);
-                    var entry = zip.CreateEntry("manifest.json"); await using var stream = entry.Open();
-                    await JsonSerializer.SerializeAsync(stream, new { product = "SchoolTraining", schemaVersion = 1, databaseSchemaVersion = DatabaseSafety.SchemaVersion, version = BuildInfo.Version, createdAt = DateTime.UtcNow }, JsonOptions, ct);
-                }
-                File.Move(pendingPath, finalPath);
-                FileRetention.Apply(paths.Backups, "school-*.zip", storage.BackupRetentionCount, storage.BackupMaxTotalBytes, protectedFile: finalPath);
-                var info = new FileInfo(finalPath);
-                return Results.Ok(new { fileName = info.Name, createdAt = info.CreationTimeUtc, size = info.Length });
-            }
-            finally { if (File.Exists(dbPath)) File.Delete(dbPath); if (File.Exists(pendingPath)) File.Delete(pendingPath); }
-        });
+        api.MapPost("/backups", (AppPaths paths, SchoolDbContext db, StorageOptions storage, HttpContext ctx) =>
+            CreateBackupAsync(paths, db, storage, ctx, AvailableFreeBytes));
         api.MapGet("/backups/{fileName}", async (string fileName, AppPaths paths, HttpContext ctx, SchoolDbContext db) =>
         {
             if (Path.GetFileName(fileName) != fileName || !System.Text.RegularExpressions.Regex.IsMatch(fileName, "^school-[0-9]{14}-[a-f0-9]{8}\\.zip$")) return Results.NotFound();
             var path = Path.Combine(paths.Backups, fileName); if (!File.Exists(path)) return Results.NotFound(new { message = "备份文件不存在" });
             Audit.Add(db, ctx, "下载备份", fileName); await db.SaveChangesAsync(ctx.RequestAborted); return Results.File(path, "application/zip", fileName);
         });
-        api.MapGet("/licenses", async (SchoolDbContext db, IConfiguration config, IWebHostEnvironment env, CancellationToken ct) =>
+        api.MapGet("/licenses", async (SchoolDbContext db, LicenseQuotaPolicy policy, CancellationToken ct) =>
         {
             var records = await db.Licenses.AsNoTracking().OrderByDescending(x => x.ImportedAt).ToListAsync(ct);
+            using var key = await policy.OpenVerificationKeyAsync(ct);
+            var now = DateTime.UtcNow;
             return Results.Ok(new
             {
                 machineCode = MachineCode(),
-                publicKeyConfigured = File.Exists(PublicKeyPath(config, env)),
+                publicKeyConfigured = key is not null,
                 mode = "simulated",
-                items = records.Select(r =>
-            {
-                var payload = JsonSerializer.Deserialize<LicensePayload>(r.PayloadJson, JsonOptions)!;
-                return new { r.Id, productAuthorizationCode = r.Id, r.FileName, r.ImportedAt, payload.IssuedAt, payload.ExpiresAt, payload.Resources, valid = payload.ExpiresAt == null || payload.ExpiresAt > DateTime.UtcNow };
-            }).ToArray()
+                quotas = await policy.ReadQuotasAsync(db, ct),
+                items = records.Select<LicenseRecord, object>(record =>
+                {
+                    if (!LicenseQuotaPolicy.TryReadStored(record.PayloadJson, out var payload, out var envelope))
+                        return new { record.Id, productAuthorizationCode = record.Id, record.FileName, record.ImportedAt, IssuedAt = (DateTime?)null, ExpiresAt = (DateTime?)null, Resources = Array.Empty<LicenseResource>(), valid = false, legacy = false };
+                    var valid = envelope is not null && key is not null && LicenseQuotaPolicy.Verify(envelope, key) && LicenseQuotaPolicy.IsEffective(payload, now);
+                    return new { record.Id, productAuthorizationCode = record.Id, record.FileName, record.ImportedAt, payload.IssuedAt, payload.ExpiresAt, payload.Resources, valid, legacy = envelope is null };
+                }).ToArray()
             });
         });
-        api.MapPost("/licenses", async (HttpContext ctx, SchoolDbContext db, IConfiguration config, IWebHostEnvironment env) =>
+        api.MapPost("/licenses", async (HttpContext ctx, SchoolDbContext db, LicenseQuotaPolicy policy) =>
         {
             if (!ctx.Request.HasFormContentType) return Results.BadRequest(new { message = "请选择许可证文件" });
-            var files = (await ctx.Request.ReadFormAsync(ctx.RequestAborted)).Files; if (files.Count is < 1 or > 20) return Results.BadRequest(new { message = "每次上传1–20个许可证文件" });
-            var keyPath = PublicKeyPath(config, env); if (!File.Exists(keyPath)) return Results.BadRequest(new { message = "未配置供应商验签公钥，请由交付人员配置license-public.pem；模拟资源可正常使用" });
-            using var rsa = RSA.Create(); rsa.ImportFromPem(await File.ReadAllTextAsync(keyPath, ctx.RequestAborted));
+            var ct = ctx.RequestAborted;
+            var files = (await ctx.Request.ReadFormAsync(ct)).Files;
+            if (files.Count is < 1 or > 20) return Results.BadRequest(new { message = "每次上传1–20个许可证文件" });
+            using var rsa = await policy.OpenVerificationKeyAsync(ct);
+            if (rsa is null) return Results.BadRequest(new { message = "供应商验签公钥缺失、无法读取或格式不正确。请检查 license-public.pem。" });
             var pending = new List<LicenseRecord>();
+            var activatedCodes = new HashSet<string>(StringComparer.Ordinal);
+            var now = DateTime.UtcNow;
             foreach (var file in files)
             {
                 if (file.Length is < 1 or > 262144) return Results.BadRequest(new { message = "许可证文件大小须在256KB以内" });
                 try
                 {
-                    using var reader = new StreamReader(file.OpenReadStream()); var envelope = JsonSerializer.Deserialize<LicenseEnvelope>(await reader.ReadToEndAsync(ctx.RequestAborted), JsonOptions);
+                    using var reader = new StreamReader(file.OpenReadStream());
+                    var envelope = JsonSerializer.Deserialize<LicenseEnvelope>(await reader.ReadToEndAsync(ct), LicenseQuotaPolicy.JsonOptions);
                     if (envelope is null) return Results.BadRequest(new { message = "许可证不能为空" });
-                    var bytes = Convert.FromBase64String(envelope.Payload); var signature = Convert.FromBase64String(envelope.Signature);
-                    if (!rsa.VerifyData(bytes, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)) return Results.BadRequest(new { message = "许可证签名无效" });
-                    var payload = JsonSerializer.Deserialize<LicensePayload>(bytes, JsonOptions);
-                    if (payload is null || payload.Resources is null || payload.Resources.Any(r => r is null)) return Results.BadRequest(new { message = "许可证资源列表不能为空" });
+                    if (!LicenseQuotaPolicy.Verify(envelope, rsa)) return Results.BadRequest(new { message = "许可证签名无效" });
+                    if (!LicenseQuotaPolicy.TryReadEnvelope(envelope, out var payload)) return Results.BadRequest(new { message = "许可证资源列表或数据格式不正确" });
                     if (payload.Product != "SchoolTraining" || payload.MachineCode != MachineCode()) return Results.BadRequest(new { message = "许可证产品或设备特征码不匹配" });
-                    if (payload.ExpiresAt != null && payload.ExpiresAt <= DateTime.UtcNow) return Results.BadRequest(new { message = "许可证已过期" });
+                    if (payload.IssuedAt.Kind == DateTimeKind.Unspecified || payload.ExpiresAt?.Kind == DateTimeKind.Unspecified)
+                        return Results.BadRequest(new { message = "许可证日期必须包含时区" });
+                    if (payload.ExpiresAt?.ToUniversalTime() <= now) return Results.BadRequest(new { message = "许可证已过期" });
+                    if (payload.IssuedAt.ToUniversalTime() > now) return Results.BadRequest(new { message = "许可证签发时间晚于服务器时间，请检查两端时钟" });
                     if (payload.LicenseId.Length is < 1 or > 100 || payload.Resources.Count is < 1 or > 100 || payload.Resources.Any(r => string.IsNullOrWhiteSpace(r.Name) || string.IsNullOrWhiteSpace(r.AuthorizationCode) || r.Quantity < 0)) return Results.BadRequest(new { message = "许可证资源列表不完整" });
-                    if (await db.Licenses.AnyAsync(x => x.Id == payload.LicenseId, ctx.RequestAborted) || pending.Any(x => x.Id == payload.LicenseId)) return Results.Conflict(new { message = "许可证已导入" });
-                    pending.Add(new LicenseRecord { Id = payload.LicenseId, FileName = Path.GetFileName(file.FileName), PayloadJson = Encoding.UTF8.GetString(bytes) });
+                    if (!LicenseQuotaPolicy.UniqueManagedCodes(payload)) return Results.BadRequest(new { message = "同一张许可证不能重复列出同一种平台配额" });
+                    if (pending.Any(x => x.Id == payload.LicenseId)) return Results.Conflict(new { message = "许可证已导入" });
+                    pending.Add(new LicenseRecord { Id = payload.LicenseId, FileName = Path.GetFileName(file.FileName), PayloadJson = JsonSerializer.Serialize(envelope, LicenseQuotaPolicy.JsonOptions) });
+                    activatedCodes.UnionWith(payload.Resources.Select(resource => resource.AuthorizationCode));
                 }
                 catch (Exception ex) when (ex is JsonException or FormatException or CryptographicException or ArgumentException)
                 { return Results.BadRequest(new { message = "许可证格式或签名不正确" }); }
             }
-            db.Licenses.AddRange(pending); Audit.Add(db, ctx, "导入许可证", string.Join(",", pending.Select(x => x.Id))); await db.SaveChangesAsync(ctx.RequestAborted); return Results.Ok(new { importedCount = pending.Count });
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var ids = pending.Select(x => x.Id).ToArray();
+            var existing = await db.Licenses.Where(x => ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+            foreach (var entry in pending)
+            {
+                if (!existing.TryGetValue(entry.Id, out var prior)) { db.Licenses.Add(entry); continue; }
+                if (!LicenseQuotaPolicy.TryReadStored(prior.PayloadJson, out _, out var stored) || stored is not null)
+                    return Results.Conflict(new { message = "许可证已导入" });
+                prior.PayloadJson = entry.PayloadJson;
+                prior.FileName = entry.FileName;
+                prior.ImportedAt = entry.ImportedAt;
+            }
+            await LicenseQuotaPolicy.MarkActivatedAsync(db, activatedCodes, ct);
+            Audit.Add(db, ctx, "导入许可证", string.Join(",", ids));
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return Results.Ok(new { importedCount = pending.Count });
         });
-        api.MapGet("/licenses/guide", () => Results.File(Encoding.UTF8.GetBytes("# 许可证使用说明\n\n1.复制许可证页面的设备特征码，交给供应商签发。\n2.交付人员配置供应商公钥license-public.pem（仅公钥，禁止分发私钥）。\n3.上传包含payload与signature的JSON许可证，系统校验RSA-SHA256签名、产品、设备绑定及有效期。\n4.资源列表展示资源名称、授权码与数量。\n5.当前交付采用模拟资源；许可证资源数量如何限制真实硬件分配需按最终授权规则确认。\n6.迁移机器需重新签发；备份与恢复操作应由管理员执行。\n"), "text/markdown; charset=utf-8", "license-guide.md"));
+        api.MapGet("/licenses/guide", () => Results.File(Encoding.UTF8.GetBytes(LicenseGuide), "text/markdown; charset=utf-8", "license-guide.md"));
     }
     public static string MachineCode()
     {
@@ -145,20 +141,119 @@ public static class OperationsEndpoints
         if (OperatingSystem.IsWindows()) { using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Cryptography"); machine += "|" + key?.GetValue("MachineGuid"); }
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("SchoolTraining|" + machine)))[..32];
     }
-    static string PublicKeyPath(IConfiguration config, IWebHostEnvironment env) => Environment.GetEnvironmentVariable("SCHOOL_LICENSE_PUBLIC_KEY") ?? config["School:LicensePublicKey"] ?? Path.Combine(env.ContentRootPath, "license-public.pem");
+    private const string LicenseGuide = """
+        # 许可证使用说明
+
+        复制许可证页面的设备特征码，由供应商签发并配置验签公钥 `license-public.pem`。
+        上传包含 `payload` 与 `signature` 的 JSON 文件。可一次导入 1–20 个文件，整批验证通过才保存。
+        系统验证 RSA-SHA256 签名、产品、设备绑定和日期。迁移机器需重新签发。
+
+        | 资源授权码 | 计量口径 |
+        | --- | --- |
+        | TRAINING.CABINETS | 已登记机柜数量 |
+        | TRAINING.DEVICES | 已登记设备数量 |
+        | TRAINING.NODES | 已登记节点数量 |
+        | TRAINING.VMS | 已建立的虚拟机数量，含停止的虚拟机 |
+        | TRAINING.ASSIGNMENTS | 节点与账号的关联数，同一账号分到两个节点计两项 |
+
+        某类首次导入对应授权码后开始执行该类额度。同类的多个有效额度取最高值，续期不会叠加。
+        该类的授权全部过期时暂停新增，已有配置和资源仍可管理及释放。节点自身配额也继续生效。
+        其他资源授权码仅用于记录。早期版本存入的旧记录可重新上传原签名文件以启用额度。
+        """;
+    internal static async Task<IResult> CreateBackupAsync(AppPaths paths, SchoolDbContext db, StorageOptions storage,
+        HttpContext ctx, Func<string, long?> readFreeBytes)
+    {
+        var ct = ctx.RequestAborted;
+        var free = readFreeBytes(paths.Backups);
+        if (free is null) return InsufficientStorage("无法读取备份目录所在磁盘的剩余空间，请人工检查磁盘后再试");
+        if (free < storage.BackupMinimumFreeBytes)
+        {
+            FileRetention.Apply(paths.Backups, "school-*.zip", storage.BackupRetentionCount, long.MaxValue);
+            var afterRetention = readFreeBytes(paths.Backups);
+            if (afterRetention is null) return InsufficientStorage("无法读取备份目录所在磁盘的剩余空间，请人工检查磁盘后再试");
+            if (afterRetention < storage.BackupMinimumFreeBytes)
+                return InsufficientStorage("备份目录所在磁盘剩余空间不足，请清理后重试");
+        }
+
+        var suffix = DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "-" + Guid.NewGuid().ToString("N")[..8];
+        var dbPath = Path.Combine(paths.Backups, "pending-" + suffix + ".db");
+        var finalPath = Path.Combine(paths.Backups, "school-" + suffix + ".zip");
+        var pendingPath = finalPath + ".pending";
+        try
+        {
+            Audit.Add(db, ctx, "创建备份", Path.GetFileName(finalPath));
+            await db.SaveChangesAsync(ct);
+            await using (var source = new SqliteConnection(db.Database.GetConnectionString()))
+            await using (var destination = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = dbPath, Pooling = false }.ToString()))
+            {
+                await source.OpenAsync(ct);
+                await destination.OpenAsync(ct);
+                source.BackupDatabase(destination);
+            }
+            using (var zip = ZipFile.Open(pendingPath, ZipArchiveMode.Create))
+            {
+                zip.CreateEntryFromFile(dbPath, "school.db", CompressionLevel.Optimal);
+                zip.CreateEntryFromFile(Path.Combine(paths.Data, ".schooltraining-data.json"), ".schooltraining-data.json", CompressionLevel.Optimal);
+                foreach (var key in Directory.EnumerateFiles(paths.Keys, "*.xml")) zip.CreateEntryFromFile(key, "keys/" + Path.GetFileName(key), CompressionLevel.Optimal);
+                var entry = zip.CreateEntry("manifest.json");
+                await using var stream = entry.Open();
+                await JsonSerializer.SerializeAsync(stream, new { product = "SchoolTraining", schemaVersion = 1, databaseSchemaVersion = DatabaseSafety.SchemaVersion, version = BuildInfo.Version, createdAt = DateTime.UtcNow }, JsonOptions, ct);
+            }
+            File.Move(pendingPath, finalPath);
+            FileRetention.Apply(paths.Backups, "school-*.zip", storage.BackupRetentionCount, storage.BackupMaxTotalBytes, protectedFile: finalPath);
+            var info = new FileInfo(finalPath);
+            return Results.Ok(new { fileName = info.Name, createdAt = info.CreationTimeUtc, size = info.Length });
+        }
+        catch (Exception error) when (IsDiskFull(error))
+        {
+            return InsufficientStorage("创建备份时磁盘空间耗尽，请清理后重试");
+        }
+        finally
+        {
+            foreach (var path in new[] { pendingPath, dbPath, dbPath + "-journal", dbPath + "-wal", dbPath + "-shm" })
+            {
+                try { File.Delete(path); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+    }
+
+    static IResult InsufficientStorage(string message) => Results.Json(new { message }, statusCode: 507);
+
+    internal static bool IsDiskFull(Exception error) => error switch
+    {
+        IOException { HResult: unchecked((int)0x80070070) or unchecked((int)0x80070027) } => true,
+        SqliteException { SqliteErrorCode: SQLitePCL.raw.SQLITE_FULL } => true,
+        DbUpdateException { InnerException: SqliteException { SqliteErrorCode: SQLitePCL.raw.SQLITE_FULL } } => true,
+        _ => false
+    };
+
     /// <summary>
     /// Returns null when free space cannot be determined. Backup callers must treat
     /// "unknown" as insufficient rather than proceeding with a write that may fill the disk.
     /// </summary>
-    static long? AvailableFreeBytes(string path)
+    internal static long? AvailableFreeBytes(string path)
     {
         try
         {
-            var root = Path.GetPathRoot(Path.GetFullPath(path));
+            var directory = Path.GetFullPath(path);
+            if (!Directory.Exists(directory)) return null;
+            if (OperatingSystem.IsWindows())
+            {
+                // Query the actual directory to account for mounted volumes and the service account's quota.
+                if (!Path.EndsInDirectorySeparator(directory)) directory += Path.DirectorySeparatorChar;
+                return GetDiskFreeSpaceEx(directory, out var available, out _, out _) ? (long)Math.Min(available, long.MaxValue) : null;
+            }
+            var root = Path.GetPathRoot(directory);
             return string.IsNullOrEmpty(root) ? null : new DriveInfo(root).AvailableFreeSpace;
         }
         catch (IOException) { return null; }
         catch (UnauthorizedAccessException) { return null; }
         catch (ArgumentException) { return null; }
     }
+
+    [DllImport("kernel32.dll", EntryPoint = "GetDiskFreeSpaceExW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool GetDiskFreeSpaceEx(string directory, out ulong available, out ulong total, out ulong free);
 }

@@ -8,7 +8,7 @@ namespace School.Training;
 public static class DatabaseSafety
 {
     public const int ApplicationId = 0x5354524E;
-    public const int SchemaVersion = 4;
+    public const int SchemaVersion = 16;
 
     public static async Task ValidateBackup(string path, string keysDirectory)
     {
@@ -68,7 +68,12 @@ public static class DatabaseSafety
             var table = entity.GetTableName()!; var store = StoreObjectIdentifier.Table(table, entity.GetSchema());
             using var cmd = connection.CreateCommand(); cmd.CommandText = "PRAGMA table_info(\"" + table.Replace("\"", "\"\"") + "\")";
             using var reader = await cmd.ExecuteReaderAsync(); var columns = new HashSet<string>(); while (await reader.ReadAsync()) columns.Add(reader.GetString(1));
-            foreach (var property in entity.GetProperties()) if (!columns.Contains(property.GetColumnName(store)!)) throw new InvalidDataException($"数据库缺少产品表或字段：{table}.{property.GetColumnName(store)}");
+            foreach (var property in entity.GetProperties())
+            {
+                var column = property.GetColumnName(store)!;
+                if (IsRequiredInVersion(table, column, version) && !columns.Contains(column))
+                    throw new InvalidDataException($"数据库缺少产品表或字段：{table}.{column}");
+            }
 
             if (version != SchemaVersion) continue;
             foreach (var index in entity.GetIndexes())
@@ -92,5 +97,34 @@ public static class DatabaseSafety
             cmd.CommandText = "PRAGMA foreign_key_check"; using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync()) throw new InvalidDataException("数据库关联完整性检查失败");
         }
+    }
+
+    private static bool IsRequiredInVersion(string table, string column, int version)
+    {
+        if (version < 6 && table is "Courses" or "CourseChapters" or "CourseSections" or "CourseResources" or "CourseQuestions"
+            or "Classrooms" or "ClassroomStudents" or "LearningRecords" or "PracticeAttempts") return false;
+        if (version < 7 && table is "ExamQuestions" or "ExamPapers" or "ExamPaperQuestions" or "TrainingExams"
+            or "ExamStudents" or "ExamAttempts" or "ExamAnswers") return false;
+        if (version < 8 && table is "CourseResourceFiles" or "JobPositions" or "JobSkills" or "JobQuestions" or "JobAttempts" or "JobAnswers") return false;
+        if (version < 9 && table is "ClassroomGroups" or "ClassroomGroupMembers" or "ClassroomCabinetAssignments"
+            or "ClassroomCaseSessions" or "CaseSessionEvidences") return false;
+        if (version < 10 && (table == "ClassroomCaseGrades" || (table, column) is ("CourseResources", "CaseRubricJson")
+            or ("ClassroomCaseSessions", "WorkId" or "Revision" or "EnvironmentJson" or "RubricJson"))) return false;
+        if (version < 11 && (table == "ExamPracticalEnvironments" || (table, column) is
+            ("ExamQuestions" or "ExamPaperQuestions", "PracticalNodeId" or "PracticalRubricJson")
+            or ("ExamAnswers", "PracticalDetailsJson"))) return false;
+        if (version < 12 && (table == "ExamQuestionBanks" || (table, column) is ("ExamQuestions", "BankId"))) return false;
+        if (version < 13 && (table, column) is ("VirtualMachines", "Uuid" or "IpAddress")) return false;
+        if (version < 14 && (table == "CoreCourseSeries" || (table, column) is ("Courses", "IsActive" or "SeriesId")
+            or ("LearningRecords", "PracticeStartedAt") or ("PracticeAttempts", "StartedAt")
+            or ("JobQuestions", "PracticalRubricJson") or ("JobAttempts", "EnvironmentJson")
+            or ("JobAnswers", "PracticalDetailsJson"))) return false;
+        if (version < 15 && (table, column) is ("ExamPracticalEnvironments", "VmUuid" or "DeploymentStatus" or "DeploymentMessage")) return false;
+        if (version < 15 && (table == "CaseTopologyTemplates" || (table, column) is
+            ("CourseResources" or "ClassroomCaseSessions", "TopologyBlueprintJson"))) return false;
+        if (table == "Devices" && column == "NodeId") return version >= 5;
+        if (table == "ImportBatches" && column is "Status" or "RemoveInvalidRows" or "TotalCount" or "ProcessedCount"
+            or "ImportedCount" or "RemovedCount" or "FailureMessage" or "QueuedAt" or "StartedAt" or "CompletedAt") return version >= 3;
+        return true;
     }
 }

@@ -3,6 +3,7 @@
 // Optional environment:
 // SCHOOL_LOAD_SOURCE_DIR, SCHOOL_LOAD_READ_COUNT>=100, SCHOOL_LOAD_READ_CONCURRENCY>=20,
 // SCHOOL_LOAD_WRITE_COUNT>=40, SCHOOL_LOAD_WRITE_CONCURRENCY>=8,
+// SCHOOL_LOAD_REPORT_PATH (keeps a supplemental run separate from the release-gate report),
 // SCHOOL_LOAD_IMPORT_COUNT=100..10000 (use 1000/10000 for import scale evidence).
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -17,10 +18,9 @@ import { fileURLToPath } from 'node:url';
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = path.resolve(process.env.SCHOOL_LOAD_SOURCE_DIR ?? path.join(workspace, 'src', 'School.Training', 'bin', 'Debug', 'net10.0'));
 const localRoot = path.join(workspace, '.local');
-const evidenceDirectory = path.join(workspace, 'docs', 'verification');
-const evidencePath = path.join(evidenceDirectory, 'load-smoke.json');
+const evidencePath = path.resolve(process.env.SCHOOL_LOAD_REPORT_PATH ?? path.join(workspace, 'docs', 'verification', 'load-smoke.json'));
 fs.mkdirSync(localRoot, { recursive: true });
-fs.mkdirSync(evidenceDirectory, { recursive: true });
+fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
 const runDirectory = fs.mkdtempSync(path.join(localRoot, 'load-smoke-'));
 const runtimeDirectory = path.join(runDirectory, 'program');
 const dataDirectory = path.join(runDirectory, 'data');

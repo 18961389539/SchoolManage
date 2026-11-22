@@ -239,7 +239,7 @@ function Assert-NoPayloadCollisions([string]$InstallDirectory,$PlannedFiles,$Pri
     }
 }
 
-function Wait-ProductHealth([string]$DataDirectory) {
+function Wait-ProductHealth([string]$DataDirectory,[string]$ExpectedVersion) {
     $port = 5080
     $installationFile = Get-SafeProductChild $DataDirectory 'installation.json'
     if (Test-Path -LiteralPath $installationFile) { $installation=Get-Content -LiteralPath $installationFile -Raw | ConvertFrom-Json; $port=[int]$installation.port }
@@ -261,7 +261,8 @@ function Wait-ProductHealth([string]$DataDirectory) {
         }
     }
     if (-not ('SchoolTrainingDeployment.HealthProbe' -as [type])) {
-        Add-Type -TypeDefinition @'
+        # HttpWebRequest supports per-request certificate pinning on Windows PowerShell 5.1.
+        Add-Type -IgnoreWarnings -WarningAction SilentlyContinue -TypeDefinition @'
 using System;
 using System.IO;
 using System.Net;
@@ -288,7 +289,8 @@ namespace SchoolTrainingDeployment {
     do {
         try {
             $status=[SchoolTrainingDeployment.HealthProbe]::Get($url,$thumbprint) | ConvertFrom-Json
-            if ($status.PSObject.Properties['initialized'] -and $status.PSObject.Properties['version'] -and $status.PSObject.Properties['product'] -and -not [string]::IsNullOrWhiteSpace([string]$status.version)) { return }
+            if ($status.PSObject.Properties['initialized'] -and $status.PSObject.Properties['version'] -and $status.PSObject.Properties['product'] -and -not [string]::IsNullOrWhiteSpace([string]$status.version) -and
+                ([string]::IsNullOrEmpty($ExpectedVersion) -or $status.version -eq $ExpectedVersion)) { return }
         } catch { }
         Start-Sleep -Milliseconds 500
     } while([DateTime]::UtcNow -lt $deadline)

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace School.Training;
@@ -23,10 +24,19 @@ public static class Validation
             ? null
             : "账号须为3–64位字母、数字或 . _ @ -";
 
+    /// <summary>
+    /// Mirrors the browser rule <c>/\p{L}/u</c> plus <c>/\p{Nd}/u</c>. Runes are used instead of
+    /// <see cref="char.IsLetter(char)"/> so a letter outside the BMP (a surrogate pair in UTF-16)
+    /// is accepted by both tiers rather than only by the browser.
+    /// </summary>
     public static string? Password(string? value)
-        => value is { Length: >= PasswordMinLength and <= PasswordMaxLength } && value.Any(char.IsLetter) && value.Any(char.IsDigit)
+        => value is { Length: >= PasswordMinLength and <= PasswordMaxLength } && HasLetter(value) && HasDigit(value)
             ? null
             : "密码须为12–128位，且同时包含字母和数字";
+
+    static bool HasLetter(string value) => value.EnumerateRunes().Any(Rune.IsLetter);
+
+    static bool HasDigit(string value) => value.EnumerateRunes().Any(Rune.IsDigit);
 
     public static (int Page, int Size) Page(HttpRequest request)
         => Page(request.Query["page"], request.Query["pageSize"]);

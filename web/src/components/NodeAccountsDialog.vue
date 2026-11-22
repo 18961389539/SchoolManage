@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { api, post, del, dateTime, messageOf, type Row } from '../api'
 import type { AccountAssignment, AccountCandidate, NodeAccountsResponse, Paged } from '../types'
@@ -14,6 +14,7 @@ const visible = computed({
   }
 })
 const nodeInfo = ref<Row>({})
+const candidatesRef = ref<TableInstance>()
 const assigned = ref<AccountAssignment[]>([]),
   candidates = ref<AccountCandidate[]>([]),
   selected = ref<AccountCandidate[]>([])
@@ -37,8 +38,13 @@ const accountCount = computed(() => Number(nodeInfo.value.accountCount ?? props.
 const accountQuota = computed(() => Number(nodeInfo.value.accountQuota ?? props.node?.accountQuota ?? 0))
 const available = computed(() => Math.max(0, accountQuota.value - accountCount.value))
 const enabled = computed(() => nodeInfo.value.enabled ?? props.node?.enabled ?? false)
+const maxAssignmentBatch = 500
 const canAssign = computed(
-  () => enabled.value && selected.value.length > 0 && selected.value.length <= available.value && !saving.value
+  () =>
+    enabled.value &&
+    selected.value.length > 0 &&
+    selected.value.length <= Math.min(available.value, maxAssignmentBatch) &&
+    !saving.value
 )
 const nameOfKind = (kind: string) => (kind === 'teacher' ? '教师' : kind === 'student' ? '学生' : kind)
 function resetAssigned() {
@@ -48,7 +54,15 @@ function resetAssigned() {
 
 function resetCandidates() {
   candidatePage.value = 1
+  clearCandidateSelection()
   void loadCandidates()
+}
+
+// Selection is reserved across pages so one assignment can cover several pages; a new search
+// or node starts from a clean selection.
+function clearCandidateSelection() {
+  selected.value = []
+  candidatesRef.value?.clearSelection()
 }
 
 function setSelection(value: AccountCandidate[]) {
@@ -97,7 +111,6 @@ async function loadCandidates() {
     id = props.node.id
   loadingCandidates.value = true
   candidateError.value = ''
-  selected.value = []
   try {
     const query = new URLSearchParams({
       search: candidateSearch.value,
@@ -135,7 +148,7 @@ async function assign() {
     await post(`/nodes/${encodeURIComponent(props.node.id)}/accounts`, {
       userIds: selected.value.map(person => person.userId)
     })
-    selected.value = []
+    clearCandidateSelection()
     ElMessage.success(`已分配 ${count} 个账号`)
     emit('changed')
     await refresh()
@@ -149,15 +162,17 @@ async function assign() {
 // Slot rows arrive as Element Plus DefaultRow; the collection itself stays typed.
 async function unassign(person: Row) {
   if (!props.node) return
+  const nodeId = props.node.id
   try {
     await ElMessageBox.confirm(
       `确认解除“${person.name}（${person.userName}）”与当前节点的关联？此操作不会删除师生档案或登录账号。`,
       '移除节点账号分配',
       { type: 'warning', confirmButtonText: '移除分配', cancelButtonText: '取消' }
     )
+    if (props.node?.id !== nodeId) return
     saving.value = true
     actionError.value = ''
-    await del(`/nodes/${encodeURIComponent(props.node.id)}/accounts/${encodeURIComponent(person.userId)}`)
+    await del(`/nodes/${encodeURIComponent(nodeId)}/accounts/${encodeURIComponent(person.userId)}`)
     ElMessage.success('已解除节点关联')
     emit('changed')
     await refresh()
@@ -177,7 +192,7 @@ watch(
     candidateVersion++
     assigned.value = []
     candidates.value = []
-    selected.value = []
+    clearCandidateSelection()
     assignedSearch.value = ''
     candidateSearch.value = ''
     candidateKind.value = ''
@@ -347,6 +362,7 @@ watch(
             class="node-account-error"
           />
           <el-table
+            ref="candidatesRef"
             :data="candidates"
             row-key="userId"
             v-loading="loadingCandidates"
@@ -356,7 +372,12 @@ watch(
             "
             @selection-change="setSelection"
           >
-            <el-table-column type="selection" width="45" :selectable="() => enabled && !saving && available > 0" />
+            <el-table-column
+              type="selection"
+              width="45"
+              reserve-selection
+              :selectable="() => enabled && !saving && available > 0"
+            />
             <el-table-column label="姓名 / 账号" min-width="170"
               ><template #default="{ row }"
                 ><span class="table-name">{{ row.name }}</span>
@@ -379,7 +400,9 @@ watch(
             />
           </div>
           <div class="node-account-add">
-            <span v-if="selected.length > available" class="selection-warning"
+            <span v-if="selected.length > maxAssignmentBatch" class="selection-warning"
+              >每批最多分配 {{ maxAssignmentBatch }} 个账号，请分批提交</span
+            ><span v-else-if="selected.length > available" class="selection-warning"
               >已选数量超过剩余 {{ available }} 个名额</span
             ><el-button type="primary" :icon="Plus" :disabled="!canAssign" :loading="saving" @click="assign"
               >分配选中账号{{ selected.length ? `（${selected.length}）` : '' }}</el-button

@@ -1,8 +1,9 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Destination)
+param([Parameter(Mandatory)][string]$Destination, [string]$FrontendDirectory)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$frontendRoot = if ($FrontendDirectory) { (Resolve-Path -LiteralPath $FrontendDirectory).Path } else { Join-Path $projectRoot 'web' }
 $Destination = [IO.Path]::GetFullPath($Destination)
 New-Item -ItemType Directory -Path $Destination -Force | Out-Null
 $components = New-Object Collections.Generic.List[object]
@@ -68,9 +69,9 @@ foreach ($libraryProperty in $assets.libraries.PSObject.Properties) {
     $components.Add([ordered]@{ecosystem='NuGet';name=$name;version=$version;license=$license;projectUrl=$projectUrl;repositoryUrl=$repositoryUrl;repositoryCommit=$repositoryCommit;noticeFiles=@($notices | Select-Object -Unique)})
 }
 
-$lockFile = Join-Path $projectRoot 'web/package-lock.json'
+$lockFile = Join-Path $frontendRoot 'package-lock.json'
 if (-not (Test-Path -LiteralPath $lockFile)) { throw 'Frontend package-lock.json is required for dependency inventory.' }
-$npmMetadata = & node (Join-Path $PSScriptRoot 'collect-npm-dependencies.mjs') (Join-Path $projectRoot 'web')
+$npmMetadata = & node (Join-Path $PSScriptRoot 'collect-npm-dependencies.mjs') $frontendRoot
 if ($LASTEXITCODE -ne 0) { throw 'Failed to read installed frontend dependency metadata.' }
 $npmComponents = $npmMetadata | ConvertFrom-Json
 foreach ($package in $npmComponents) {

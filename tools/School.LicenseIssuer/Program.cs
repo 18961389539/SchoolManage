@@ -102,6 +102,9 @@ internal static class LicenseIssuer
         if (resources.Select(x => x.Name.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != resources.Count)
             throw new IssuerInputException("资源名称不能重复，请合并重复资源的数量后重试。");
         resources = resources.Select(x => x with { Name = x.Name.Trim(), AuthorizationCode = x.AuthorizationCode.Trim() }).ToList();
+        var quotaCodes = new HashSet<string>(["TRAINING.CABINETS", "TRAINING.DEVICES", "TRAINING.NODES", "TRAINING.VMS", "TRAINING.ASSIGNMENTS"], StringComparer.Ordinal);
+        if (resources.Where(x => quotaCodes.Contains(x.AuthorizationCode)).GroupBy(x => x.AuthorizationCode, StringComparer.Ordinal).Any(x => x.Count() > 1))
+            throw new IssuerInputException("同一张许可证不能重复列出同一种平台配额。");
         var issuedAt = DateTime.UtcNow;
         DateTime? expiresAt = null;
         if (options.TryGetValue("expires", out var expires))

@@ -3,6 +3,17 @@ let token = ''
 export const setToken = (value: string) => {
   token = value || ''
 }
+/**
+ * Server-declared limits, read from `/api/status` at boot. The 16 MB default only covers the
+ * first render before the status response arrives; the server value always wins so the
+ * browser cannot refuse a file the server would accept (or the reverse).
+ */
+export const limits = { maxUploadBytes: 16 * 1024 * 1024 }
+export const setLimits = (status: { maxUploadBytes?: number }) => {
+  if (typeof status.maxUploadBytes === 'number' && status.maxUploadBytes > 0)
+    limits.maxUploadBytes = status.maxUploadBytes
+}
+export const maxUploadMegabytes = () => Math.round(limits.maxUploadBytes / (1024 * 1024))
 export class ApiError extends Error {
   constructor(
     message: string,

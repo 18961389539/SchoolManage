@@ -56,7 +56,9 @@ public sealed class RollingFileLoggerProvider : ILoggerProvider
     sealed class FileLogger(RollingFileLoggerProvider owner, string category) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel level) => level >= LogLevel.Information;
+        // The level comes from School:Logs:MinimumLevel so an operator can reduce synchronous
+        // file writes without rebuilding the service.
+        public bool IsEnabled(LogLevel level) => level >= owner.options.LogMinimumLevel && level != LogLevel.None;
         public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             if (!IsEnabled(level)) return;

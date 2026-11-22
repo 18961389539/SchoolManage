@@ -30,6 +30,7 @@ public sealed class ValidationTests
     [InlineData("abcd12345678")]       // 12 chars, letters + digits
     [InlineData("A1b2C3d4E5f6G7h8")]
     [InlineData("密码密码密码密码密码a1")] // non-ASCII letters still count as letters
+    [InlineData("𝔸bcdefghij12")]        // letter outside the BMP (surrogate pair in UTF-16)
     public void Password_AcceptsPolicy(string value)
         => Assert.Null(Validation.Password(value));
 

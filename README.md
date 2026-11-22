@@ -1,6 +1,6 @@
 # 学校实训资源平台
 
-面向 Windows 11 的校内实训资源管理软件。当前实施范围来自两张技术参数截图，并采用用户确认的**内置模拟机柜、串口设备、集群节点和虚拟机**。模拟状态始终显式标注，不代表真实硬件联调通过。
+面向 Windows 11 的校内实训资源管理软件。平台覆盖课堂、理实一体化考试、开放式资源库、技能图谱和岗位训练营。机柜与教学实操可使用内置模拟环境。管理员可配置 Hyper-V 主机进行真实集群查看和实训虚拟机管理。
 
 技术路线：Vue 3 / TypeScript 管理界面、ASP.NET Core / .NET 10、SQLite、Windows Service。前端构建结果由同一个服务托管，发布包自带 .NET 运行时；使用端通过浏览器访问。目标机不需要 Node.js、Java、容器环境或独立 SQLite 服务。
 
@@ -29,7 +29,11 @@ dotnet run --project src/School.Training -- --urls http://127.0.0.1:5080
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1 -Version 0.1.0
 ```
 
-构建会先发布 Release 程序，再对发布目录执行 C# 格式检查、xUnit 单元测试、迁移、应用、Excel、节点账号、基础设施、负载、安全和部署策略回归；同一门禁还会执行 Prettier 格式检查、ESLint（含复杂度告警）、Vitest 单元测试与北京时间转换回归（`-SkipFrontend` 时跳过这 4 项）。任一失败即停止，不生成发布包。门禁报告写入 `docs/verification/release-test-gate.json`。输出到 `artifacts/`：
+构建会先发布 Release 程序，再对发布目录执行格式检查、xUnit、迁移、应用、Excel、节点账号、基础设施、负载、安全及部署回归。部署回归包括安装失败回退与备份恢复。完整门禁共 19 项，`-SkipFrontend` 时跳过 4 项前端检查。任一检查失败即停止打包，结果写入 `docs/verification/release-test-gate.json`。
+
+如果当前开发服务器占用 `web/node_modules`，将 `web` 源码及锁文件复制到独立目录，并通过 `-FrontendDirectory` 指定该目录。前端构建、测试和依赖清单将使用这份副本。
+
+`artifacts/` 包含以下输出。
 
 - `SchoolTraining-0.1.0-Setup.exe`：自包含安装程序，申请管理员权限后注册本系统服务。
 - `SchoolTraining-0.1.0-win-x64.zip`：离线发布包、安装维护脚本和文档。

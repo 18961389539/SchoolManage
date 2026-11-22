@@ -4,6 +4,7 @@ export interface Field {
   label: string
   type?: string
   required?: boolean
+  requiredWhen?: { key: string; value: any }
   options?: { label: string; value: any; disabled?: boolean }[]
   source?: string
   placeholder?: string
@@ -12,6 +13,7 @@ export interface Field {
   default?: any
   createOnly?: boolean
   help?: string
+  visibleWhen?: { key: string; value: string }
 }
 export interface Column {
   key: string
@@ -25,6 +27,7 @@ export interface Entity {
   endpoint: string
   kind?: string
   fields: Field[]
+  filters?: Field[]
   columns: Column[]
   icon: string
 }
@@ -40,6 +43,25 @@ const gender = [
   { label: '女', value: '女' }
 ]
 const remark: Field = { key: 'remark', label: '备注', type: 'textarea' }
+const profession: Field = {
+  key: 'professionId',
+  label: '所属专业',
+  required: true,
+  type: 'select',
+  source: '/professions'
+}
+const schoolClass: Field = { key: 'classId', label: '所属班级', type: 'select', source: '/classes' }
+const teacherRole: Field = {
+  key: 'role',
+  label: '所属角色',
+  type: 'select',
+  required: true,
+  default: 'Teacher',
+  options: [
+    { label: '教师', value: 'Teacher' },
+    { label: '管理员', value: 'Admin' }
+  ]
+}
 const person = (kind: string): Entity => ({
   title: kind === 'teacher' ? '教师管理' : '学生管理',
   singular: kind === 'teacher' ? '教师' : '学生',
@@ -47,11 +69,13 @@ const person = (kind: string): Entity => ({
   endpoint: '/people',
   kind,
   icon: 'User',
+  filters: kind === 'teacher' ? [schoolClass, teacherRole] : [schoolClass],
   columns: [
     { key: 'name', label: '姓名' },
     { key: 'userName', label: '平台账号' },
     { key: 'number', label: kind === 'teacher' ? '教师工号' : '学号' },
     { key: 'className', label: '所属班级' },
+    ...(kind === 'teacher' ? [{ key: 'role', label: '所属角色' }] : []),
     { key: 'gender', label: '性别', width: 75 },
     { key: 'phone', label: '手机号码' },
     { key: 'email', label: '电子邮箱' }
@@ -60,24 +84,13 @@ const person = (kind: string): Entity => ({
     { key: 'name', label: '姓名', required: true },
     { key: 'userName', label: '平台账号', required: true, placeholder: '字母、数字或下划线' },
     { key: 'number', label: kind === 'teacher' ? '教师工号' : '学号', required: true },
-    { key: 'classId', label: '所属班级', type: 'select', source: '/classes' },
+    schoolClass,
     { key: 'gender', label: '性别', type: 'select', options: gender },
     { key: 'phone', label: '手机号码' },
     { key: 'email', label: '电子邮箱', type: 'email' },
-    {
-      key: 'role',
-      label: '所属角色',
-      type: 'select',
-      required: true,
-      default: kind === 'teacher' ? 'Teacher' : 'Student',
-      options:
-        kind === 'teacher'
-          ? [
-              { label: '教师', value: 'Teacher' },
-              { label: '管理员', value: 'Admin' }
-            ]
-          : [{ label: '学生', value: 'Student' }]
-    },
+    kind === 'teacher'
+      ? teacherRole
+      : { ...teacherRole, default: 'Student', options: [{ label: '学生', value: 'Student' }] },
     {
       key: 'password',
       label: '初始密码',
@@ -112,16 +125,13 @@ export const entities: Record<string, Entity> = {
     subtitle: '按专业组织班级，管理师生档案的班级关联。',
     endpoint: '/classes',
     icon: 'School',
+    filters: [profession],
     columns: [
       { key: 'name', label: '班级名称' },
       { key: 'professionName', label: '所属专业' },
       { key: 'remark', label: '备注' }
     ],
-    fields: [
-      { key: 'name', label: '班级名称', required: true },
-      { key: 'professionId', label: '所属专业', required: true, type: 'select', source: '/professions' },
-      remark
-    ]
+    fields: [{ key: 'name', label: '班级名称', required: true }, profession, remark]
   },
   teachers: person('teacher'),
   students: person('student'),
@@ -180,7 +190,15 @@ export const entities: Record<string, Entity> = {
     fields: [
       { key: 'name', label: '机柜名称', required: true },
       { key: 'isSimulated', label: '模拟机柜', type: 'switch', default: true },
-      { key: 'host', label: '控制器地址', required: true, default: 'simulator.local', placeholder: 'IP 地址或主机名' },
+      {
+        key: 'host',
+        label: '控制器地址',
+        required: true,
+        requiredWhen: { key: 'isSimulated', value: false },
+        default: 'simulator.local',
+        placeholder: 'IP 地址或主机名',
+        help: '模拟机柜可留空；真实机柜必须填写有效地址。'
+      },
       { key: 'port', label: '控制器端口', type: 'number', min: 1, max: 65535, default: 23 },
       { key: 'jumpHost', label: '跳板机地址' },
       { key: 'jumpPort', label: '跳板机端口', type: 'number', default: 22, min: 1, max: 65535 },
@@ -199,6 +217,7 @@ export const entities: Record<string, Entity> = {
       { key: 'name', label: '设备名称' },
       { key: 'cabinetName', label: '所属机柜' },
       { key: 'deviceTypeName', label: '设备类型' },
+      { key: 'nodeName', label: '实训节点' },
       { key: 'connectionType', label: '连接方式', width: 130 },
       { key: 'host', label: '连接地址' },
       { key: 'port', label: '端口', width: 85 }
@@ -214,6 +233,14 @@ export const entities: Record<string, Entity> = {
         required: true,
         default: 'simulated',
         options: connectionOptions
+      },
+      {
+        key: 'nodeId',
+        label: '实训节点',
+        type: 'select',
+        source: '/nodes?provider=simulated',
+        visibleWhen: { key: 'connectionType', value: 'simulated' },
+        help: '关联模拟节点后，该节点已分配的师生可在个人工作空间访问本设备。'
       },
       { key: 'host', label: '连接地址', placeholder: '模拟设备使用内置连接服务' },
       { key: 'port', label: '连接端口', type: 'number', min: 1, max: 65535, default: 23 },
@@ -245,6 +272,10 @@ export const entities: Record<string, Entity> = {
       { key: 'host', label: '节点地址' },
       { key: 'provider', label: '资源平台', width: 150 },
       { key: 'enabled', label: '启用状态', width: 105 },
+      { key: 'healthStatus', label: '健康状态', width: 105 },
+      { key: 'cpuUsagePercent', label: 'CPU 使用率', width: 120 },
+      { key: 'memoryUsagePercent', label: '内存使用率', width: 120 },
+      { key: 'diskUsagePercent', label: '磁盘使用率', width: 120 },
       { key: 'accountUsage', label: '账号数量 / 配额', width: 155 },
       { key: 'virtualMachineUsage', label: '虚拟机数量 / 配额', width: 170 },
       { key: 'remark', label: '备注' }
@@ -259,7 +290,7 @@ export const entities: Record<string, Entity> = {
         default: 'simulated',
         options: [
           { label: '内置模拟节点', value: 'simulated' },
-          { label: 'Hyper-V（暂未提供适配）', value: 'hyperv', disabled: true },
+          { label: 'Hyper-V', value: 'hyperv' },
           { label: 'Proxmox VE（暂未提供适配）', value: 'proxmox', disabled: true }
         ]
       },

@@ -18,7 +18,7 @@ const executable = path.join(program, executableName); const log = path.join(run
 const relative = value => path.relative(workspace, value).split(path.sep).join('/');
 const sha = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex').toUpperCase();
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-const report = { recordedAtUtc: new Date().toISOString(), status: 'running', command: 'node tests/node-accounts-smoke.mjs', dataDirectory: relative(data), runtimeDirectory: relative(program), newBaselineSchemaVersion: 4, checks: [], processStopped: false, scope: 'Single-instance simulated node platform-account associations and quotas. Does not create OS accounts, change physical hypervisors, migrate prior development databases or establish production capacity.' };
+const report = { recordedAtUtc: new Date().toISOString(), status: 'running', command: 'node tests/node-accounts-smoke.mjs', dataDirectory: relative(data), runtimeDirectory: relative(program), checks: [], processStopped: false, scope: 'Single-instance simulated node platform-account associations and quotas. Does not create OS accounts, change physical hypervisors, migrate prior development databases or establish production capacity.' };
 let service; let exited = false; let exitStatus = null; let serviceError = null; let url = ''; let failure;
 function pass(name) { report.checks.push(name); console.log(`PASS ${name}`); }
 async function freePort() { const server = net.createServer(); await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); }); const number = server.address().port; await new Promise(resolve => server.close(resolve)); return number; }
@@ -51,7 +51,7 @@ async function stop() {
 
 try {
   const sourceAssembly = path.join(source, 'School.Training.dll');
-  assert.ok(fs.existsSync(sourceAssembly), 'Build the current v1 server model first.');
+  assert.ok(fs.existsSync(sourceAssembly), 'Build the current server first.');
   report.sourceAssemblySha256 = sha(sourceAssembly);
   fs.cpSync(source, program, { recursive: true, force: false, errorOnExist: true });
   report.testedAssemblySha256 = sha(path.join(program, 'School.Training.dll')); assert.equal(report.testedAssemblySha256, report.sourceAssemblySha256);
@@ -61,7 +61,8 @@ try {
   service.stdout.on('data', chunk => fs.appendFileSync(log, chunk)); service.stderr.on('data', chunk => fs.appendFileSync(log, chunk));
   service.on('error', error => { serviceError = error; }); service.on('exit', (code, signal) => { exited = true; exitStatus = { code, signal }; });
   const deadline = Date.now() + 30000;
-  while (true) { if (serviceError) throw serviceError; if (exited) throw new Error('Fresh v1 service failed startup; inspect isolated service.log.'); try { const result = await fetch(`${url}/api/status`, { signal: AbortSignal.timeout(1000) }); if (result.ok) break; } catch { } if (Date.now() > deadline) throw new Error('Startup timed out.'); await pause(100); }
+  while (true) { if (serviceError) throw serviceError; if (exited) throw new Error('Fresh service failed startup; inspect isolated service.log.'); try { const result = await fetch(`${url}/api/status`, { signal: AbortSignal.timeout(1000) }); if (result.ok) { report.newBaselineSchemaVersion = (await result.json()).schemaVersion; break; } } catch { } if (Date.now() > deadline) throw new Error('Startup timed out.'); await pause(100); }
+  assert.ok(Number.isInteger(report.newBaselineSchemaVersion) && report.newBaselineSchemaVersion > 0);
   const password = `Node-${randomBytes(18).toString('hex')}Aa1!`;
   const setup = await admin.call('/setup', 'POST', { schoolName: '节点配额隔离测试', userName: 'nodeadmin', displayName: '节点测试管理员', password });
   const initialAdminId = setup.user.id;
@@ -157,9 +158,9 @@ try {
 
   await stop(); assert.equal(report.processStopped, true); assert.equal(report.portReleased, true);
   const validation = spawnSync(executable, ['--validate-database', path.join(data, 'school.db')], { cwd: program, windowsHide: true, encoding: 'utf8', timeout: 30000 });
-  assert.ifError(validation.error); assert.equal(validation.status, 0, `DatabaseSafety rejected the fresh v2 account-assignment schema: ${validation.stderr}`);
+  assert.ifError(validation.error); assert.equal(validation.status, 0, `DatabaseSafety rejected the fresh v${report.newBaselineSchemaVersion} account-assignment schema: ${validation.stderr}`);
   report.databaseSafetyValidation = { exitCode: validation.status, passed: true };
-  pass('fresh v3 database with quota fields and assignment FKs passes DatabaseSafety');
+  pass(`fresh v${report.newBaselineSchemaVersion} database with quota fields and assignment FKs passes DatabaseSafety`);
   report.status = 'passed';
 } catch (error) { failure = error; report.status = 'failed'; report.error = error.message; }
 finally {

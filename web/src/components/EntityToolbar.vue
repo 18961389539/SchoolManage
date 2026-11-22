@@ -2,8 +2,8 @@
 import { Plus, Upload } from '@element-plus/icons-vue'
 import type { Entity } from '../entities'
 
-defineProps<{ entity: Entity; entityKey: string; isPeople: boolean }>()
-const emit = defineEmits<{ import: []; create: [] }>()
+defineProps<{ entity: Entity; entityKey: string; isPeople: boolean; cabinetScoped: boolean; cabinetName?: string }>()
+const emit = defineEmits<{ import: []; create: []; cabinets: [] }>()
 
 const sectionLabels: Record<string, string> = {
   devices: '实训资源 / 资源管理',
@@ -20,11 +20,15 @@ const sectionLabels: Record<string, string> = {
         {{ isPeople ? '教学组织 / 人员档案' : sectionLabels[entityKey] || '教学组织 / 基础资料' }}
       </div>
       <h1>{{ entity.title }}</h1>
-      <p>{{ entity.subtitle }}</p>
+      <p v-if="cabinetName">所属机柜：{{ cabinetName }}</p>
+      <p v-else>{{ entity.subtitle }}</p>
     </div>
     <div class="heading-actions">
       <el-button v-if="isPeople" :icon="Upload" @click="emit('import')">批量导入</el-button>
-      <el-button type="primary" :icon="Plus" @click="emit('create')">新增{{ entity.singular }}</el-button>
+      <el-button v-if="cabinetScoped" @click="emit('cabinets')">返回机柜管理</el-button>
+      <el-button type="primary" :icon="Plus" :disabled="cabinetScoped && !cabinetName" @click="emit('create')">
+        新增{{ entity.singular }}
+      </el-button>
     </div>
   </section>
   <el-alert

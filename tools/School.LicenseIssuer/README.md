@@ -41,9 +41,11 @@ dotnet run --project tools/School.LicenseIssuer -- keygen --out-dir "D:\Supplier
 
 ```json
 [
-  { "name": "模拟实训节点", "authorizationCode": "由供应商分配的授权码", "quantity": 2 }
+  { "name": "实训节点", "authorizationCode": "TRAINING.NODES", "quantity": 2 }
 ]
 ```
+
+平台额度使用 `TRAINING.CABINETS`、`TRAINING.DEVICES`、`TRAINING.NODES`、`TRAINING.VMS`、`TRAINING.ASSIGNMENTS`。每种代码在同一张许可证中只出现一次。节点账号按节点与账号的每一条关联计数。学校端对同类有效许可证采用最高额度，满足续期和额度调整需求。其他资源授权码仍可用于记录。
 
 ```powershell
 dotnet run --project tools/School.LicenseIssuer -- issue `

@@ -36,7 +36,7 @@ public static partial class InfrastructureEndpoints
             return Results.Ok(await Page(query.OrderBy(x => x.UserName), request, ct));
         });
 
-        group.MapPost("/nodes/{id}/accounts", async (string id, NodeAccountsInput input, SchoolDbContext db, HttpContext ctx) =>
+        group.MapPost("/nodes/{id}/accounts", async (string id, NodeAccountsInput input, SchoolDbContext db, HttpContext ctx, LicenseQuotaPolicy quota) =>
         {
             if (input.UserIds is not { Length: > 0 and <= 500 } || input.UserIds.Any(x => string.IsNullOrWhiteSpace(x) || x.Length > 64)) return Bad("每次请选择 1 至 500 个有效师生账号。");
             var userIds = input.UserIds.Distinct(StringComparer.Ordinal).ToArray();
@@ -44,6 +44,7 @@ public static partial class InfrastructureEndpoints
             await VmPowerLock.WaitAsync(ctx.RequestAborted);
             try
             {
+                await using var transaction = await db.Database.BeginTransactionAsync(ctx.RequestAborted);
                 var node = await db.Nodes.FindAsync([id], ctx.RequestAborted); if (node is null) return Missing();
                 if (!node.Enabled) return Conflict("节点已禁止新增分配；仍可移除已有账号关联。");
                 if (await db.NodeAccountAssignments.AnyAsync(x => x.NodeId == id && userIds.Contains(x.UserId), ctx.RequestAborted)) return Conflict("所选账号已分配到该节点，请刷新列表后重试。");
@@ -54,15 +55,17 @@ public static partial class InfrastructureEndpoints
                 if (eligible.Count != userIds.Length) return Bad("仅可分配已存在的教师或学生账号；系统初始管理员和已删除账号不可分配。");
                 var accountCount = await db.NodeAccountAssignments.CountAsync(x => x.NodeId == id, ctx.RequestAborted);
                 if (accountCount + userIds.Length > node.AccountQuota) return Conflict("分配后将超过节点账号上限；本次没有添加任何账号。");
+                if (await quota.CheckAllocationAsync(db, LicensedResource.Assignments, userIds.Length, ctx.RequestAborted) is { } denied) return denied;
                 db.NodeAccountAssignments.AddRange(userIds.Select(userId => new NodeAccountAssignment { NodeId = id, UserId = userId }));
                 Audit.Add(db, ctx, "分配节点师生账号", node.Name, $"原子新增 {userIds.Length} 个平台资源关联，不创建操作系统账户。");
                 await db.SaveChangesAsync(ctx.RequestAborted);
+                await transaction.CommitAsync(ctx.RequestAborted);
                 return Results.Ok(new { assignedCount = userIds.Length, nodeId = id, accountCount = accountCount + userIds.Length, node.AccountQuota, message = "已建立师生账号与节点的平台资源关联。" });
             }
             finally { VmPowerLock.Release(); }
         });
 
-        group.MapDelete("/nodes/{id}/accounts/{userId}", async (string id, string userId, SchoolDbContext db, HttpContext ctx) =>
+        group.MapDelete("/nodes/{id}/accounts/{userId}", async (string id, string userId, SchoolDbContext db, SimulationSessions sessions, HttpContext ctx) =>
         {
             await VmPowerLock.WaitAsync(ctx.RequestAborted);
             try
@@ -73,6 +76,7 @@ public static partial class InfrastructureEndpoints
                 db.NodeAccountAssignments.Remove(assignment);
                 Audit.Add(db, ctx, "移除节点师生账号", node.Name, "释放平台资源关联；师生账号和已存设备配置保持不变。");
                 await db.SaveChangesAsync(ctx.RequestAborted);
+                sessions.RevokeNodeLearners(id, userId);
                 return Results.Ok(new { nodeId = id, accountCount = await db.NodeAccountAssignments.CountAsync(x => x.NodeId == id, ctx.RequestAborted), node.AccountQuota, message = "已移除账号关联，师生账号本身仍保留。" });
             }
             finally { VmPowerLock.Release(); }

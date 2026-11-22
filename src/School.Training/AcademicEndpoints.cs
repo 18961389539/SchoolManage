@@ -72,6 +72,7 @@ public static class AcademicEndpoints
                     select new { p.Id, p.Kind, p.Name, u.UserName, p.Number, p.ClassId, className = c == null ? "" : c.Name, p.Gender, p.Phone, p.Email, u.Role };
             var search = req.Query["search"].ToString().Trim(); if (search.Length > 0) q = q.Where(x => x.Name.Contains(search) || x.UserName.Contains(search) || x.Number.Contains(search) || x.Phone.Contains(search));
             var classId = req.Query["classId"].ToString(); if (classId.Length > 0) q = q.Where(x => x.ClassId == classId);
+            var role = req.Query["role"].ToString(); if (role.Length > 0) q = q.Where(x => x.Role == role);
             var (page, size) = Validation.Page(req); return Results.Ok(new { total = await q.CountAsync(ct), items = await q.OrderBy(x => x.Number).Skip((page - 1) * size).Take(size).ToListAsync(ct) });
         });
         api.MapPost("/people", async (PersonRequest input, HttpContext ctx, SchoolDbContext db, IPasswordHasher<AppUser> hasher) =>
@@ -139,6 +140,8 @@ public static class AcademicEndpoints
         if (userIds.Contains(ctx.User.FindFirstValue(ClaimTypes.NameIdentifier))) return Results.Conflict(new { message = "不能删除当前登录账号" });
         var users = await db.Users.Where(x => userIds.Contains(x.Id)).ToListAsync(ctx.RequestAborted);
         var admins = users.Count(x => x.Role == "Admin"); if (admins > 0 && await db.Users.CountAsync(x => x.Role == "Admin", ctx.RequestAborted) <= admins) return Results.Conflict(new { message = "必须保留至少一个管理员" });
+        var ownedClassrooms = await db.Classrooms.CountAsync(x => userIds.Contains(x.TeacherUserId), ctx.RequestAborted);
+        if (ownedClassrooms > 0) return Results.Conflict(new { message = "所选教师仍负责课堂，请先转移或删除相关课堂" });
         db.People.RemoveRange(people); db.Users.RemoveRange(users); Audit.Add(db, ctx, "删除师生", string.Join(",", people.Select(x => x.Name))); await db.SaveChangesAsync(ctx.RequestAborted);
         foreach (var id in userIds) ctx.RequestServices.GetRequiredService<SimulationSessions>().RevokeUser(id);
         return Results.Ok(new { deletedCount = people.Count });

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { dateTime } from '../api'
 defineOptions({ name: 'DataRecord' })
-const props = defineProps<{ data: any }>()
+const props = defineProps<{ data: any; unavailableText?: string }>()
 const labels: Record<string, string> = {
   id: '记录 ID',
   name: '名称',
@@ -62,9 +62,11 @@ const labels: Record<string, string> = {
   os: '操作系统',
   machineName: '服务器名称',
   architecture: '系统架构',
-  processorCount: '逻辑处理器数',
+  processorCount: '物理处理器数',
   uptime: '运行时间',
   uptimeSeconds: '运行时间 (秒)',
+  processUptimeSeconds: '进程运行时间 (秒)',
+  bootTime: '系统启动时间',
   timestamp: '采集时间',
   sampledAt: '采集时间',
   capturedAt: '采集时间',
@@ -200,9 +202,10 @@ Object.assign(labels, {
   systemTime: '系统时间',
   portNumber: '端口编号',
   released: '已释放会话数',
-  level: '测试范围'
+  level: '测试范围',
+  legacy: '旧版许可证记录'
 })
-const isDateKey = (key: string) => key === 'at' || /(?:At|timestamp|systemTime)$/.test(key)
+const isDateKey = (key: string) => key === 'at' || key === 'bootTime' || /(?:At|timestamp|systemTime)$/.test(key)
 const label = (key: string) => {
   const text = labels[key] || key
   return isDateKey(key) ? `${text}（北京时间）` : text
@@ -224,35 +227,39 @@ const values: Record<string, string> = {
   student: '学生'
 }
 const scalar = (key: string, value: any) =>
-  value === null || value === undefined || value === ''
-    ? '—'
-    : typeof value === 'boolean'
-      ? value
-        ? '是'
-        : '否'
-      : isDateKey(key)
-        ? dateTime(value)
-        : [
-              'status',
-              'state',
-              'healthStatus',
-              'role',
-              'kind',
-              'provider',
-              'connectionType',
-              'mode',
-              'metricsSource',
-              'level'
-            ].includes(key)
-          ? values[String(value)] || String(value)
-          : String(value)
+  value === null || value === undefined
+    ? (props.unavailableText ?? '—')
+    : value === ''
+      ? '—'
+      : typeof value === 'boolean'
+        ? value
+          ? '是'
+          : '否'
+        : isDateKey(key)
+          ? dateTime(value)
+          : [
+                'status',
+                'state',
+                'healthStatus',
+                'role',
+                'kind',
+                'provider',
+                'connectionType',
+                'mode',
+                'metricsSource',
+                'level'
+              ].includes(key)
+            ? values[String(value)] || String(value)
+            : String(value)
 </script>
 <template>
   <div v-if="data === null || data === undefined" class="empty-inline">暂无数据</div>
   <div v-else-if="Array.isArray(data)" class="data-array">
     <div v-if="!data.length" class="empty-inline">暂无记录</div>
     <div v-for="(item, index) in data" :key="index" class="data-array-item">
-      <DataRecord v-if="typeof item === 'object'" :data="item" /><span v-else>{{ item }}</span>
+      <DataRecord v-if="typeof item === 'object'" :data="item" :unavailable-text="unavailableText" /><span v-else>{{
+        item
+      }}</span>
     </div>
   </div>
   <dl v-else-if="typeof data === 'object'" class="data-record">
@@ -264,9 +271,12 @@ const scalar = (key: string, value: any) =>
     >
       <dt>{{ label(key) }}</dt>
       <dd>
-        <DataRecord v-if="value !== null && typeof value === 'object'" :data="value" /><span v-else>{{
-          scalar(key, value)
-        }}</span>
+        <DataRecord
+          v-if="value !== null && typeof value === 'object'"
+          :data="value"
+          :unavailable-text="unavailableText"
+        />
+        <span v-else>{{ scalar(key, value) }}</span>
       </dd>
     </div>
   </dl>

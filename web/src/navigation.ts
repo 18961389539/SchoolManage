@@ -3,14 +3,21 @@ import {
   Collection,
   Connection,
   Cpu,
+  DataAnalysis,
   Document,
+  EditPen,
   FolderOpened,
   Grid,
+  HomeFilled,
   Key,
   Monitor,
   OfficeBuilding,
+  Reading,
   School,
   Setting,
+  Share,
+  Suitcase,
+  Tickets,
   User,
   UserFilled
 } from '@element-plus/icons-vue'
@@ -26,8 +33,27 @@ export interface NavGroup {
   items: NavItem[]
 }
 
+const teachingItems: NavItem[] = [
+  { key: 'courses', label: '课程管理', icon: Collection },
+  { key: 'exam-questions', label: '题库管理', icon: EditPen },
+  { key: 'exam-papers', label: '试卷管理', icon: Document },
+  { key: 'exams', label: '考试管理', icon: Tickets },
+  { key: 'classrooms', label: '课堂管理', icon: School },
+  { key: 'resources-overview', label: '资源概览', icon: Document }
+]
+
 export const navigation: NavGroup[] = [
   { label: '工作空间', items: [{ key: 'dashboard', label: '控制台', icon: Grid }] },
+  { label: '教学中心', items: teachingItems },
+  {
+    label: '岗位训练营',
+    items: [
+      { key: 'camp-positions', label: '岗位管理', icon: Suitcase },
+      { key: 'camp-reports', label: '能力报告', icon: DataAnalysis },
+      { key: 'camp-records', label: '测评记录', icon: Reading },
+      { key: 'camp-monitor', label: '测评监控', icon: Monitor }
+    ]
+  },
   {
     label: '教学组织',
     items: [
@@ -59,12 +85,65 @@ export const navigation: NavGroup[] = [
   }
 ]
 
+const teacherNavigation: NavGroup[] = [
+  {
+    label: '教学空间',
+    items: [
+      { key: 'teacher-home', label: '教学首页', icon: HomeFilled },
+      { key: 'classrooms', label: '我的课堂', icon: School },
+      { key: 'skill-graph', label: '技能图谱', icon: Share },
+      { key: 'exams', label: '考试管理', icon: Tickets },
+      { key: 'resources-overview', label: '资源概览', icon: Document },
+      { key: 'my-resources', label: '我的实训资源', icon: Monitor }
+    ]
+  },
+  {
+    label: '岗位训练营',
+    items: [
+      { key: 'camp-reports', label: '能力报告', icon: DataAnalysis },
+      { key: 'camp-records', label: '测评记录', icon: Reading },
+      { key: 'camp-monitor', label: '测评监控', icon: Monitor }
+    ]
+  }
+]
+
+const studentNavigation: NavGroup[] = [
+  {
+    label: '学习空间',
+    items: [
+      { key: 'student-home', label: '学习首页', icon: HomeFilled },
+      { key: 'my-exams', label: '我的考试', icon: Tickets },
+      { key: 'exam-records', label: '考试动态', icon: Reading },
+      { key: 'my-classrooms', label: '我的课堂', icon: School },
+      { key: 'skill-graph', label: '技能图谱', icon: Share },
+      { key: 'resources-overview', label: '资源概览', icon: Document },
+      { key: 'my-camp', label: '岗位训练', icon: Suitcase },
+      { key: 'camp-history', label: '测评历史', icon: DataAnalysis },
+      { key: 'my-resources', label: '我的实训资源', icon: Monitor }
+    ]
+  }
+]
+
 export const navigationItems = navigation.flatMap(group => group.items)
 
-export function findNavItem(key: string): NavItem | undefined {
-  return navigationItems.find(item => item.key === key)
+export function navigationFor(role?: string): NavGroup[] {
+  if (role === 'Teacher') return teacherNavigation
+  if (role === 'Student') return studentNavigation
+  return navigation
 }
 
-export function findNavGroup(key: string): NavGroup | undefined {
-  return navigation.find(group => group.items.some(item => item.key === key))
+export function homeRoute(role?: string): string {
+  if (role === 'Teacher') return 'teacher-home'
+  if (role === 'Student') return 'student-home'
+  return 'dashboard'
+}
+
+export function findNavItem(key: string, role = 'Admin'): NavItem | undefined {
+  return navigationFor(role)
+    .flatMap(group => group.items)
+    .find(item => item.key === key)
+}
+
+export function findNavGroup(key: string, role = 'Admin'): NavGroup | undefined {
+  return navigationFor(role).find(group => group.items.some(item => item.key === key))
 }

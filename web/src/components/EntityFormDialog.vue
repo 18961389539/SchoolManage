@@ -16,11 +16,20 @@ const emit = defineEmits<{ submit: [payload: Row] }>()
 
 const form = reactive<Row>({})
 const formRef = ref<FormInstance>()
-const fields = computed(() => props.entity.fields.filter(field => !props.editing || !field.createOnly))
+function isAvailable(field: Field) {
+  return !field.visibleWhen || form[field.visibleWhen.key] === field.visibleWhen.value
+}
+const fields = computed(() =>
+  props.entity.fields.filter(field => (!props.editing || !field.createOnly) && isAvailable(field))
+)
+
+function isRequired(field: Field) {
+  return !!field.required && (!field.requiredWhen || form[field.requiredWhen.key] === field.requiredWhen.value)
+}
 
 function fieldRules(field: Field): FormItemRule[] {
   return [
-    ...(field.required ? [{ required: true, message: `请填写${field.label}`, trigger: ['blur', 'change'] }] : []),
+    ...(isRequired(field) ? [{ required: true, message: `请填写${field.label}`, trigger: ['blur', 'change'] }] : []),
     ...(field.type === 'password' && field.createOnly ? [{ min: 12, message: '密码至少 12 位', trigger: 'blur' }] : []),
     ...(field.type === 'email' ? [{ type: 'email', message: '请输入正确的电子邮箱', trigger: 'blur' }] : [])
   ] as FormItemRule[]
@@ -51,6 +60,9 @@ async function submit() {
   const payload: Row = { ...form }
   if (props.entity.kind) payload.kind = props.entity.kind
   if (!payload.classId && props.entity.kind) payload.classId = null
+  if (props.entity.endpoint === '/devices') {
+    payload.nodeId = payload.connectionType === 'simulated' && payload.nodeId ? payload.nodeId : null
+  }
   emit('submit', payload)
 }
 </script>
@@ -75,7 +87,7 @@ async function submit() {
           v-if="field.type === 'select'"
           v-model="form[field.key]"
           filterable
-          :clearable="!field.required"
+          :clearable="!isRequired(field)"
           :placeholder="`请选择${field.label}`"
         >
           <el-option

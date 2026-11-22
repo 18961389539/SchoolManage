@@ -7,9 +7,9 @@ public sealed class SimulationSessions(IHostApplicationLifetime lifetime)
     private readonly ConcurrentDictionary<string, TerminalLease> _leases = new();
     private readonly CancellationToken _applicationStopping = lifetime.ApplicationStopping;
 
-    public bool TryAcquire(string deviceId, string userId, string owner, string securityStamp, CancellationToken requestAborted, out TerminalLease lease)
+    public bool TryAcquire(string deviceId, string userId, string owner, string securityStamp, CancellationToken requestAborted, out TerminalLease lease, string? learnerNodeId = null)
     {
-        lease = new TerminalLease(deviceId, userId, owner, securityStamp, CancellationTokenSource.CreateLinkedTokenSource(requestAborted, _applicationStopping));
+        lease = new TerminalLease(deviceId, userId, owner, securityStamp, CancellationTokenSource.CreateLinkedTokenSource(requestAborted, _applicationStopping), learnerNodeId);
         if (lease.Token.IsCancellationRequested || !_leases.TryAdd(deviceId, lease))
         {
             lease.Dispose();
@@ -53,6 +53,12 @@ public sealed class SimulationSessions(IHostApplicationLifetime lifetime)
         return count;
     }
 
+    public void RevokeNodeLearners(string nodeId, string? userId = null)
+    {
+        foreach (var lease in _leases.Values)
+            if (lease.LearnerNodeId == nodeId && (userId is null || lease.UserId == userId)) lease.Cancel();
+    }
+
     public void Release(TerminalLease lease)
     {
         _leases.TryRemove(new KeyValuePair<string, TerminalLease>(lease.DeviceId, lease));
@@ -60,13 +66,14 @@ public sealed class SimulationSessions(IHostApplicationLifetime lifetime)
     }
 }
 
-public sealed class TerminalLease(string deviceId, string userId, string owner, string securityStamp, CancellationTokenSource cancellation) : IDisposable
+public sealed class TerminalLease(string deviceId, string userId, string owner, string securityStamp, CancellationTokenSource cancellation, string? learnerNodeId = null) : IDisposable
 {
     private readonly CancellationToken _token = cancellation.Token;
     public string DeviceId { get; } = deviceId;
     public string UserId { get; } = userId;
     public string Owner { get; } = owner;
     public string SecurityStamp { get; } = securityStamp;
+    public string? LearnerNodeId { get; } = learnerNodeId;
     public CancellationToken Token => _token;
     public void Cancel() { try { cancellation.Cancel(); } catch (ObjectDisposedException) { } }
     public void Dispose() => cancellation.Dispose();

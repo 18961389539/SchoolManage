@@ -9,6 +9,12 @@ public sealed class StorageOptions
     public int LogRetentionDays { get; init; } = 14;
     public long LogMaxFileBytes { get; init; } = 10 * 1024 * 1024;
     public long LogMaxTotalBytes { get; init; } = 200 * 1024 * 1024;
+
+    /// <summary>
+    /// Lowest level written to <c>logs/service-*.log</c>. The file logger is synchronous, so
+    /// raising this level is the supported way to cut per-request log writes on a busy host.
+    /// </summary>
+    public LogLevel LogMinimumLevel { get; init; } = LogLevel.Information;
     public int BackupRetentionCount { get; init; } = 20;
     public long BackupMaxTotalBytes { get; init; } = 5L * 1024 * 1024 * 1024;
     public long BackupMinimumFreeBytes { get; init; } = 256L * 1024 * 1024;
@@ -22,6 +28,9 @@ public sealed class StorageOptions
             return Math.Clamp(value, minimum, maximum);
         }
 
+        static LogLevel ReadLevel(IConfiguration configuration, string key, LogLevel fallback)
+            => Enum.TryParse<LogLevel>(configuration[key], ignoreCase: true, out var level) && Enum.IsDefined(level) ? level : fallback;
+
         var logMaxFile = Read("School:Logs:MaxFileBytes", 10 * 1024 * 1024, 1024 * 1024, 1024L * 1024 * 1024);
         var logMaxTotal = Math.Clamp(configuration.GetValue<long?>("School:Logs:MaxTotalBytes") ?? Math.Max(200 * 1024 * 1024, logMaxFile),
             logMaxFile, 10L * 1024 * 1024 * 1024);
@@ -30,6 +39,7 @@ public sealed class StorageOptions
             LogRetentionDays = (int)Read("School:Logs:RetentionDays", 14, 1, 3650),
             LogMaxFileBytes = logMaxFile,
             LogMaxTotalBytes = logMaxTotal,
+            LogMinimumLevel = ReadLevel(configuration, "School:Logs:MinimumLevel", LogLevel.Information),
             BackupRetentionCount = (int)Read("School:Backups:RetentionCount", 20, 1, 1000),
             BackupMaxTotalBytes = Read("School:Backups:MaxTotalBytes", 5L * 1024 * 1024 * 1024, 10 * 1024 * 1024, 1024L * 1024 * 1024 * 1024),
             BackupMinimumFreeBytes = Read("School:Backups:MinimumFreeBytes", 256L * 1024 * 1024, 0, 100L * 1024 * 1024 * 1024),

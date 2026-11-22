@@ -9,13 +9,16 @@ import {
   Search,
   VideoPlay,
   VideoPause,
+  Monitor,
   Document,
   FolderOpened,
   Check
 } from '@element-plus/icons-vue'
-import { api, post, put, del, listItems, messageOf, dateTime, bytes, type Row } from '../api'
+import { api, post, put, listItems, messageOf, dateTime, bytes, type Row } from '../api'
+import { downloadFile } from '../exam'
 import type { BackupItem, LicenseUploadResult, NodeRow, Paged } from '../types'
 import DataRecord from './DataRecord.vue'
+import VmConsoleDialog from './VmConsoleDialog.vue'
 const props = defineProps<{ pageKey: string; productVersion: string }>()
 const data = ref<Row | null>(null),
   rows = ref<Row[]>([]),
@@ -31,9 +34,16 @@ const settings = reactive<Row>({ schoolName: '' }),
   uploadResults = ref<Row[]>([])
 const vmVisible = ref(false),
   vmEditing = ref(false),
+  vmLoading = ref(false),
   vmNodes = ref<NodeRow[]>([]),
   vmModel = reactive<Row>({ name: '', nodeId: '', cpuCount: 2, memoryMb: 2048, diskGb: 20, remark: '' })
-let loadVersion = 0
+const vmProvider = ref<'simulated' | 'hyperv'>('simulated')
+const vmConsoleVisible = ref(false)
+const consoleMachine = ref<Row | null>(null)
+const powerActionNames = { start: '启动', stop: '停止', restart: '重启' }
+const detectionLabels: Record<string, string> = { reachable: '可连接', offline: '离线', unsupported: '未接入' }
+let loadVersion = 0,
+  pageVersion = 0
 function resetSearch() {
   page.value = 1
   void load()
@@ -42,7 +52,7 @@ const titles: Record<string, { title: string; subtitle: string; section: string 
   server: { title: '服务器信息', subtitle: '查看当前管理服务器的真实硬件与网络信息。', section: '运行维护 / 主机状态' },
   'virtual-machines': {
     title: '虚拟机管理',
-    subtitle: '查看已接入节点的虚拟机，执行资源启停操作。',
+    subtitle: '查找实训虚拟机，连接控制台或控制电源。',
     section: '实训资源 / 虚拟资源'
   },
   audits: { title: '操作日志', subtitle: '追溯账号、资源与系统配置的关键操作。', section: '运行维护 / 审计记录' },
@@ -59,6 +69,9 @@ const titles: Record<string, { title: string; subtitle: string; section: string 
   settings: { title: '系统设置', subtitle: '维护学校名称与当前部署信息。', section: '运行维护 / 系统配置' }
 }
 const title = computed(() => titles[props.pageKey]!)
+const licenseMetadata = computed(() =>
+  data.value ? { machineCode: data.value.machineCode, items: data.value.items } : null
+)
 async function load() {
   const version = ++loadVersion
   loading.value = true
@@ -70,7 +83,7 @@ async function load() {
       props.pageKey === 'server'
         ? '/server/info'
         : ['audits', 'virtual-machines'].includes(props.pageKey)
-          ? `/${props.pageKey}?search=${encodeURIComponent(search.value)}&page=${page.value}&pageSize=20`
+          ? `${props.pageKey === 'virtual-machines' && vmProvider.value === 'hyperv' ? '/hyperv' : ''}/${props.pageKey}?search=${encodeURIComponent(search.value)}&page=${page.value}&pageSize=20`
           : `/${props.pageKey}`
     const result = await api<Row>(path)
     if (version !== loadVersion) return
@@ -106,6 +119,7 @@ async function saveSettings() {
   saving.value = true
   try {
     await put('/settings', { schoolName: settings.schoolName })
+    settings.schoolName = String(settings.schoolName).trim()
     ElMessage.success('系统设置已保存')
     window.dispatchEvent(new CustomEvent('school-name-changed', { detail: settings.schoolName }))
     await load()
@@ -115,20 +129,40 @@ async function saveSettings() {
     saving.value = false
   }
 }
-async function vmAction(row: Row, action: string) {
+function vmActionPath(row: Row) {
+  if (row.provider === 'hyperv') return `/hyperv/nodes/${row.nodeId}/virtual-machines/${row.id}`
+  return `/virtual-machines/${row.id}`
+}
+
+async function openConsole(row: Row) {
+  if (row.provider === 'hyperv') {
+    try {
+      await downloadFile(`${vmActionPath(row)}/connection`, `SchoolTraining-${row.id}.rdp`)
+      ElMessage.info('请打开下载的远程桌面文件，使用学校分配的来宾系统账号登录。')
+    } catch (failure) {
+      ElMessage.error(messageOf(failure))
+    }
+    return
+  }
+  consoleMachine.value = row
+  vmConsoleVisible.value = true
+}
+
+async function vmAction(row: Row, action: keyof typeof powerActionNames) {
+  const label = powerActionNames[action]
   try {
     await ElMessageBox.confirm(
-      `${action === 'start' ? '启动' : '停止'}虚拟机“${row.name}”？${row.isSimulated ? '本次操作只改变内置模拟资源状态。' : ''}`,
+      `确认${label}${row.isSimulated ? '模拟' : ' Hyper-V '}虚拟机“${row.name}”？`,
       '确认资源操作',
       {
-        type: action === 'stop' ? 'warning' : 'info',
-        confirmButtonText: action === 'start' ? '启动' : '停止',
+        type: action === 'start' ? 'info' : 'warning',
+        confirmButtonText: label,
         cancelButtonText: '取消'
       }
     )
     saving.value = true
-    await post(`/virtual-machines/${row.id}/${action}`)
-    ElMessage.success('资源状态已更新')
+    await post(`${vmActionPath(row)}/${action}`)
+    ElMessage.success(`虚拟机已${label}`)
     await load()
   } catch (err) {
     if (err !== 'cancel' && err !== 'close') ElMessage.error(messageOf(err))
@@ -137,23 +171,36 @@ async function vmAction(row: Row, action: string) {
   }
 }
 async function openVm(row?: Row) {
+  if (vmLoading.value) return
+  const version = pageVersion
+  vmLoading.value = true
   try {
-    const nodes = await api<Paged<NodeRow>>('/nodes?pageSize=500')
-    vmNodes.value = listItems<NodeRow>(nodes).filter(node => node.provider === 'simulated')
-    if (!vmNodes.value.length) {
+    const nodes: NodeRow[] = []
+    const pageSize = 500
+    for (let nodePage = 1; ; nodePage++) {
+      const result = await api<Paged<NodeRow>>(`/nodes?provider=simulated&page=${nodePage}&pageSize=${pageSize}`)
+      const batch = listItems<NodeRow>(result)
+      nodes.push(...batch)
+      if (!batch.length || nodePage * pageSize >= result.total) break
+    }
+    if (version !== pageVersion || props.pageKey !== 'virtual-machines') return
+    if (!nodes.length) {
       ElMessage.warning('请先创建一个模拟节点，或在控制台创建模拟环境')
       return
     }
+    vmNodes.value = nodes
     Object.keys(vmModel).forEach(key => delete vmModel[key])
     Object.assign(
       vmModel,
-      { name: '', nodeId: vmNodes.value[0]?.id, cpuCount: 2, memoryMb: 2048, diskGb: 20, remark: '' },
+      { name: '', nodeId: nodes[0]?.id, cpuCount: 2, memoryMb: 2048, diskGb: 20, remark: '' },
       row || {}
     )
     vmEditing.value = !!row
     vmVisible.value = true
   } catch (err) {
-    ElMessage.error(messageOf(err))
+    if (version === pageVersion) ElMessage.error(messageOf(err))
+  } finally {
+    vmLoading.value = false
   }
 }
 async function saveVm() {
@@ -176,49 +223,64 @@ async function saveVm() {
 }
 async function deleteVm(row: Row) {
   try {
-    await ElMessageBox.confirm(`确认删除模拟虚拟机“${row.name}”？请先停止运行中的资源。`, '删除模拟虚拟机', {
+    const message = row.isSimulated
+      ? `销毁会停止并移除模拟虚拟机“${row.name}”。确认销毁？`
+      : `将从 Hyper-V 移除已关机的虚拟机“${row.name}”。磁盘文件将保留。`
+    await ElMessageBox.confirm(message, '销毁虚拟机', {
       type: 'warning',
-      confirmButtonText: '删除',
+      confirmButtonText: '确认销毁',
       cancelButtonText: '取消'
     })
-    await del(`/virtual-machines/${row.id}`)
-    ElMessage.success('模拟虚拟机已删除')
+    saving.value = true
+    await post(`${vmActionPath(row)}/destroy`)
+    ElMessage.success('虚拟机已移除')
+    if (rows.value.length === 1 && page.value > 1) page.value--
     await load()
   } catch (err) {
     if (err !== 'cancel' && err !== 'close') ElMessage.error(messageOf(err))
+  } finally {
+    saving.value = false
   }
 }
 async function uploadLicense(event: Event) {
-  const files = Array.from((event.target as HTMLInputElement).files || [])
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  input.value = ''
   if (!files.length) return
   uploadResults.value = []
-  saving.value = true
-  for (const file of files) {
-    if (file.size > 262144) {
-      uploadResults.value.push({ fileName: file.name, success: false, message: '文件大小不能超过 256 KB' })
-      continue
-    }
-    const body = new FormData()
-    body.append('file', file)
-    try {
-      const result = await api<LicenseUploadResult>('/licenses', { method: 'POST', body })
-      uploadResults.value.push({
-        fileName: file.name,
-        success: true,
-        message: `已导入 ${result.importedCount} 个许可证`
-      })
-    } catch (err) {
-      uploadResults.value.push({ fileName: file.name, success: false, message: messageOf(err) })
-    }
+  if (files.length > 20 || files.some(file => file.size < 1 || file.size > 262144)) {
+    ElMessage.warning('每次请选择 1–20 个非空许可证文件，每个文件最多 256 KB。')
+    return
   }
-  saving.value = false
-  if (licenseInput.value) licenseInput.value.value = ''
-  await load()
+  saving.value = true
+  try {
+    const body = new FormData()
+    for (const file of files) body.append('file', file)
+    const result = await api<LicenseUploadResult>('/licenses', { method: 'POST', body })
+    uploadResults.value = files.map(file => ({
+      fileName: file.name,
+      success: true,
+      message: `已与本批其他文件一起导入，共 ${result.importedCount} 项。`
+    }))
+    await load()
+  } catch (err) {
+    uploadResults.value = files.map(file => ({
+      fileName: file.name,
+      success: false,
+      message: `本批未导入：${messageOf(err)}`
+    }))
+  } finally {
+    saving.value = false
+  }
 }
 function copyMachineCode() {
   const value = data.value?.machineCode
   if (!value) {
     ElMessage.warning('暂未获取设备特征码')
+    return
+  }
+  if (!navigator.clipboard) {
+    ElMessage.warning('浏览器未允许复制，请手动选择设备特征码')
     return
   }
   navigator.clipboard
@@ -229,9 +291,16 @@ function copyMachineCode() {
 watch(
   () => props.pageKey,
   () => {
+    pageVersion++
     search.value = ''
     page.value = 1
     uploadResults.value = []
+    vmVisible.value = false
+    vmConsoleVisible.value = false
+    consoleMachine.value = null
+    vmEditing.value = false
+    vmNodes.value = []
+    detail.value = null
     void load()
   },
   { immediate: true }
@@ -245,7 +314,12 @@ watch(
       <p>{{ title.subtitle }}</p>
     </div>
     <div class="heading-actions">
-      <el-button v-if="pageKey === 'virtual-machines'" type="primary" :icon="Plus" @click="openVm()"
+      <el-button
+        v-if="pageKey === 'virtual-machines'"
+        type="primary"
+        :icon="Plus"
+        :loading="vmLoading"
+        @click="openVm()"
         >新增模拟虚拟机</el-button
       ><el-button v-if="pageKey === 'backups'" type="primary" :icon="Plus" :loading="saving" @click="createBackup"
         >创建备份</el-button
@@ -264,13 +338,18 @@ watch(
     </div>
   </section>
   <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
-  <template v-if="pageKey === 'virtual-machines'"
-    ><el-alert
-      type="info"
+  <template v-if="pageKey === 'virtual-machines'">
+    <el-radio-group v-model="vmProvider" class="section-notice" @change="resetSearch" aria-label="虚拟化平台">
+      <el-radio-button value="simulated">内置模拟节点</el-radio-button>
+      <el-radio-button value="hyperv">Hyper-V</el-radio-button>
+    </el-radio-group>
+    <el-alert
+      v-if="vmProvider === 'hyperv' && data?.unavailableNodes?.length"
+      type="warning"
       show-icon
       :closable="false"
       class="section-notice"
-      title="模拟虚拟机的启停仅改变平台内的模拟状态，不会创建或运行真实操作系统。" />
+      :title="`无法连接节点 ${data.unavailableNodes.join('、')}`" />
     <section class="surface" v-loading="loading">
       <div class="table-toolbar">
         <div class="search-box">
@@ -278,7 +357,7 @@ watch(
             v-model="search"
             clearable
             :prefix-icon="Search"
-            placeholder="搜索虚拟机名称"
+            placeholder="搜索名称、UUID 或 IP"
             @keyup.enter="resetSearch"
             @clear="resetSearch"
           /><el-button @click="resetSearch">搜索</el-button>
@@ -289,9 +368,18 @@ watch(
         ><el-table-column prop="name" label="虚拟机名称" min-width="180"
           ><template #default="{ row }"
             ><span class="table-name">{{ row.name }}</span>
-            <el-tag v-if="row.isSimulated" type="warning" size="small">模拟</el-tag></template
+            <el-tag v-if="row.isReserved" type="warning" size="small">实训占用</el-tag></template
           ></el-table-column
-        ><el-table-column prop="nodeName" label="所属节点" min-width="150" /><el-table-column
+        ><el-table-column prop="uuid" label="UUID" min-width="245" show-overflow-tooltip />
+        <el-table-column prop="ipAddress" label="IP 地址" min-width="135" />
+        <el-table-column label="检测状态" width="106">
+          <template #default="{ row }">
+            <el-tag :type="row.detectionStatus === 'reachable' ? 'success' : 'info'" effect="plain">
+              {{ detectionLabels[row.detectionStatus] || '未知' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="nodeName" label="所属节点" min-width="150" /><el-table-column
           label="运行状态"
           width="130"
           ><template #default="{ row }"
@@ -302,32 +390,55 @@ watch(
         ><el-table-column prop="cpuCount" label="CPU 核心" width="110" /><el-table-column label="内存" width="120"
           ><template #default="{ row }">{{ row.memoryMb }} MB</template></el-table-column
         ><el-table-column label="磁盘" width="100"
-          ><template #default="{ row }">{{ row.diskGb }} GB</template></el-table-column
-        ><el-table-column label="操作" width="275" fixed="right"
+          ><template #default="{ row }">{{ row.diskGb == null ? '—' : `${row.diskGb} GB` }}</template></el-table-column
+        ><el-table-column label="操作" width="316" fixed="right"
           ><template #default="{ row }"
             ><el-button
               link
               type="primary"
+              :icon="Monitor"
+              :disabled="row.detectionStatus !== 'reachable'"
+              @click="openConsole(row)"
+              >连接</el-button
+            >
+            <el-button
+              link
+              type="primary"
               :icon="VideoPlay"
-              :disabled="row.status === 'running' || saving"
+              :disabled="row.status !== 'stopped' || saving || !row.nodeEnabled || row.isReserved"
               @click="vmAction(row, 'start')"
               >启动</el-button
             ><el-button
               link
               type="warning"
               :icon="VideoPause"
-              :disabled="row.status !== 'running' || saving"
+              :disabled="row.status !== 'running' || saving || row.isReserved"
               @click="vmAction(row, 'stop')"
               >停止</el-button
-            ><el-button link type="primary" :disabled="row.status === 'running'" @click="openVm(row)">编辑</el-button
-            ><el-button link type="danger" :disabled="row.status === 'running'" @click="deleteVm(row)"
-              >删除</el-button
+            ><el-button
+              link
+              type="primary"
+              :disabled="row.status !== 'running' || !row.nodeEnabled || row.isReserved || saving"
+              @click="vmAction(row, 'restart')"
+              >重启</el-button
+            ><el-button
+              link
+              type="primary"
+              :disabled="row.status === 'running' || vmLoading || row.isReserved || !row.isSimulated"
+              @click="openVm(row)"
+              >编辑</el-button
+            ><el-button
+              link
+              type="danger"
+              :disabled="row.isReserved || (!row.isSimulated && row.status !== 'stopped') || saving"
+              @click="deleteVm(row)"
+              >销毁</el-button
             ></template
           ></el-table-column
         ></el-table
       >
       <div class="table-footer">
-        <span>所有模拟资源均不运行真实操作系统</span
+        <span>实训占用的虚拟机可从对应的监控页面重启。</span
         ><el-pagination
           v-model:current-page="page"
           :page-size="20"
@@ -413,7 +524,7 @@ watch(
   <template v-else-if="pageKey === 'licenses'"
     ><el-alert
       v-if="data && !data.publicKeyConfigured"
-      title="尚未配置供应商验签公钥。请联系交付人员配置后导入许可证；当前模拟资源仍可使用。"
+      title="验签公钥缺失或不可用。请联系交付人员检查，以恢复已启用的许可证额度。"
       type="info"
       show-icon
       :closable="false"
@@ -426,7 +537,24 @@ watch(
         </div>
         <el-button v-if="data?.machineCode" @click="copyMachineCode">复制设备特征码</el-button>
       </div>
-      <DataRecord v-if="data" :data="data" /><el-empty v-else-if="!loading" description="暂未获取授权信息" />
+      <DataRecord v-if="licenseMetadata" :data="licenseMetadata" />
+      <el-empty v-else-if="!loading" description="暂未获取授权信息" />
+    </section>
+    <section v-if="data?.quotas" class="surface section-gap">
+      <div class="card-heading">
+        <div>
+          <h2>资源使用与许可额度</h2>
+          <p>为资源导入授权后，新增和分配操作受该额度约束。</p>
+        </div>
+      </div>
+      <el-table :data="data.quotas">
+        <el-table-column prop="name" label="资源" min-width="130" />
+        <el-table-column prop="code" label="资源授权码" min-width="200" />
+        <el-table-column prop="used" label="已用" width="90" />
+        <el-table-column label="许可额度" min-width="140">
+          <template #default="{ row }">{{ row.limit === null ? '未启用限制' : row.limit }}</template>
+        </el-table-column>
+      </el-table>
     </section>
     <section v-if="uploadResults.length" class="surface section-gap">
       <div class="card-heading"><h2>上传结果</h2></div>
@@ -461,12 +589,22 @@ watch(
     <div class="card-heading">
       <div>
         <h2>管理服务器</h2>
-        <p>以下数据来自当前运行主机；缺失字段会保留实际采集结果。</p>
+        <p>以下数据来自当前运行主机。采集不到的字段会标记为不可获取。</p>
       </div>
       <el-tag type="success" effect="light" v-if="data">实时采集</el-tag>
     </div>
-    <DataRecord v-if="data" :data="data" /><el-empty v-else-if="!loading" description="暂未获取服务器信息" />
+    <DataRecord v-if="data" :data="data" unavailable-text="不可获取" /><el-empty
+      v-else-if="!loading"
+      description="暂未获取服务器信息"
+    />
   </section>
+  <VmConsoleDialog
+    v-if="consoleMachine"
+    v-model="vmConsoleVisible"
+    scope="machine"
+    :target-id="consoleMachine.id"
+    :machine-name="consoleMachine.name"
+  />
   <el-dialog
     v-model="vmVisible"
     :title="vmEditing ? '编辑模拟虚拟机' : '新增模拟虚拟机'"
@@ -481,7 +619,7 @@ watch(
     /><el-form label-position="top" class="entity-form"
       ><el-form-item label="虚拟机名称" required><el-input v-model="vmModel.name" maxlength="100" /></el-form-item
       ><el-form-item label="所属模拟节点" required
-        ><el-select v-model="vmModel.nodeId"
+        ><el-select v-model="vmModel.nodeId" filterable placeholder="搜索或选择模拟节点"
           ><el-option
             v-for="node in vmNodes"
             :key="node.id"

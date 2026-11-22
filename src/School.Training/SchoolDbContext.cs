@@ -25,9 +25,15 @@ public partial class SchoolDbContext(DbContextOptions<SchoolDbContext> options) 
         // dashboard's "latest 8" query without a full scan plus sort.
         modelBuilder.Entity<AuditEntry>().HasIndex(x => new { x.At, x.Id }).HasDatabaseName("IX_Audits_At_Id");
         ConfigureInfrastructure(modelBuilder);
+        ConfigureTeaching(modelBuilder);
+        ConfigureExams(modelBuilder);
+        ConfigureCamp(modelBuilder);
     }
 
     partial void ConfigureInfrastructure(ModelBuilder modelBuilder);
+    partial void ConfigureTeaching(ModelBuilder modelBuilder);
+    partial void ConfigureExams(ModelBuilder modelBuilder);
+    partial void ConfigureCamp(ModelBuilder modelBuilder);
 }
 
 public class AppUser

@@ -15,23 +15,31 @@ let terminal: Terminal | undefined,
   fit: FitAddon | undefined,
   socket: WebSocket | undefined,
   observer: ResizeObserver | undefined
+let connectionVersion = 0
 const cleanup = () => {
+  connectionVersion++
   if (socket) {
+    socket.onopen = null
     socket.onclose = null
+    socket.onerror = null
+    socket.onmessage = null
     socket.close()
     socket = undefined
   }
   observer?.disconnect()
+  observer = undefined
   terminal?.dispose()
   terminal = undefined
+  fit = undefined
   connected.value = false
 }
 async function connect() {
   cleanup()
+  const version = connectionVersion
   error.value = ''
   status.value = '正在连接'
   await nextTick()
-  if (!container.value || !props.device) return
+  if (version !== connectionVersion || !container.value || !props.device) return
   if (props.device.connectionType === 'ssh') {
     status.value = '连接方式暂不可用'
     error.value = '当前版本尚未提供 SSH 终端适配。请使用内置模拟设备，或联系交付人员确认真实设备接入方案。'
@@ -93,12 +101,10 @@ function close() {
   emit('close')
 }
 watch(
-  () => props.device,
-  async value => {
-    if (value) {
-      await nextTick()
-      setTimeout(() => void connect(), 100)
-    } else cleanup()
+  () => props.device?.id,
+  id => {
+    if (!id) cleanup()
+    else if (container.value) void connect()
   }
 )
 onBeforeUnmount(cleanup)
@@ -111,7 +117,7 @@ onBeforeUnmount(cleanup)
     :close-on-click-modal="false"
     class="terminal-dialog"
     @close="close"
-    @opened="fit?.fit()"
+    @opened="connect"
     ><div class="terminal-toolbar">
       <div>
         <span class="connection-indicator" :class="{ connected }"></span>{{ status

@@ -117,12 +117,21 @@ try{
   const temporaryClass=await api.request('/classes','POST',{name:'临时班级',professionId:temporary.id});
   await api.request(`/classes/${temporaryClass.id}`,'PUT',{name:'已编辑班级',professionId:temporary.id,remark:'编辑验证'});
   assert.equal((await api.request('/classes?search=已编辑班级')).total,1);
-  await api.request(`/classes/${temporaryClass.id}`,'DELETE');await api.request(`/professions/${temporary.id}`,'DELETE');
+  assert.deepEqual((await api.request(`/classes?professionId=${temporary.id}`)).items.map(row=>row.id),[temporaryClass.id]);
+  assert.equal((await api.request(`/classes?professionId=${profession.id}&search=已编辑班级`)).total,0);
+  assert.deepEqual((await api.request(`/people?kind=student&classId=${cls.id}`)).items.map(row=>row.id),[student.id]);
+  assert.equal((await api.request(`/people?kind=student&classId=${temporaryClass.id}`)).total,0);
   const teacher=await api.request('/people','POST',{kind:'teacher',name:'临时教师',userName:'teacher001',number:'T001',classId:cls.id,password});
+  const administrator=await api.request('/people','POST',{kind:'teacher',name:'临时管理员',userName:'teacheradmin001',number:'T003',classId:temporaryClass.id,password,role:'Admin'});
   await api.request(`/people/${teacher.id}`,'PUT',{kind:'teacher',name:'已编辑教师',userName:'teacher001',number:'T002',classId:cls.id,gender:'女',email:'teacher@example.test',role:'Teacher'});
   const teacherRow=(await api.request('/people?kind=teacher&search=T002')).items[0];assert.equal(teacherRow.name,'已编辑教师');assert.equal(teacherRow.email,'teacher@example.test');
-  await api.request('/people/batch-delete','POST',{ids:[teacher.id]});assert.equal((await api.request('/people?kind=teacher')).total,0);
+  assert.deepEqual((await api.request('/people?kind=teacher&role=Admin')).items.map(row=>row.id),[administrator.id]);
+  assert.deepEqual((await api.request(`/people?kind=teacher&classId=${cls.id}&role=Teacher&search=T002`)).items.map(row=>row.id),[teacher.id]);
+  assert.equal((await api.request(`/people?kind=teacher&classId=${temporaryClass.id}&role=Teacher`)).total,0);
+  await api.request('/people/batch-delete','POST',{ids:[teacher.id,administrator.id]});assert.equal((await api.request('/people?kind=teacher')).total,0);
+  await api.request(`/classes/${temporaryClass.id}`,'DELETE');await api.request(`/professions/${temporary.id}`,'DELETE');
   mark('CSRF和跨站拒绝、输入校验、专业班级关联、师生账号唯一性');
+  mark('班级按专业、师生按班级、教师按角色筛选，可与关键词组合');
   mark('并发同名班级仅一个成功，数据库唯一约束与409映射生效');
   const csv='姓名,账号,学号,班级,性别,手机号,电子邮箱\r\n导入学生,import001,2026002,软件一班,女,13800000001,import@example.test\r\n重复账号,testadmin,2026003,软件一班,男,,\r\n错误班级,import003,2026004,不存在班级,,,\r\n错误邮箱,import004,2026005,软件一班,,,bad-email\r\n';
   const preview=await api.request('/imports/preview?kind=student','POST',upload('students.csv',csv));
@@ -175,6 +184,77 @@ try{
   envelope.signature=Buffer.alloc(256).toString('base64');await api.request('/licenses','POST',upload('tampered.license.json',JSON.stringify(envelope)),400);
   assert.equal((await api.request('/licenses')).items.length,1);
   mark('许可证RSA签名、设备绑定、重复导入和篡改拒绝');
+  const quotaClient = new Client(await start(path.join(dir, 'quota-data')));
+  await quotaClient.request('/setup', 'POST', {schoolName: '许可证额度验收', userName: 'quotaaudit', displayName: '测试管理员', password});
+  const quotaCode = (await quotaClient.request('/licenses')).machineCode;
+  const resource = (code, quantity) => ({ name: code, authorizationCode: `TRAINING.${code}`, quantity });
+  const signedLicense = (licenseId, resources, expiresAt = null) => {
+    const signedBytes = Buffer.from(JSON.stringify({ licenseId, product: 'SchoolTraining', machineCode: quotaCode,
+      issuedAt: new Date(Date.now() - 1000).toISOString(), expiresAt, resources }));
+    return JSON.stringify({ payload: signedBytes.toString('base64'), signature: sign('RSA-SHA256', signedBytes, privateKey).toString('base64') });
+  };
+  const quotaRow = async (code) => (await quotaClient.request('/licenses')).quotas.find(row => row.code === `TRAINING.${code}`);
+  assert.equal((await quotaRow('CABINETS')).limit, null);
+  const limits = [resource('CABINETS', 1), resource('DEVICES', 2), resource('NODES', 1), resource('VMS', 1), resource('ASSIGNMENTS', 1)];
+  const invalidBatch = upload('quota.lic', signedLicense('quota', limits));
+  invalidBatch.append('file', new Blob(['invalid']), 'bad.lic');
+  await quotaClient.request('/licenses', 'POST', invalidBatch, 400);
+  assert.equal((await quotaClient.request('/licenses')).items.length, 0, 'Batch must not partially import');
+  const validBatch = upload('quota.lic', signedLicense('quota', limits));
+  validBatch.append('file', new Blob([signedLicense('renewal', [resource('CABINETS', 1)])]), 'renewal.lic');
+  assert.equal((await quotaClient.request('/licenses', 'POST', validBatch)).importedCount, 2);
+  assert.equal((await quotaRow('CABINETS')).limit, 1, 'Overlapping licenses must not double the limit');
+  assert.match((await quotaClient.request('/licenses/guide')).toString('utf8'), /TRAINING\.ASSIGNMENTS/);
+  const racingCabinets = await Promise.all(Array.from({length: 6}, (_, i) => quotaClient.attempt('/cabinets', 'POST', {name: `许可机柜 ${i}`, isSimulated: true})));
+  assert.equal(racingCabinets.filter(row => row.status === 200).length, 1);
+  assert.ok(racingCabinets.filter(row => row.status !== 200).every(row => row.status === 409 && row.result.code === 'TRAINING.CABINETS'));
+  const winner = racingCabinets.find(row => row.status === 200).result;
+  await quotaClient.request('/simulation/bootstrap', 'POST', undefined, 409);
+  assert.equal((await quotaClient.request('/device-types')).total, 0, 'Rejected bootstrap must leave no partial resources');
+  await quotaClient.request(`/cabinets/${winner.id}`, 'DELETE');
+  const bootstrap = await quotaClient.request('/simulation/bootstrap', 'POST');
+  assert.equal(bootstrap.skippedVirtualMachines, 1);
+  assert.equal((await quotaRow('DEVICES')).used, 2);
+  assert.equal((await quotaRow('VMS')).used, 1);
+  const type = (await quotaClient.request('/device-types')).items[0];
+  assert.equal((await quotaClient.request('/devices', 'POST', {name:'超额设备',cabinetId:'simulation-cabinet',deviceTypeId:type.id},409)).code, 'TRAINING.DEVICES');
+  assert.equal((await quotaClient.request('/nodes', 'POST', {name:'超额节点'},409)).code, 'TRAINING.NODES');
+  assert.equal((await quotaClient.request('/virtual-machines','POST',{name:'超额虚拟机',nodeId:'simulation-node'},409)).code, 'TRAINING.VMS');
+  const studentIds = [];
+  for (const n of [1, 2]) {
+    await quotaClient.request('/people', 'POST', {kind:'student',name:`额度学生${n}`,userName:`quota-student-${n}`,number:`QUOTA${n}`,password});
+    const candidates = await quotaClient.request(`/nodes/simulation-node/account-candidates?search=quota-student-${n}`);
+    studentIds.push(candidates.items[0].userId);
+  }
+  const assignmentUrl = '/nodes/simulation-node/accounts';
+  assert.equal((await quotaClient.request(assignmentUrl, 'POST', {userIds:studentIds}, 409)).code, 'TRAINING.ASSIGNMENTS');
+  assert.equal((await quotaRow('ASSIGNMENTS')).used, 0);
+  await quotaClient.request(assignmentUrl, 'POST', {userIds:[studentIds[0]]});
+  await quotaClient.request(`${assignmentUrl}/${studentIds[0]}`, 'DELETE');
+  await quotaClient.request(assignmentUrl, 'POST', {userIds:[studentIds[1]]});
+  assert.equal((await quotaRow('ASSIGNMENTS')).used, 1);
+  mark('批量许可证原子上传、五类授权额度、并发防超额、初始化与分配均计入额度');
+
+  const expiring = new Client(await start(path.join(dir, 'quota-expiry-data')));
+  await expiring.request('/setup', 'POST', {schoolName: '授权到期验收', userName: 'expiryaudit', displayName: '测试管理员', password});
+  const expiresAt = new Date(Date.now() + 2800);
+  await expiring.request('/licenses', 'POST', upload('expiry.lic', signedLicense('expiry', [resource('CABINETS', 1)], expiresAt.toISOString())));
+  const beforeExpiry = await expiring.request('/cabinets', 'POST', {name:'已有机柜',isSimulated:true});
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, +expiresAt - Date.now()) + 50));
+  const expired = await expiring.request('/cabinets', 'POST', {name:'到期后新增',isSimulated:true}, 409);
+  assert.equal(expired.limit, 0);
+  await expiring.request(`/cabinets/${beforeExpiry.id}`,'DELETE');
+  await expiring.request('/licenses','POST',upload('renewed.lic',signedLicense('renewed',[resource('CABINETS',1)])));
+  const expiresDb = new DatabaseSync(path.join(dir, 'quota-expiry-data', 'school.db'));
+  try {
+    const saved = expiresDb.prepare('SELECT PayloadJson FROM Licenses WHERE Id=?').get('renewed');
+    const writePayload = expiresDb.prepare('UPDATE Licenses SET PayloadJson=? WHERE Id=?');
+    writePayload.run('{corrupted', 'renewed');
+    await expiring.request('/cabinets','POST',{name:'损坏许可证无法新增',isSimulated:true},409);
+    writePayload.run(saved.PayloadJson, 'renewed');
+  } finally { expiresDb.close(); }
+  await expiring.request('/cabinets','POST',{name:'续期后新增',isSimulated:true});
+  mark('许可到期或文件损坏时禁止新增、仍可释放资源及续期恢复');
   await api.request('/settings','PUT',{schoolName:'更新后的学校'});
   const cabinet=await api.request('/cabinets','POST',{name:'备份凭据验证机柜',isSimulated:true,jumpPassword:'BackupSecret2026!'});assert.equal(cabinet.hasJumpPassword,true);assert.equal(cabinet.jumpPassword,undefined);
   const counts=(await api.request('/dashboard')).counts;assert.equal(counts.students,2);assert.equal(counts.professions,1);
@@ -183,7 +263,8 @@ try{
   const restored=path.join(dir,'restored');await mkdir(restored);
   execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command','Expand-Archive -LiteralPath $env:SCHOOL_TEST_ARCHIVE -DestinationPath $env:SCHOOL_TEST_RESTORED'],{windowsHide:true,env:{...process.env,SCHOOL_TEST_ARCHIVE:archive,SCHOOL_TEST_RESTORED:restored},stdio:'pipe'});
   const restoredManifest=JSON.parse(await readFile(path.join(restored,'manifest.json'),'utf8'));
-  assert.equal(restoredManifest.schemaVersion,1);assert.equal(restoredManifest.databaseSchemaVersion,4);
+  const schemaVersion = (await api.request('/status')).schemaVersion;
+  assert.equal(restoredManifest.schemaVersion,1);assert.equal(restoredManifest.databaseSchemaVersion,schemaVersion);
   assert.ok((await readdir(path.join(restored,'keys'))).some(f=>f.endsWith('.xml')));
   const restoredApi=new Client(await start(restored));restoredApi.cookies=new Map(api.cookies);restoredApi.csrf=api.csrf;
   assert.equal((await restoredApi.request('/auth/me')).user.userName,'testadmin');
@@ -194,7 +275,7 @@ try{
   runApp(['--validate-backup',path.join(restored,'school.db'),path.join(restored,'keys')]);
   const wrongKeyData=path.join(dir,'wrong-key-data');const wrongKeyApi=new Client(await start(wrongKeyData));await wrongKeyApi.request('/setup','POST',{schoolName:'独立密钥验证',userName:'differentadmin',displayName:'测试管理员',password});
   let wrongKeyRejected=false;try{runApp(['--validate-backup',path.join(restored,'school.db'),path.join(wrongKeyData,'keys')])}catch(error){wrongKeyRejected=error.status===1}assert.equal(wrongKeyRejected,true);
-  const wrongSchema=await readFile(path.join(restored,'school.db'));wrongSchema.writeUInt32BE(5,60);const badDatabase=path.join(dir,'wrong-schema.db');await writeFile(badDatabase,wrongSchema);
+  const wrongSchema=await readFile(path.join(restored,'school.db'));wrongSchema.writeUInt32BE(schemaVersion+1,60);const badDatabase=path.join(dir,'wrong-schema.db');await writeFile(badDatabase,wrongSchema);
   let rejected=false;try{runApp(['--validate-database',badDatabase])}catch(error){rejected=error.status===1}assert.equal(rejected,true);
   mark('SQLite在线一致性备份、密钥打包、独立恢复实例的数据与会话验证');
   mark('DPAPI密钥加密、只读数据库校验、未知结构版本拒绝');
@@ -242,7 +323,7 @@ try{
   }finally{sqlite.close();}
   mark('管理员并发降级仅成功一个，数据库触发器阻止删除最后一名管理员');
 
-  const report={schemaVersion:4,testedAssembly:appDll,testedAssemblySha256:createHash('sha256').update(readFileSync(appDll)).digest('hex').toUpperCase(),passed:passed.length,checks:passed,completedAt:new Date().toISOString(),workspace:dir};
+  const report={schemaVersion,testedAssembly:appDll,testedAssemblySha256:createHash('sha256').update(readFileSync(appDll)).digest('hex').toUpperCase(),passed:passed.length,checks:passed,completedAt:new Date().toISOString(),workspace:dir};
   await writeFile(path.join(root,'.local/application-test-results.json'),JSON.stringify(report,null,2));
   await mkdir(path.join(root,'docs/verification'),{recursive:true});await writeFile(path.join(root,'docs/verification/application-smoke.json'),JSON.stringify(report,null,2));
   console.log(JSON.stringify(report,null,2));

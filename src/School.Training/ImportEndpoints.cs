@@ -24,7 +24,7 @@ public static class ImportEndpoints
             if (kind is not ("student" or "teacher")) return Results.BadRequest(new { message = "师生类型无效" });
             if (!ctx.Request.HasFormContentType) return Results.BadRequest(new { message = "请选择Excel或CSV文件" });
             var form = await ctx.Request.ReadFormAsync(ctx.RequestAborted); var file = form.Files.GetFile("file");
-            if (file == null || file.Length == 0 || file.Length > 16 * 1024 * 1024) return Results.BadRequest(new { message = "文件为空或超过16MB" });
+            if (file == null || file.Length == 0 || file.Length > Limits.MaxUploadBytes) return Results.BadRequest(new { message = $"文件为空或超过{Limits.MaxUploadMegabytes}MB" });
             List<List<string>> sheet;
             try
             {

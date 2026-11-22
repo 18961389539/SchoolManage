@@ -2,12 +2,14 @@
 param(
     [string]$Version = '0.1.0',
     [string]$RuntimeVersion = '10.0.15',
+    [string]$FrontendDirectory,
     [switch]$SkipFrontend,
     [switch]$SkipInstaller
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$frontendRoot = if ($FrontendDirectory) { (Resolve-Path -LiteralPath $FrontendDirectory).Path } else { Join-Path $projectRoot 'web' }
 if ($Version -notmatch '^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$') { throw 'Version must be a semantic version.' }
 if ($RuntimeVersion -notmatch '^10\.\d+\.\d+$') { throw 'RuntimeVersion must be a supported .NET 10 patch version.' }
 $releaseRoot = Join-Path $projectRoot 'artifacts'
@@ -20,10 +22,10 @@ function Invoke-Checked([string]$Command, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$Command failed with exit code $LASTEXITCODE" }
 }
 
-# -SkipFrontend reuses an existing web/dist build; format/lint/unit-test gates for the
+# -SkipFrontend reuses an existing frontend dist build; format/lint/unit-test gates for the
 # frontend run only on the full path, so run them separately when skipping the rebuild.
 if (-not $SkipFrontend) {
-    Push-Location (Join-Path $projectRoot 'web')
+    Push-Location $frontendRoot
     try {
         if (Test-Path -LiteralPath 'package-lock.json') { Invoke-Checked 'npm.cmd' @('ci', '--no-audit', '--no-fund') }
         else { Invoke-Checked 'npm.cmd' @('install', '--no-audit', '--no-fund') }
@@ -33,8 +35,8 @@ if (-not $SkipFrontend) {
         Invoke-Checked 'npm.cmd' @('run', 'build')
     } finally { Pop-Location }
 }
-$frontendDist = Join-Path $projectRoot 'web/dist'
-if (-not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html'))) { throw 'Frontend build missing: web/dist/index.html' }
+$frontendDist = Join-Path $frontendRoot 'dist'
+if (-not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html'))) { throw "Frontend build missing: $frontendDist/index.html" }
 $wwwroot = Join-Path $projectRoot 'src/School.Training/wwwroot'
 New-Item -ItemType Directory -Path $wwwroot -Force | Out-Null
 # Remove only prior generated frontend files inside the verified project wwwroot.
@@ -58,6 +60,7 @@ $env:SCHOOL_APP_DIR = $publishDir
 $env:SCHOOL_EXCEL_TEST_APP = $publishDir
 $env:SCHOOL_NODE_ACCOUNT_SOURCE_DIR = $publishDir
 $env:SCHOOL_LOAD_SOURCE_DIR = $publishDir
+$env:SCHOOL_LOAD_REPORT_PATH = Join-Path $gateDirectory 'load-smoke.json'
 $gateError = $null
 try {
     Invoke-Checked 'dotnet' @('build', (Join-Path $projectRoot 'tools/School.SecurityChecks/School.SecurityChecks.csproj'), '-c', 'Release', '--nologo')
@@ -70,18 +73,22 @@ try {
         @{name='excel-csv'; command='node'; args=@('tests/excel-smoke.mjs')},
         @{name='node-accounts'; command='node'; args=@('tests/node-accounts-smoke.mjs')},
         @{name='infrastructure'; command='node'; args=@('tests/infrastructure-selfhost.mjs')},
+        @{name='exam-practical'; command='node'; args=@('tests/exam-practical-smoke.mjs')},
+        @{name='classroom-camp-practical'; command='node'; args=@('tests/classroom-case-work-smoke.mjs')},
         @{name='load'; command='node'; args=@('tests/load-smoke.mjs')},
         @{name='security'; command='dotnet'; args=@('run','--project',(Join-Path $projectRoot 'tools/School.SecurityChecks/School.SecurityChecks.csproj'),'-c','Release','--no-build')},
-        @{name='deployment-policy'; command='powershell.exe'; args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $projectRoot 'tests/deployment-policy.ps1'))}
+        @{name='deployment-policy'; command='powershell.exe'; args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $projectRoot 'tests/deployment-policy.ps1'))},
+        @{name='deployment-rollback'; command='powershell.exe'; args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $projectRoot 'tests/deployment-rollback.ps1'))},
+        @{name='deployment-restore'; command='powershell.exe'; args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $projectRoot 'tests/deployment-restore.ps1'))}
     )
     # Frontend checks live in the same gate as the backend suites: they are cheap and a
     # formatting, lint or unit regression must block packaging exactly like a failed smoke run.
     if (-not $SkipFrontend) {
         $gateTests += @(
-            @{name='frontend-format'; command='npm.cmd'; args=@('--prefix','web','run','format:check')},
-            @{name='frontend-lint'; command='npm.cmd'; args=@('--prefix','web','run','lint')},
-            @{name='frontend-tests'; command='npm.cmd'; args=@('--prefix','web','run','test')},
-            @{name='frontend-time'; command='npm.cmd'; args=@('--prefix','web','run','check:time')}
+            @{name='frontend-format'; command='npm.cmd'; args=@('--prefix',$frontendRoot,'run','format:check')},
+            @{name='frontend-lint'; command='npm.cmd'; args=@('--prefix',$frontendRoot,'run','lint')},
+            @{name='frontend-tests'; command='npm.cmd'; args=@('--prefix',$frontendRoot,'run','test')},
+            @{name='frontend-time'; command='npm.cmd'; args=@('--prefix',$frontendRoot,'run','check:time')}
         )
     }
     foreach ($test in $gateTests) {
@@ -107,7 +114,8 @@ try {
         @{name='excel-csv'; file='excel-smoke.json'; property='backendSha256'},
         @{name='node-accounts'; file='node-accounts-smoke.json'; property='testedAssemblySha256'},
         @{name='infrastructure'; file='infrastructure-smoke.json'; property='testedAssemblySha256'},
-        @{name='load'; file='load-smoke.json'; property='testedAssemblySha256'}
+        @{name='load'; file='load-smoke.json'; property='testedAssemblySha256'},
+        @{name='deployment-restore'; file='deployment-restore.json'; property='testedAssemblySha256'}
     )
     foreach ($binding in $boundReports) {
         $reportPath = Join-Path $gateDirectory $binding.file
@@ -142,7 +150,7 @@ foreach ($name in @('deployment-common.ps1','install-service.ps1', 'uninstall-se
 Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs') -Filter '*.md' | Copy-Item -Destination (Join-Path $releaseDir 'docs') -Force
 if (Test-Path -LiteralPath (Join-Path $projectRoot 'docs/verification')) { Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/verification') -Destination (Join-Path $releaseDir 'docs/verification') -Recurse -Force }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination $releaseDir -Force
-& (Join-Path $PSScriptRoot 'collect-dependencies.ps1') -Destination (Join-Path $releaseDir 'docs/third-party')
+& (Join-Path $PSScriptRoot 'collect-dependencies.ps1') -Destination (Join-Path $releaseDir 'docs/third-party') -FrontendDirectory $frontendRoot
 # Install the same notices and operator documentation with the application.
 New-Item -ItemType Directory -Path (Join-Path $publishDir 'docs') -Force | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $releaseDir 'docs') -Force | Copy-Item -Destination (Join-Path $publishDir 'docs') -Recurse -Force

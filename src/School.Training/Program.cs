@@ -54,6 +54,10 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = 403; return ctx.Response.WriteAsJsonAsync(new { message = "没有执行此操作的权限" }); };
     o.Events.OnValidatePrincipal = async ctx =>
     {
+        // Static assets and the SPA fallback never authorize through the principal, but the
+        // browser still sends the session cookie with each one. Skipping the stamp lookup
+        // avoids a database query per asset while every /api request is still revalidated.
+        if (!ctx.HttpContext.Request.Path.StartsWithSegments("/api")) return;
         var db = ctx.HttpContext.RequestServices.GetRequiredService<SchoolDbContext>();
         var id = ctx.Principal?.FindFirstValue(ClaimTypes.NameIdentifier); var stamp = ctx.Principal?.FindFirstValue("stamp");
         if (id == null || !await db.Users.AnyAsync(x => x.Id == id && x.SecurityStamp == stamp, ctx.HttpContext.RequestAborted))
@@ -68,11 +72,13 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
 });
-builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MultipartBodyLengthLimit = 16 * 1024 * 1024);
-builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 16 * 1024 * 1024);
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MultipartBodyLengthLimit = Limits.MaxUploadBytes);
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = Limits.MaxUploadBytes);
 builder.Services.AddInfrastructure();
+builder.Services.AddSingleton<LicenseQuotaPolicy>();
 builder.Services.AddSingleton<ImportJobQueue>();
 builder.Services.AddHostedService<ImportJobWorker>();
+builder.Services.AddHostedService<ExamDeadlineWorker>();
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
@@ -137,7 +143,7 @@ app.UseStatusCodePages(async status =>
     if (status.HttpContext.Request.Path.StartsWithSegments("/api"))
     {
         var code = status.HttpContext.Response.StatusCode;
-        await status.HttpContext.Response.WriteAsJsonAsync(new { message = code switch { 400 => "请求字段不完整或格式不正确", 413 => "请求文件超过16MB限制", 415 => "请求内容类型不受支持", 429 => "操作过于频繁，请稍后重试", _ => $"请求未完成（{code}）" } });
+        await status.HttpContext.Response.WriteAsJsonAsync(new { message = code switch { 400 => "请求字段不完整或格式不正确", 413 => $"请求文件超过{Limits.MaxUploadMegabytes}MB限制", 415 => "请求内容类型不受支持", 429 => "操作过于频繁，请稍后重试", _ => $"请求未完成（{code}）" } });
     }
 });
 app.UseAuthentication(); app.UseAuthorization(); app.UseRateLimiter();
@@ -168,6 +174,7 @@ app.MapGet("/api/status", async (SchoolDbContext db, RollingFileLoggerProvider l
     version = BuildInfo.Version,
     schemaVersion = DatabaseSafety.SchemaVersion,
     logWriteFailures = logs.WriteFailures,
+    maxUploadBytes = Limits.MaxUploadBytes,
     schoolName = await db.Settings.Where(x => x.Id == "schoolName").Select(x => x.Value).FirstOrDefaultAsync(ct)
 }));
 app.MapPost("/api/setup", async (SetupRequest body, HttpContext ctx, SchoolDbContext db, IPasswordHasher<AppUser> hasher, IAntiforgery antiforgery) =>
@@ -209,7 +216,10 @@ api.MapPost("/auth/password", async (PasswordRequest body, HttpContext ctx, Scho
     user.PasswordHash = hasher.HashPassword(user, body.NewPassword); user.SecurityStamp = Guid.NewGuid().ToString("N"); user.MustChangePassword = false;
     Audit.Add(db, ctx, "修改密码", user.Id); await db.SaveChangesAsync(ctx.RequestAborted); sessions.RevokeUser(user.Id); await Session.SignIn(ctx, user); return Results.Ok(Session.Response(ctx, user, antiforgery));
 });
-api.MapAcademicEndpoints(); api.MapImportEndpoints(); api.MapInfrastructureEndpoints(); api.MapOperationsEndpoints();
+api.MapAcademicEndpoints(); api.MapImportEndpoints(); api.MapInfrastructureEndpoints(); api.MapOperationsEndpoints(); api.MapTeachingEndpoints(); api.MapExamQuestionEndpoints(); api.MapExamManagementEndpoints(); api.MapExamStudentEndpoints();
+api.MapCourseFileEndpoints(); api.MapTeachingImportEndpoints(); api.MapTeachingPreviewEndpoints(); api.MapCampEndpoints();
+api.MapHomeEndpoints(); api.MapClassroomStatisticsEndpoints(); api.MapSkillGraphEndpoints();
+api.MapProfileEndpoints(); api.MapClassroomCollaborationEndpoints();
 app.Map("/api/{**path}", () => Results.NotFound(new { message = "接口不存在" }));
 app.UseDefaultFiles(); app.UseStaticFiles(); app.MapFallbackToFile("index.html"); app.Run();
 
