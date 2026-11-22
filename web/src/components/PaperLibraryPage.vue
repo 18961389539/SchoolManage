@@ -45,6 +45,8 @@ const editing = ref<ExamPaperSummary | null>(null)
 const saving = ref(false)
 const formError = ref('')
 const form = reactive({ name: '', description: '', remark: '' })
+const formBaseline = ref('')
+const formDirty = computed(() => JSON.stringify(form) !== formBaseline.value)
 
 const editorVisible = ref(false)
 const editorLoading = ref(false)
@@ -125,6 +127,7 @@ function openCreate() {
   form.description = ''
   form.remark = ''
   formError.value = ''
+  formBaseline.value = JSON.stringify(form)
   dialogVisible.value = true
 }
 
@@ -134,7 +137,31 @@ function openEdit(item: ExamPaperSummary) {
   form.description = item.description
   form.remark = item.remark
   formError.value = ''
+  formBaseline.value = JSON.stringify(form)
   dialogVisible.value = true
+}
+
+async function confirmDiscardPaper() {
+  if (saving.value) return false
+  if (!formDirty.value) return true
+  try {
+    await ElMessageBox.confirm('试卷信息还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
+      type: 'warning',
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续编辑'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function handlePaperBeforeClose(done: () => void) {
+  if (await confirmDiscardPaper()) done()
+}
+
+async function cancelPaper() {
+  if (await confirmDiscardPaper()) dialogVisible.value = false
 }
 
 async function savePaper() {
@@ -411,6 +438,7 @@ onMounted(load)
     v-model="dialogVisible"
     :title="editing ? '编辑试卷' : '新建试卷'"
     width="min(620px, 94vw)"
+    :before-close="handlePaperBeforeClose"
     @opened="focusPaperName"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
@@ -439,7 +467,7 @@ onMounted(load)
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="dialogVisible = false">取消</el-button>
+      <el-button @click="cancelPaper">取消</el-button>
       <el-button type="primary" :loading="saving" @click="savePaper">
         {{ editing ? '保存修改' : '创建试卷' }}
       </el-button>

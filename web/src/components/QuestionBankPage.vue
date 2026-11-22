@@ -85,6 +85,8 @@ const form = reactive({
   practicalRubric: [] as CaseRubricItem[],
   practicalResources: ''
 })
+const formBaseline = ref('')
+const formDirty = computed(() => JSON.stringify(form) !== formBaseline.value)
 
 const previewVisible = ref(false)
 const preview = ref<ExamQuestionDetail | null>(null)
@@ -210,6 +212,7 @@ function openCreate() {
   loadingPractical.value = false
   formError.value = ''
   changeType()
+  formBaseline.value = JSON.stringify(form)
   dialogVisible.value = true
 }
 
@@ -228,6 +231,7 @@ async function openEdit(question: ExamQuestionSummary) {
   form.practicalResources = ''
   loadingPractical.value = false
   formError.value = ''
+  formBaseline.value = JSON.stringify(form)
   dialogVisible.value = true
   if (question.type !== 'practical') return
   void loadNodes()
@@ -238,11 +242,36 @@ async function openEdit(question: ExamQuestionSummary) {
     form.practicalNodeId = detail.practicalNodeId || null
     form.practicalRubric = detail.practicalRubric
     form.practicalResources = detail.practicalResources
+    formBaseline.value = JSON.stringify(form)
   } catch (failure) {
     if (editing.value?.id === question.id) formError.value = messageOf(failure)
   } finally {
     if (editing.value?.id === question.id) loadingPractical.value = false
   }
+}
+
+async function confirmDiscardQuestion() {
+  if (saving.value) return false
+  if (loadingPractical.value) return true
+  if (!formDirty.value) return true
+  try {
+    await ElMessageBox.confirm('题目内容还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
+      type: 'warning',
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续编辑'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function handleQuestionBeforeClose(done: () => void) {
+  if (await confirmDiscardQuestion()) done()
+}
+
+async function cancelQuestion() {
+  if (await confirmDiscardQuestion()) dialogVisible.value = false
 }
 
 function addOption() {
@@ -589,6 +618,7 @@ onMounted(load)
     v-model="dialogVisible"
     :title="editing ? '编辑题目' : '新建题目'"
     width="min(760px, 96vw)"
+    :before-close="handleQuestionBeforeClose"
     destroy-on-close
     @opened="focusQuestionForm"
   >
@@ -704,7 +734,7 @@ onMounted(load)
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="dialogVisible = false">取消</el-button>
+      <el-button @click="cancelQuestion">取消</el-button>
       <el-button type="primary" :loading="saving" @click="saveQuestion">
         {{ editing ? '保存修改' : '创建题目' }}
       </el-button>
