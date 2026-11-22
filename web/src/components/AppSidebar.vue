@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
-import { ArrowDown, Close, QuestionFilled, School } from '@element-plus/icons-vue'
+import { ArrowDown, Close, QuestionFilled, School, Search } from '@element-plus/icons-vue'
 import type { NavGroup } from '../navigation'
 
 const props = defineProps<{
@@ -21,6 +21,18 @@ const activeGroup = computed(
   () => props.groups.find(group => group.items.some(item => item.key === props.route))?.label || ''
 )
 const collapsed = ref<Record<string, boolean>>({})
+const filter = ref('')
+const filtering = computed(() => !!filter.value.trim())
+const filteredGroups = computed(() => {
+  const keyword = filter.value.trim().toLowerCase()
+  if (!keyword) return props.groups
+  return props.groups
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => item.label.toLowerCase().includes(keyword))
+    }))
+    .filter(group => group.items.length)
+})
 try {
   const saved = JSON.parse(localStorage.getItem(storageKey) || '{}') as Record<string, boolean> | null
   if (saved && typeof saved === 'object' && !Array.isArray(saved)) collapsed.value = saved
@@ -67,6 +79,13 @@ watch(
 watch(activeGroup, label => {
   if (label && collapsed.value[label]) collapsed.value = { ...collapsed.value, [label]: false }
 })
+// A filter is a one-off lookup: leaving the page restores the full navigation.
+watch(
+  () => props.route,
+  () => {
+    filter.value = ''
+  }
+)
 watch(
   () => props.route,
   async () => {
@@ -131,9 +150,22 @@ function onTab(event: KeyboardEvent) {
       </span>
       <span>{{ schoolName }}</span>
     </div>
+    <div class="sidebar-filter">
+      <el-input
+        v-model="filter"
+        size="small"
+        clearable
+        :prefix-icon="Search"
+        placeholder="搜索功能"
+        aria-label="搜索导航功能"
+        @keydown.esc="filter = ''"
+      />
+    </div>
     <nav ref="navigation" class="main-navigation" aria-label="主导航">
-      <div v-for="(group, index) in groups" :key="group.label" class="nav-group">
-        <div v-if="groups.length === 1 || group.items.length === 1" class="nav-group-label">{{ group.label }}</div>
+      <div v-for="(group, index) in filteredGroups" :key="group.label" class="nav-group">
+        <div v-if="filtering || groups.length === 1 || group.items.length === 1" class="nav-group-label">
+          {{ group.label }}
+        </div>
         <button
           v-else
           type="button"
@@ -149,7 +181,7 @@ function onTab(event: KeyboardEvent) {
           </el-icon>
         </button>
         <div
-          v-show="groups.length === 1 || group.items.length === 1 || !collapsed[group.label]"
+          v-show="filtering || groups.length === 1 || group.items.length === 1 || !collapsed[group.label]"
           :id="`nav-group-${index}`"
           class="nav-group-items"
         >
@@ -166,6 +198,7 @@ function onTab(event: KeyboardEvent) {
           </button>
         </div>
       </div>
+      <p v-if="filtering && !filteredGroups.length" class="nav-filter-empty">没有匹配的功能</p>
     </nav>
     <div class="sidebar-bottom">
       <button type="button" @click="emit('help')">
@@ -177,3 +210,21 @@ function onTab(event: KeyboardEvent) {
     </div>
   </aside>
 </template>
+
+<style scoped>
+.sidebar-filter {
+  margin: 0 14px 12px;
+}
+
+.sidebar-filter :deep(.el-input__wrapper) {
+  min-height: 34px;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.nav-filter-empty {
+  margin: 12px 18px;
+  font-size: 12.5px;
+  color: #6a7f90;
+}
+</style>
