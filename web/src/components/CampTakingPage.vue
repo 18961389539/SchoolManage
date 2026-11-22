@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Clock, Grid, Promotion, Refresh, Select } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, messageOf, post } from '../api'
+import { registerLeaveGuard } from '../leaveGuard'
 import { campAttemptLabel, campAttemptStatusType } from '../camp'
 import { countdownText, examQuestionTypeLabel, optionLetters } from '../exam'
 import { durationText } from '../teaching'
@@ -180,6 +181,37 @@ async function flushSave(announce = false): Promise<void> {
   }
 }
 
+let leaveApproved = false
+const releaseLeaveGuard = registerLeaveGuard(async () => {
+  if (leaveApproved || !inProgress.value) return true
+  if (submitting.value) return false
+  await flushSave()
+  const unsaved = saveState.value === '保存失败'
+  try {
+    await ElMessageBox.confirm(
+      unsaved
+        ? '答案没有保存成功，离开后这些修改可能丢失。仍要离开吗？'
+        : '测评仍在进行，离开后倒计时不会暂停。已作答内容会保留，可从「我的岗位」继续。',
+      '离开岗位测评',
+      {
+        type: 'warning',
+        confirmButtonText: unsaved ? '仍要离开' : '离开测评',
+        cancelButtonText: '继续作答'
+      }
+    )
+  } catch {
+    return false
+  }
+  leaveApproved = true
+  return true
+})
+
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (!inProgress.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
 async function submit(auto = false) {
   const attempt = detail.value?.attempt
   if (!attempt || attempt.status !== 'inProgress' || submitting.value) return
@@ -252,12 +284,15 @@ watch(inProgress, active => {
 
 onMounted(() => {
   void load()
+  window.addEventListener('beforeunload', beforeUnload)
   ticker = window.setInterval(() => {
     now.value = Date.now()
   }, 1000)
 })
 
 onBeforeUnmount(() => {
+  releaseLeaveGuard()
+  window.removeEventListener('beforeunload', beforeUnload)
   if (ticker !== undefined) window.clearInterval(ticker)
   if (saveTimer !== undefined) window.clearTimeout(saveTimer)
   if (inProgress.value) void flushSave()

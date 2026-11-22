@@ -110,6 +110,8 @@ declare module 'vue' {
     NodeAccountsDialog: typeof import('./components/NodeAccountsDialog.vue')['default']
     NodeConfigurationDialog: typeof import('./components/NodeConfigurationDialog.vue')['default']
     OperationsPage: typeof import('./components/OperationsPage.vue')['default']
+    PageError: typeof import('./components/PageError.vue')['default']
+    PageLoading: typeof import('./components/PageLoading.vue')['default']
     PaperLibraryPage: typeof import('./components/PaperLibraryPage.vue')['default']
     ProfilePage: typeof import('./components/ProfilePage.vue')['default']
     QuestionBankPage: typeof import('./components/QuestionBankPage.vue')['default']

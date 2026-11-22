@@ -81,7 +81,7 @@ async function submit() {
     destroy-on-close
     @opened="onDialogOpened"
   >
-    <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="entity-form">
+    <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="entity-form" scroll-to-error>
       <el-form-item
         v-for="field in fields"
         :key="field.key"

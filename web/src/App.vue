@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { ElMessage } from 'element-plus'
 import { api, messageOf, post, setLimits, setToken, type Row } from './api'
 import { createAuthForm } from './auth'
 import { entities } from './entities'
+import { canLeave, hasLeaveGuard } from './leaveGuard'
+import { lazyPage } from './lazyPage'
 import { findNavGroup, findNavItem, homeRoute, navigationFor } from './navigation'
 import { probeSession } from './session'
 import type { SessionResponse, SessionUser, StatusResponse } from './types'
@@ -14,36 +16,34 @@ import ChangePasswordDialog from './components/ChangePasswordDialog.vue'
 import HelpDialog from './components/HelpDialog.vue'
 import WorkspaceHeader from './components/WorkspaceHeader.vue'
 
-const EntityPage = defineAsyncComponent(() => import('./components/EntityPage.vue'))
-const DashboardPage = defineAsyncComponent(() => import('./components/DashboardPage.vue'))
-const OperationsPage = defineAsyncComponent(() => import('./components/OperationsPage.vue'))
-const MyResourcesPage = defineAsyncComponent(() => import('./components/MyResourcesPage.vue'))
-const CourseLibraryPage = defineAsyncComponent(() => import('./components/CourseLibraryPage.vue'))
-const ClassroomCenterPage = defineAsyncComponent(() => import('./components/ClassroomCenterPage.vue'))
-const MyClassroomsPage = defineAsyncComponent(() => import('./components/MyClassroomsPage.vue'))
-const ClassroomContentPage = defineAsyncComponent(() => import('./components/ClassroomContentPage.vue'))
-const StudentHomePage = defineAsyncComponent(() => import('./components/StudentHomePage.vue'))
-const TeacherHomePage = defineAsyncComponent(() => import('./components/TeacherHomePage.vue'))
-const SkillGraphPage = defineAsyncComponent(() => import('./components/SkillGraphPage.vue'))
-const StudentClassroomStatisticsPage = defineAsyncComponent(
-  () => import('./components/StudentClassroomStatisticsPage.vue')
-)
-const ResourcesOverviewPage = defineAsyncComponent(() => import('./components/ResourcesOverviewPage.vue'))
-const ExamQuestionBanksPage = defineAsyncComponent(() => import('./components/ExamQuestionBanksPage.vue'))
-const PaperLibraryPage = defineAsyncComponent(() => import('./components/PaperLibraryPage.vue'))
-const ExamCenterPage = defineAsyncComponent(() => import('./components/ExamCenterPage.vue'))
-const MyExamsPage = defineAsyncComponent(() => import('./components/MyExamsPage.vue'))
-const ExamTakingPage = defineAsyncComponent(() => import('./components/ExamTakingPage.vue'))
-const ExamRecordsPage = defineAsyncComponent(() => import('./components/ExamRecordsPage.vue'))
-const CoursePreviewPage = defineAsyncComponent(() => import('./components/CoursePreviewPage.vue'))
-const CampPositionsPage = defineAsyncComponent(() => import('./components/CampPositionsPage.vue'))
-const MyCampPage = defineAsyncComponent(() => import('./components/MyCampPage.vue'))
-const CampTakingPage = defineAsyncComponent(() => import('./components/CampTakingPage.vue'))
-const CampHistoryPage = defineAsyncComponent(() => import('./components/CampHistoryPage.vue'))
-const CampReportsPage = defineAsyncComponent(() => import('./components/CampReportsPage.vue'))
-const CampRecordsPage = defineAsyncComponent(() => import('./components/CampRecordsPage.vue'))
-const CampMonitorPage = defineAsyncComponent(() => import('./components/CampMonitorPage.vue'))
-const ProfilePage = defineAsyncComponent(() => import('./components/ProfilePage.vue'))
+const EntityPage = lazyPage(() => import('./components/EntityPage.vue'))
+const DashboardPage = lazyPage(() => import('./components/DashboardPage.vue'))
+const OperationsPage = lazyPage(() => import('./components/OperationsPage.vue'))
+const MyResourcesPage = lazyPage(() => import('./components/MyResourcesPage.vue'))
+const CourseLibraryPage = lazyPage(() => import('./components/CourseLibraryPage.vue'))
+const ClassroomCenterPage = lazyPage(() => import('./components/ClassroomCenterPage.vue'))
+const MyClassroomsPage = lazyPage(() => import('./components/MyClassroomsPage.vue'))
+const ClassroomContentPage = lazyPage(() => import('./components/ClassroomContentPage.vue'))
+const StudentHomePage = lazyPage(() => import('./components/StudentHomePage.vue'))
+const TeacherHomePage = lazyPage(() => import('./components/TeacherHomePage.vue'))
+const SkillGraphPage = lazyPage(() => import('./components/SkillGraphPage.vue'))
+const StudentClassroomStatisticsPage = lazyPage(() => import('./components/StudentClassroomStatisticsPage.vue'))
+const ResourcesOverviewPage = lazyPage(() => import('./components/ResourcesOverviewPage.vue'))
+const ExamQuestionBanksPage = lazyPage(() => import('./components/ExamQuestionBanksPage.vue'))
+const PaperLibraryPage = lazyPage(() => import('./components/PaperLibraryPage.vue'))
+const ExamCenterPage = lazyPage(() => import('./components/ExamCenterPage.vue'))
+const MyExamsPage = lazyPage(() => import('./components/MyExamsPage.vue'))
+const ExamTakingPage = lazyPage(() => import('./components/ExamTakingPage.vue'))
+const ExamRecordsPage = lazyPage(() => import('./components/ExamRecordsPage.vue'))
+const CoursePreviewPage = lazyPage(() => import('./components/CoursePreviewPage.vue'))
+const CampPositionsPage = lazyPage(() => import('./components/CampPositionsPage.vue'))
+const MyCampPage = lazyPage(() => import('./components/MyCampPage.vue'))
+const CampTakingPage = lazyPage(() => import('./components/CampTakingPage.vue'))
+const CampHistoryPage = lazyPage(() => import('./components/CampHistoryPage.vue'))
+const CampReportsPage = lazyPage(() => import('./components/CampReportsPage.vue'))
+const CampRecordsPage = lazyPage(() => import('./components/CampRecordsPage.vue'))
+const CampMonitorPage = lazyPage(() => import('./components/CampMonitorPage.vue'))
+const ProfilePage = lazyPage(() => import('./components/ProfilePage.vue'))
 
 const startup = ref(true)
 const startupError = ref('')
@@ -122,6 +122,9 @@ function resolveGroup(key: string, role?: string): string {
 }
 const currentGroup = computed(() => resolveGroup(route.value, user.value?.role))
 
+let committedHash = location.hash
+let approvedHash = ''
+
 function readRoute() {
   const wasOpen = sidebarOpen.value
   const [path, query] = location.hash.replace(/^#\/?/, '').split('?')
@@ -134,10 +137,36 @@ function readRoute() {
   })
 }
 
-function navigate(key: string, params?: Row) {
+/**
+ * Every in-app route change runs through here so a page holding unsaved work
+ * can refuse. Setting the hash fires `hashchange` asynchronously; remembering
+ * the approved hash keeps the guard from asking twice for one click.
+ */
+async function navigate(key: string, params?: Row) {
   const query = params ? new URLSearchParams(params).toString() : ''
-  location.hash = `${key}${query ? '?' + query : ''}`
-  if (route.value === key) readRoute()
+  const target = `${key}${query ? '?' + query : ''}`
+  if (location.hash.replace(/^#\/?/, '') === target) {
+    readRoute()
+    return true
+  }
+  if (hasLeaveGuard() && !(await canLeave())) return false
+  approvedHash = `#${target}`
+  location.hash = target
+  return true
+}
+
+async function onHashChange() {
+  const target = location.hash
+  if (target === committedHash) return
+  const approved = approvedHash === target
+  approvedHash = ''
+  if (!approved && hasLeaveGuard() && !(await canLeave())) {
+    if (location.hash !== committedHash)
+      history.replaceState(null, '', committedHash || location.pathname + location.search)
+    return
+  }
+  committedHash = target
+  readRoute()
 }
 
 function focusMain() {
@@ -149,11 +178,11 @@ function closeNavigation() {
   void nextTick(() => document.getElementById('mobile-menu-toggle')?.focus())
 }
 
-function navigateFromSidebar(key: string) {
+async function navigateFromSidebar(key: string) {
   const wasOpen = sidebarOpen.value
   sidebarOpen.value = false
-  navigate(key)
-  if (wasOpen) void nextTick(focusMain)
+  const left = await navigate(key)
+  if (wasOpen && left) void nextTick(focusMain)
 }
 
 function openSidebarHelp() {
@@ -244,6 +273,7 @@ async function authenticate() {
 }
 
 async function logout() {
+  if (hasLeaveGuard() && !(await canLeave())) return
   try {
     await post('/auth/logout')
     user.value = null
@@ -317,7 +347,7 @@ watch(
 onMounted(() => {
   readRoute()
   mobileLayout.addEventListener('change', resetDesktopNavigation)
-  window.addEventListener('hashchange', readRoute)
+  window.addEventListener('hashchange', onHashChange)
   window.addEventListener('session-expired', onExpired)
   window.addEventListener('school-name-changed', onSchoolChanged)
   window.addEventListener('profile-updated', onProfileUpdated)
@@ -325,7 +355,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   mobileLayout.removeEventListener('change', resetDesktopNavigation)
-  window.removeEventListener('hashchange', readRoute)
+  window.removeEventListener('hashchange', onHashChange)
   window.removeEventListener('session-expired', onExpired)
   window.removeEventListener('school-name-changed', onSchoolChanged)
   window.removeEventListener('profile-updated', onProfileUpdated)

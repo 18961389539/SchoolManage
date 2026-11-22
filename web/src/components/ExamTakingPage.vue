@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { ArrowLeft, Check, Clock, Document, Grid, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, messageOf, post } from '../api'
+import { registerLeaveGuard } from '../leaveGuard'
 import {
   attemptStatusLabel,
   attemptStatusType,
@@ -422,12 +423,41 @@ watch(activeType, () => {
   if (filteredQuestions.value.length) currentId.value = filteredQuestions.value[0].paperQuestionId
 })
 
+let leaveApproved = false
+const releaseLeaveGuard = registerLeaveGuard(async () => {
+  if (leaveApproved || !inProgress.value) return true
+  if (submitting.value || leaving.value) return false
+  if (activeSave) await activeSave
+  if (dirty) await saveNow()
+  const unsaved = dirty || saveState.value === 'error'
+  try {
+    await ElMessageBox.confirm(
+      unsaved
+        ? '还有答案没有保存成功，离开后这些修改可能丢失。仍要离开吗？'
+        : '考试仍在进行，离开后倒计时不会暂停。已作答内容会保留，可从「我的考试」继续。',
+      '离开考试',
+      {
+        type: 'warning',
+        confirmButtonText: unsaved ? '仍要离开' : '离开考试',
+        cancelButtonText: '继续作答'
+      }
+    )
+  } catch {
+    return false
+  }
+  leaveApproved = true
+  return true
+})
+
 onMounted(() => {
   void load()
   window.addEventListener('beforeunload', beforeUnload)
 })
 
 onBeforeUnmount(() => {
+  releaseLeaveGuard()
+  // Last-chance write for paths that bypass the guard (session expiry, forced sign-out).
+  if (dirty && inProgress.value && !submitting.value) void persistAnswers()
   disposed = true
   stopClocks()
   window.removeEventListener('beforeunload', beforeUnload)
@@ -435,20 +465,12 @@ onBeforeUnmount(() => {
 
 async function goBack() {
   if (submitting.value || leaving.value) return
-  if (inProgress.value && (dirty || activeSave)) {
+  if (inProgress.value) {
+    // Flush before the shared leave guard asks, so leaving never drops the last debounce window.
     leaving.value = true
     try {
-      await activeSave
+      if (activeSave) await activeSave
       if (dirty) await saveNow()
-      if (dirty && inProgress.value) {
-        await ElMessageBox.confirm('还有答案未保存，返回后可能丢失。', '返回我的考试', {
-          type: 'warning',
-          confirmButtonText: '仍要返回',
-          cancelButtonText: '继续作答'
-        })
-      }
-    } catch {
-      return
     } finally {
       leaving.value = false
     }
