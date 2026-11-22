@@ -7,6 +7,7 @@ import { createAuthForm } from './auth'
 import { entities } from './entities'
 import { canLeave, hasLeaveGuard } from './leaveGuard'
 import { lazyPage } from './lazyPage'
+import { clearListStates } from './listState'
 import { findNavGroup, findNavItem, homeRoute, navigationFor } from './navigation'
 import { probeSession } from './session'
 import type { SessionResponse, SessionUser, StatusResponse } from './types'
@@ -278,6 +279,7 @@ async function logout() {
     await post('/auth/logout')
     user.value = null
     setToken('')
+    clearListStates()
     passwordVisible.value = false
     initialCurrentPassword.value = ''
     authForm.password = ''
@@ -312,6 +314,7 @@ const onExpired = () => {
   if (!user.value) return
   user.value = null
   setToken('')
+  clearListStates()
   passwordVisible.value = false
   passwordError.value = ''
   initialCurrentPassword.value = ''

@@ -338,7 +338,7 @@ async function save() {
     <div v-if="loading" class="resource-skeleton" aria-live="polite">
       <el-skeleton :rows="6" animated />
     </div>
-    <el-form v-else ref="resourceForm" label-position="top" class="entity-form resource-form">
+    <el-form scroll-to-error v-else ref="resourceForm" label-position="top" class="entity-form resource-form">
       <div class="resource-form-grid">
         <el-form-item label="资源名称" required>
           <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="例如：OSI 七层模型" />

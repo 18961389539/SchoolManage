@@ -189,7 +189,7 @@ watch(
       @opened="focusGroupName"
     >
       <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
-      <el-form label-position="top" class="entity-form">
+      <el-form scroll-to-error label-position="top" class="entity-form">
         <el-form-item label="小组名称" required>
           <el-input
             ref="groupNameInput"

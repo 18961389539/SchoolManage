@@ -382,7 +382,7 @@ onMounted(() => {
     @opened="focusNameInput"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
-    <el-form label-position="top" class="entity-form">
+    <el-form scroll-to-error label-position="top" class="entity-form">
       <div class="course-form-grid">
         <el-form-item label="课程名称" required>
           <el-input
@@ -443,7 +443,7 @@ onMounted(() => {
         </template>
       </el-table-column>
     </el-table>
-    <el-form label-position="top" class="entity-form section-gap" @submit.prevent="saveSeries">
+    <el-form scroll-to-error label-position="top" class="entity-form section-gap" @submit.prevent="saveSeries">
       <el-form-item :label="seriesForm.id ? '编辑系列名称' : '新增系列名称'">
         <el-input ref="seriesNameInput" v-model="seriesForm.name" maxlength="100" />
       </el-form-item>

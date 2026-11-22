@@ -496,7 +496,7 @@ onMounted(() => {
       :closable="false"
       class="section-notice"
     />
-    <el-form label-position="top" class="entity-form">
+    <el-form scroll-to-error label-position="top" class="entity-form">
       <div class="position-form-grid">
         <el-form-item label="岗位名称" required>
           <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="例如：网络运维工程师" />

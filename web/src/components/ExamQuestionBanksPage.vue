@@ -222,7 +222,7 @@ onMounted(load)
     @opened="focusBankName"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" />
-    <el-form label-position="top" @submit.prevent="save">
+    <el-form scroll-to-error label-position="top" @submit.prevent="save">
       <el-form-item label="题库名称" required
         ><el-input ref="bankNameInput" v-model="form.name" maxlength="100"
       /></el-form-item>

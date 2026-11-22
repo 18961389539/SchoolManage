@@ -298,7 +298,7 @@ watch(
       @opened="focusAssignForm"
     >
       <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
-      <el-form ref="assignForm" label-position="top" class="entity-form">
+      <el-form scroll-to-error ref="assignForm" label-position="top" class="entity-form">
         <el-form-item label="小组" required>
           <el-select v-model="form.groupId" filterable placeholder="选择本课堂小组">
             <el-option v-for="group in options.groups" :key="group.id" :label="group.name" :value="group.id" />

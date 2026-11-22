@@ -104,7 +104,7 @@ onMounted(load)
       </el-select>
       <el-button v-if="readOnly || error" :disabled="busy" @click="load">刷新环境</el-button>
     </div>
-    <el-form v-if="draft" label-position="top">
+    <el-form scroll-to-error v-if="draft" label-position="top">
       <el-form-item label="主机名">
         <el-input v-model="draft.hostname" maxlength="63" :readonly="readOnly" :disabled="busy || locked" />
       </el-form-item>

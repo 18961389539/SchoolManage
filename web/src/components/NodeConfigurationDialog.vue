@@ -60,7 +60,7 @@ function submit() {
       show-icon
       class="section-notice"
     />
-    <el-form ref="configForm" label-position="top" class="entity-form">
+    <el-form scroll-to-error ref="configForm" label-position="top" class="entity-form">
       <el-form-item label="IPv4 地址" required>
         <el-input v-model="configuration.ipAddress" placeholder="192.0.2.10" />
       </el-form-item>

@@ -572,7 +572,7 @@ onMounted(load)
     @opened="focusQuestionForm"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
-    <el-form ref="questionForm" v-loading="loadingPractical" label-position="top" class="entity-form">
+    <el-form scroll-to-error ref="questionForm" v-loading="loadingPractical" label-position="top" class="entity-form">
       <div class="question-form-grid">
         <el-form-item label="题型" required>
           <el-select v-model="form.type" @change="changeType">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import type { FormInstance, FormItemRule, FormRules } from 'element-plus'
+import { ElMessageBox, type FormInstance, type FormItemRule, type FormRules } from 'element-plus'
 import type { Row } from '../api'
 import { newEntity, type Entity, type Field } from '../entities'
 import { focusFirstField } from '../focusField'
@@ -17,6 +17,8 @@ const emit = defineEmits<{ submit: [payload: Row] }>()
 
 const form = reactive<Row>({})
 const formRef = ref<FormInstance>()
+const baseline = ref('')
+const dirty = computed(() => JSON.stringify(form) !== baseline.value)
 function isAvailable(field: Field) {
   return !field.visibleWhen || form[field.visibleWhen.key] === field.visibleWhen.value
 }
@@ -43,8 +45,32 @@ watch(visible, open => {
   for (const key of Object.keys(form)) delete form[key]
   Object.assign(form, newEntity(props.entity), props.initialRow || {})
   for (const field of props.entity.fields) if (field.type === 'password') form[field.key] = ''
+  baseline.value = JSON.stringify(form)
   void nextTick(() => formRef.value?.clearValidate())
 })
+
+async function confirmDiscard() {
+  if (props.saving) return false
+  if (!dirty.value) return true
+  try {
+    await ElMessageBox.confirm('填写的内容还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
+      type: 'warning',
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续编辑'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function handleBeforeClose(done: () => void) {
+  if (await confirmDiscard()) done()
+}
+
+async function cancel() {
+  if (await confirmDiscard()) visible.value = false
+}
 
 function onDialogOpened() {
   focusFirstField((formRef.value as { $el?: HTMLElement } | undefined)?.$el)
@@ -78,6 +104,7 @@ async function submit() {
     :title="`${editing ? '编辑' : '新增'}${entity.singular}`"
     width="650px"
     :close-on-click-modal="false"
+    :before-close="handleBeforeClose"
     destroy-on-close
     @opened="onDialogOpened"
   >
@@ -131,7 +158,7 @@ async function submit() {
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
+      <el-button @click="cancel">取消</el-button>
       <el-button type="primary" :loading="saving" @click="submit">保存{{ entity.singular }}</el-button>
     </template>
   </el-dialog>

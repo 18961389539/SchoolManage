@@ -194,7 +194,7 @@ onUnmounted(() => window.clearInterval(refreshTimer))
       <el-select :model-value="selected" :disabled="!!action || dirty" aria-label="选择模拟设备" @change="selectDevice">
         <el-option v-for="item in work.devices" :key="item.id" :label="item.name" :value="item.id" />
       </el-select>
-      <el-form label-position="top" class="case-device-form">
+      <el-form scroll-to-error label-position="top" class="case-device-form">
         <el-form-item label="主机名">
           <el-input v-model="draft.hostname" maxlength="63" :readonly="!canEdit" :disabled="!!action" />
         </el-form-item>

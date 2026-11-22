@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, del, listItems, messageOf, post, put, type Row } from '../api'
 import type { CabinetSummary, ConnectionProbe, ConnectionProbeList, MessageResponse, Paged } from '../types'
 import { entities, type Field } from '../entities'
+import { readListState, writeListState } from '../listState'
 import { recoverPage } from '../paging'
 import DataRecord from './DataRecord.vue'
 import EntityFormDialog from './EntityFormDialog.vue'
@@ -62,6 +63,26 @@ let configurationRequest = 0
 let actionVersion = 0
 
 type EntityList = Paged<Row> & { cabinet?: CabinetSummary | null }
+
+const listKey = computed(() => `${props.entityKey}${scopedCabinetId.value ? `:${scopedCabinetId.value}` : ''}`)
+
+function restoreListState() {
+  const saved = readListState(listKey.value)
+  const available = new Set((entity.value.filters ?? []).map(field => field.key))
+  page.value = saved.page
+  pageSize.value = saved.pageSize
+  search.value = saved.search
+  filters.value = Object.fromEntries(Object.entries(saved.filters).filter(([key]) => available.has(key)))
+}
+
+function saveListState() {
+  writeListState(listKey.value, {
+    search: search.value,
+    filters: filters.value,
+    page: page.value,
+    pageSize: pageSize.value
+  })
+}
 
 // Selection survives paging (reserve-selection in EntityTable) and is cleared only when the
 // underlying result set is replaced: another entity, a new search, or a destructive action.
@@ -424,19 +445,22 @@ watch(
   () => {
     contextVersion++
     resetOverlays()
-    page.value = 1
-    search.value = ''
-    filters.value = {}
     rows.value = []
     total.value = 0
     error.value = ''
     cabinet.value = null
     clearSelection()
+    restoreListState()
     void loadFilterOptions()
     void load()
   },
   { immediate: true }
 )
+
+// Declared after the reset above so a module switch first restores the incoming
+// entity's saved filters, then records them for this entity only.
+watch([search, filters, page, pageSize], saveListState, { deep: true })
+onBeforeUnmount(saveListState)
 </script>
 
 <template>

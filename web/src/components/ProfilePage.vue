@@ -105,7 +105,7 @@ onMounted(load)
           {{ roleLabel }}
         </el-tag>
       </header>
-      <el-form label-position="top" class="entity-form" @submit.prevent="save">
+      <el-form scroll-to-error label-position="top" class="entity-form" @submit.prevent="save">
         <div class="profile-form-grid">
           <el-form-item label="姓名" required>
             <el-input v-model="form.name" maxlength="100" show-word-limit placeholder="请输入姓名" />

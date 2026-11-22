@@ -498,7 +498,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     @opened="focusNameInput"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
-    <el-form label-position="top" class="entity-form">
+    <el-form scroll-to-error label-position="top" class="entity-form">
       <div class="exam-form-grid">
         <el-form-item label="考试名称" required>
           <el-input

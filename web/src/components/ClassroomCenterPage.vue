@@ -594,7 +594,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     @opened="focusNameInput"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
-    <el-form label-position="top" class="entity-form">
+    <el-form scroll-to-error label-position="top" class="entity-form">
       <div class="classroom-form-grid">
         <el-form-item label="课堂名称" required>
           <el-input
@@ -734,7 +734,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       :closable="false"
       class="section-notice"
     />
-    <el-form ref="addStudentFormRef" label-position="top" class="entity-form">
+    <el-form scroll-to-error ref="addStudentFormRef" label-position="top" class="entity-form">
       <ClassroomStudentPicker v-if="addStudentVisible" v-model="addStudentForm.studentUserIds" :teaching="teaching" />
       <el-form-item label="专业">
         <el-select v-model="addStudentForm.professionIds" multiple filterable placeholder="选择专业">

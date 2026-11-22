@@ -71,7 +71,7 @@ function submit() {
       class="section-notice"
     />
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="section-notice" />
-    <el-form label-position="top" @submit.prevent="submit">
+    <el-form scroll-to-error label-position="top" @submit.prevent="submit">
       <el-form-item label="当前密码" required :error="currentError">
         <el-input
           ref="currentInput"

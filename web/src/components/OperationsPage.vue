@@ -682,7 +682,7 @@ watch(
         <p>修改名称将更新平台中显示的学校信息。</p>
       </div>
     </div>
-    <el-form label-position="top" class="settings-form" @submit.prevent="saveSettings"
+    <el-form scroll-to-error label-position="top" class="settings-form" @submit.prevent="saveSettings"
       ><el-form-item label="学校名称" required
         ><el-input v-model="settings.schoolName" maxlength="100" placeholder="请输入学校名称" /></el-form-item
       ><el-form-item v-if="settings.dataDirectory" label="数据目录"
@@ -729,7 +729,7 @@ watch(
       :closable="false"
       show-icon
       class="section-notice"
-    /><el-form label-position="top" class="entity-form"
+    /><el-form scroll-to-error label-position="top" class="entity-form"
       ><el-form-item label="虚拟机名称" required
         ><el-input ref="vmNameInput" v-model="vmModel.name" maxlength="100" /></el-form-item
       ><el-form-item label="所属模拟节点" required

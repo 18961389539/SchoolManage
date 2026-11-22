@@ -311,7 +311,7 @@ async function deleteResource(id: string, name: string) {
       width="min(460px, 94vw)"
       @opened="focusChapterName"
     >
-      <el-form label-position="top" class="entity-form">
+      <el-form scroll-to-error label-position="top" class="entity-form">
         <el-form-item label="大章名称" required>
           <el-input
             ref="chapterNameInput"
@@ -334,7 +334,7 @@ async function deleteResource(id: string, name: string) {
       width="min(480px, 94vw)"
       @opened="focusSectionName"
     >
-      <el-form label-position="top" class="entity-form">
+      <el-form scroll-to-error label-position="top" class="entity-form">
         <el-form-item label="小节名称" required>
           <el-input ref="sectionNameInput" v-model="sectionForm.name" maxlength="100" show-word-limit />
         </el-form-item>
