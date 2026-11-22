@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
+import { readListState, writeListState } from '../listState'
+import { recoverPage } from '../paging'
 import type { CampStaffRecordRow, Paged } from '../types'
 import CampRecordDrawer from './CampRecordDrawer.vue'
 import TableEmpty from './TableEmpty.vue'
 
 const items = ref<CampStaffRecordRow[]>([])
 const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
-const search = ref('')
+const savedList = readListState('camp-records')
+const page = ref(savedList.page)
+const pageSize = ref(savedList.pageSize)
+const search = ref(savedList.search)
 const loading = ref(false)
 const error = ref('')
 const recordVisible = ref(false)
@@ -25,6 +28,11 @@ async function load() {
     const data = await api<Paged<CampStaffRecordRow>>(`/camp/records?${params.toString()}`)
     items.value = data.items
     total.value = data.total
+    const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
+    if (recovered !== null && recovered !== page.value) {
+      page.value = recovered
+      return load()
+    }
   } catch (failure) {
     error.value = messageOf(failure)
   } finally {
@@ -32,16 +40,29 @@ async function load() {
   }
 }
 
+function saveListState() {
+  writeListState('camp-records', {
+    search: search.value,
+    filters: {},
+    page: page.value,
+    pageSize: pageSize.value
+  })
+}
+
 function applySearch() {
   page.value = 1
+  saveListState()
   void load()
 }
 
 function resetSearch() {
   search.value = ''
   page.value = 1
+  saveListState()
   void load()
 }
+
+watch([page, pageSize], saveListState)
 
 function openRecord(row: CampStaffRecordRow) {
   activeAttemptId.value = row.attemptId

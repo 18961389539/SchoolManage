@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ArrowLeft, Refresh, Search } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
+import { readListState, writeListState } from '../listState'
+import { recoverPage } from '../paging'
 import { attemptStatusLabel, attemptStatusType } from '../exam'
 import type { ExamRecordSummary, Paged } from '../types'
 import AttemptReviewDrawer from './AttemptReviewDrawer.vue'
@@ -13,9 +15,11 @@ const loading = ref(false)
 const error = ref('')
 const items = ref<ExamRecordSummary[]>([])
 const total = ref(0)
-const page = ref(1)
-const pageSize = ref(10)
-const search = ref(props.initialSearch || '')
+const listKey = 'exam-records'
+const savedList = readListState(listKey, sessionStorage, [10, 20, 50, 100])
+const page = ref(props.initialSearch ? 1 : savedList.page)
+const pageSize = ref(props.initialSearch ? 10 : savedList.pageSize)
+const search = ref(props.initialSearch || savedList.search)
 const appliedSearch = ref(search.value.trim())
 let refreshTimer: number | undefined
 let requestId = 0
@@ -43,6 +47,11 @@ async function load(silent = false) {
       items.value = data.items
       total.value = data.total
       error.value = ''
+      const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
+      if (recovered !== null && recovered !== page.value) {
+        page.value = recovered
+        void load(silent)
+      }
     }
   } catch (failure) {
     if (request === requestId && !silent) error.value = messageOf(failure)
@@ -54,9 +63,19 @@ async function load(silent = false) {
   }
 }
 
+function saveListState() {
+  writeListState(listKey, {
+    search: appliedSearch.value,
+    filters: {},
+    page: page.value,
+    pageSize: pageSize.value
+  })
+}
+
 function applySearch() {
   appliedSearch.value = search.value.trim()
   page.value = 1
+  saveListState()
   void load()
 }
 
@@ -64,6 +83,8 @@ function resetSearch() {
   search.value = ''
   applySearch()
 }
+
+watch([page, pageSize], saveListState)
 
 function scorePercent(record: ExamRecordSummary) {
   return record.maxScore ? Math.round((record.totalScore * 100) / record.maxScore) : 0

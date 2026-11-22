@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { MoreFilled, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, del, messageOf, post, put } from '../api'
+import { readListState, writeListState } from '../listState'
+import { recoverPage } from '../paging'
 import { rangeText } from '../time'
 import {
   classroomResourceCountLines,
@@ -35,12 +37,13 @@ const emit = defineEmits<{ navigate: [key: string, params?: Record<string, strin
 
 const items = ref<ClassroomSummary[]>([])
 const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
+const savedList = readListState('classrooms')
+const page = ref(savedList.page)
+const pageSize = ref(savedList.pageSize)
 const loading = ref(false)
 const error = ref('')
-const search = ref('')
-const statusFilter = ref('')
+const search = ref(savedList.search)
+const statusFilter = ref(savedList.filters.status || '')
 const tableViewport = window.matchMedia('(max-width: 1280px)')
 const narrowTable = ref(tableViewport.matches)
 function syncTableViewport(event: MediaQueryListEvent) {
@@ -133,6 +136,11 @@ async function load() {
     const data = await api<Paged<ClassroomSummary>>(`/classrooms?${params.toString()}`)
     items.value = data.items
     total.value = data.total
+    const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
+    if (recovered !== null && recovered !== page.value) {
+      page.value = recovered
+      return load()
+    }
   } catch (failure) {
     error.value = messageOf(failure)
   } finally {
@@ -166,8 +174,18 @@ async function loadTeachingClasses() {
   }
 }
 
+function saveListState() {
+  writeListState('classrooms', {
+    search: search.value,
+    filters: { status: statusFilter.value },
+    page: page.value,
+    pageSize: pageSize.value
+  })
+}
+
 function applyFilters() {
   page.value = 1
+  saveListState()
   void load()
 }
 
@@ -176,6 +194,8 @@ function resetFilters() {
   statusFilter.value = ''
   applyFilters()
 }
+
+watch([page, pageSize], saveListState)
 
 const filtering = computed(() => !!search.value.trim() || !!statusFilter.value)
 

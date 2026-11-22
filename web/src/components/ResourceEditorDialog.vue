@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { Delete, Plus, UploadFilled } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, listItems, messageOf, post, put } from '../api'
 import { durationText, questionTypeOptions, resourceKindOptions } from '../teaching'
 import type { CourseQuestion, CourseResourceDetail, NodeRow, QuestionType, ResourceKind } from '../types'
@@ -43,6 +43,8 @@ const form = reactive({
 })
 const importVisible = ref(false)
 const selectedQuestions = ref<EditableQuestion[]>([])
+const baseline = ref('')
+const dirty = computed(() => JSON.stringify(form) !== baseline.value)
 const topologyId = ref('')
 const topologies = ref<{ id: string; name: string; topology: string }[]>([])
 const environmentDevices = ref<{ id: string; name: string; interfaces: string[] }[]>([])
@@ -154,8 +156,33 @@ async function load() {
     error.value = messageOf(failure)
   } finally {
     loading.value = false
+    baseline.value = JSON.stringify(form)
     if (visible.value) focusResourceForm()
   }
+}
+
+async function confirmDiscard() {
+  if (saving.value) return false
+  if (loading.value) return true
+  if (!dirty.value) return true
+  try {
+    await ElMessageBox.confirm('资源内容还没有保存，关闭后这些修改不会保留。', '放弃未保存的修改？', {
+      type: 'warning',
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续编辑'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function handleBeforeClose(done: () => void) {
+  if (await confirmDiscard()) done()
+}
+
+async function cancel() {
+  if (await confirmDiscard()) visible.value = false
 }
 
 watch(
@@ -333,7 +360,14 @@ async function save() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" :title="title" width="min(920px, 96vw)" destroy-on-close @opened="focusResourceForm">
+  <el-dialog
+    v-model="visible"
+    :title="title"
+    width="min(920px, 96vw)"
+    :before-close="handleBeforeClose"
+    destroy-on-close
+    @opened="focusResourceForm"
+  >
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
     <div v-if="loading" class="resource-skeleton" aria-live="polite">
       <el-skeleton :rows="6" animated />
@@ -543,7 +577,7 @@ async function save() {
       </template>
     </el-form>
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
+      <el-button @click="cancel">取消</el-button>
       <el-button type="primary" :loading="saving" :disabled="loading" @click="save">
         {{ props.resourceId ? '保存修改' : '创建资源' }}
       </el-button>

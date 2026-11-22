@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Clock, Document, Monitor, Refresh, Search, Tickets } from '@element-plus/icons-vue'
 import { api, messageOf } from '../api'
+import { readListState, writeListState } from '../listState'
 import {
   attemptStatusLabel,
   attemptStatusType,
@@ -21,8 +22,9 @@ const emit = defineEmits<{ navigate: [key: string, params?: Record<string, strin
 const items = ref<ExamHallItem[]>([])
 const loading = ref(false)
 const error = ref('')
-const search = ref('')
-const statusFilter = ref('')
+const savedList = readListState('my-exams')
+const search = ref(savedList.search)
+const statusFilter = ref(savedList.filters.status || '')
 const now = ref(Date.now())
 let ticker: number | undefined
 let refresher: number | undefined
@@ -74,6 +76,15 @@ function clearFilters() {
   search.value = ''
   statusFilter.value = ''
 }
+
+watch([search, statusFilter], () => {
+  writeListState('my-exams', {
+    search: search.value,
+    filters: { status: statusFilter.value },
+    page: 1,
+    pageSize: 20
+  })
+})
 
 const filtering = computed(() => !!search.value.trim() || !!statusFilter.value)
 

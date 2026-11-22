@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
+import { readListState, writeListState } from '../listState'
+import { recoverPage } from '../paging'
 import type { CampStaffReportRow, Paged } from '../types'
 import CampReportDrawer from './CampReportDrawer.vue'
 import TableEmpty from './TableEmpty.vue'
 
 const items = ref<CampStaffReportRow[]>([])
 const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
-const search = ref('')
+const savedList = readListState('camp-reports')
+const page = ref(savedList.page)
+const pageSize = ref(savedList.pageSize)
+const search = ref(savedList.search)
 const loading = ref(false)
 const error = ref('')
 const reportVisible = ref(false)
@@ -25,6 +28,11 @@ async function load() {
     const data = await api<Paged<CampStaffReportRow>>(`/camp/reports?${params.toString()}`)
     items.value = data.items
     total.value = data.total
+    const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
+    if (recovered !== null && recovered !== page.value) {
+      page.value = recovered
+      return load()
+    }
   } catch (failure) {
     error.value = messageOf(failure)
   } finally {
@@ -32,16 +40,29 @@ async function load() {
   }
 }
 
+function saveListState() {
+  writeListState('camp-reports', {
+    search: search.value,
+    filters: {},
+    page: page.value,
+    pageSize: pageSize.value
+  })
+}
+
 function applySearch() {
   page.value = 1
+  saveListState()
   void load()
 }
 
 function resetSearch() {
   search.value = ''
   page.value = 1
+  saveListState()
   void load()
 }
+
+watch([page, pageSize], saveListState)
 
 function openReport(row: CampStaffReportRow) {
   activeAttemptId.value = row.attemptId

@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
+import { readListState, writeListState } from '../listState'
+import { recoverPage } from '../paging'
 import { courseStatusOptions, courseTypeOptions, durationText, labelOf } from '../teaching'
 import type { CoreCourseSeries, CourseSummary, Paged } from '../types'
 import CourseTreeEditor from './CourseTreeEditor.vue'
@@ -11,15 +13,17 @@ import { focusFirstField } from '../focusField'
 
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>]; 'activation-changed': [] }>()
 
+const listKey = 'courses'
+const savedList = readListState(listKey)
 const items = ref<CourseSummary[]>([])
 const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
+const page = ref(savedList.page)
+const pageSize = ref(savedList.pageSize)
 const loading = ref(false)
 const error = ref('')
-const search = ref('')
-const statusFilter = ref('')
-const typeFilter = ref('')
+const search = ref(savedList.search)
+const statusFilter = ref(savedList.filters.status || '')
+const typeFilter = ref(savedList.filters.type || '')
 
 const dialogVisible = ref(false)
 const nameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
@@ -105,6 +109,11 @@ async function load() {
     const data = await api<Paged<CourseSummary>>(`/courses?${params.toString()}`)
     items.value = data.items
     total.value = data.total
+    const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
+    if (recovered !== null && recovered !== page.value) {
+      page.value = recovered
+      return load()
+    }
   } catch (failure) {
     error.value = messageOf(failure)
   } finally {
@@ -112,8 +121,18 @@ async function load() {
   }
 }
 
+function saveListState() {
+  writeListState(listKey, {
+    search: search.value,
+    filters: { status: statusFilter.value, type: typeFilter.value },
+    page: page.value,
+    pageSize: pageSize.value
+  })
+}
+
 function applyFilters() {
   page.value = 1
+  saveListState()
   void load()
 }
 
@@ -123,6 +142,8 @@ function resetFilters() {
   typeFilter.value = ''
   applyFilters()
 }
+
+watch([page, pageSize], saveListState)
 
 const filtering = computed(() => !!search.value.trim() || !!statusFilter.value || !!typeFilter.value)
 
