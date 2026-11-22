@@ -17,6 +17,7 @@ import {
   EditPen
 } from '@element-plus/icons-vue'
 import { api, post, put, listItems, messageOf, dateTime, bytes, type Row } from '../api'
+import { readListState, writeListState } from '../listState'
 import { focusFirstField } from '../focusField'
 import { downloadFile } from '../exam'
 import type { BackupItem, LicenseUploadResult, NodeRow, Paged } from '../types'
@@ -54,7 +55,10 @@ function syncVmViewport(event: MediaQueryListEvent) {
   compactVm.value = event.matches
 }
 onMounted(() => vmViewport.addEventListener('change', syncVmViewport))
-onBeforeUnmount(() => vmViewport.removeEventListener('change', syncVmViewport))
+onBeforeUnmount(() => {
+  saveOpsState()
+  vmViewport.removeEventListener('change', syncVmViewport)
+})
 let loadVersion = 0,
   pageVersion = 0
 function resetSearch() {
@@ -401,12 +405,21 @@ function copyMachineCode() {
     .then(() => ElMessage.success('设备特征码已复制'))
     .catch(() => ElMessage.warning('浏览器未允许复制，请手动选择设备特征码'))
 }
+function opsStateKey() {
+  return `ops:${props.pageKey}`
+}
+
+function saveOpsState() {
+  writeListState(opsStateKey(), { search: search.value, filters: {}, page: page.value, pageSize: 20 })
+}
+
 watch(
   () => props.pageKey,
   () => {
     pageVersion++
-    search.value = ''
-    page.value = 1
+    const saved = readListState(opsStateKey())
+    search.value = saved.search
+    page.value = saved.page
     uploadResults.value = []
     vmVisible.value = false
     vmConsoleVisible.value = false
@@ -418,6 +431,9 @@ watch(
   },
   { immediate: true }
 )
+// Declared after the page switch so restoring the incoming page's state never
+// overwrites it with the previous page's filters.
+watch([search, page], saveOpsState)
 </script>
 <template>
   <section class="page-heading">

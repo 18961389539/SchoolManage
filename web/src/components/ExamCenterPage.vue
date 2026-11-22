@@ -58,6 +58,8 @@ const form = reactive({
   classIds: [] as string[],
   professionIds: [] as string[]
 })
+const formBaseline = ref('')
+const formDirty = computed(() => JSON.stringify(form) !== formBaseline.value)
 
 const activeExam = ref<TrainingExamSummary | null>(null)
 const rosterVisible = ref(false)
@@ -163,6 +165,7 @@ function openCreate() {
   form.classIds = []
   form.professionIds = []
   formError.value = ''
+  formBaseline.value = JSON.stringify(form)
   dialogVisible.value = true
 }
 
@@ -194,7 +197,31 @@ function openEdit(item: TrainingExamSummary) {
   form.classIds = []
   form.professionIds = []
   formError.value = ''
+  formBaseline.value = JSON.stringify(form)
   dialogVisible.value = true
+}
+
+async function confirmDiscardExam() {
+  if (saving.value) return false
+  if (!formDirty.value) return true
+  try {
+    await ElMessageBox.confirm('考试信息还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
+      type: 'warning',
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续编辑'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function handleExamBeforeClose(done: () => void) {
+  if (await confirmDiscardExam()) done()
+}
+
+async function cancelExam() {
+  if (await confirmDiscardExam()) dialogVisible.value = false
 }
 
 async function saveExam() {
@@ -516,6 +543,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     v-model="dialogVisible"
     :title="editing ? '编辑考试' : '新建考试'"
     width="min(720px, 96vw)"
+    :before-close="handleExamBeforeClose"
     @opened="focusNameInput"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
@@ -604,7 +632,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       />
     </el-form>
     <template #footer>
-      <el-button @click="dialogVisible = false">取消</el-button>
+      <el-button @click="cancelExam">取消</el-button>
       <el-button type="primary" :loading="saving" @click="saveExam">
         {{ editing ? '保存修改' : '创建考试' }}
       </el-button>
