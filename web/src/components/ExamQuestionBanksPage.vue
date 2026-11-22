@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, reactive, ref } from 'vue'
+import { defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
 import { Delete, EditPen, Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
+import { readListState, writeListState } from '../listState'
+import { recoverPage } from '../paging'
 import { examQuestionBankLabels } from '../questionBanks'
 import { focusFirstField } from '../focusField'
 import type { ExamQuestionBank, ExamQuestionBankType, Paged } from '../types'
@@ -10,10 +12,12 @@ import type { ExamQuestionBank, ExamQuestionBankType, Paged } from '../types'
 const QuestionBankPage = defineAsyncComponent(() => import('./QuestionBankPage.vue'))
 const banks = ref<ExamQuestionBank[]>([])
 const total = ref(0)
-const page = ref(1)
-const size = ref(20)
-const search = ref('')
-const type = ref('')
+const listKey = 'exam-question-banks'
+const savedList = readListState(listKey)
+const page = ref(savedList.page)
+const size = ref(savedList.pageSize)
+const search = ref(savedList.search)
+const type = ref(savedList.filters.type || '')
 const loading = ref(false)
 const error = ref('')
 const activeBank = ref<ExamQuestionBank | null>(null)
@@ -46,6 +50,11 @@ async function load() {
     if (version !== loadVersion) return
     banks.value = result.items
     total.value = result.total
+    const recovered = recoverPage(page.value, size.value, total.value, banks.value.length)
+    if (recovered !== null && recovered !== page.value) {
+      page.value = recovered
+      return load()
+    }
   } catch (failure) {
     if (version === loadVersion) error.value = messageOf(failure)
   } finally {
@@ -53,10 +62,22 @@ async function load() {
   }
 }
 
+function saveListState() {
+  writeListState(listKey, {
+    search: search.value,
+    filters: { type: type.value },
+    page: page.value,
+    pageSize: size.value
+  })
+}
+
 function filter() {
   page.value = 1
+  saveListState()
   void load()
 }
+
+watch([page, size], saveListState)
 
 function edit(bank: ExamQuestionBank | null = null) {
   editing.value = bank

@@ -68,6 +68,13 @@ describe('list state', () => {
     })
   })
 
+  it('uses a list-specific page size fallback', () => {
+    const storage = new MemoryStorage()
+    writeListState('resources', { search: '', filters: {}, page: 1, pageSize: 99 }, storage)
+    expect(readListState('resources', storage, [12, 24, 48], 12).pageSize).toBe(12)
+    expect(readListState('empty', storage, [12, 24, 48], 12).pageSize).toBe(12)
+  })
+
   it('ignores unreadable entries', () => {
     const storage = new MemoryStorage()
     storage.setItem('school-training:list:students', '{not json')

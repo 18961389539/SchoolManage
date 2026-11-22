@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Delete, EditPen, Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
+import { readListState, writeListState } from '../listState'
+import { recoverPage } from '../paging'
 import { examQuestionTypeLabel, examQuestionTypeOptions, optionLetters, selectedText, typeCountText } from '../exam'
 import type { ExamPaperDetail, ExamPaperQuestion, ExamPaperSummary, ExamQuestionSummary, Paged } from '../types'
 import QuestionBankSelect from './QuestionBankSelect.vue'
@@ -10,11 +12,13 @@ import { focusFirstField } from '../focusField'
 
 const items = ref<ExamPaperSummary[]>([])
 const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
+const listKey = 'exam-papers'
+const savedList = readListState(listKey)
+const page = ref(savedList.page)
+const pageSize = ref(savedList.pageSize)
 const loading = ref(false)
 const error = ref('')
-const search = ref('')
+const search = ref(savedList.search)
 
 const dialogVisible = ref(false)
 const paperNameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
@@ -81,6 +85,11 @@ async function load() {
     const data = await api<Paged<ExamPaperSummary>>(`/exam-papers?${params.toString()}`)
     items.value = data.items
     total.value = data.total
+    const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
+    if (recovered !== null && recovered !== page.value) {
+      page.value = recovered
+      return load()
+    }
   } catch (failure) {
     error.value = messageOf(failure)
   } finally {
@@ -88,8 +97,18 @@ async function load() {
   }
 }
 
+function saveListState() {
+  writeListState(listKey, {
+    search: search.value,
+    filters: {},
+    page: page.value,
+    pageSize: pageSize.value
+  })
+}
+
 function applyFilters() {
   page.value = 1
+  saveListState()
   void load()
 }
 
@@ -97,6 +116,8 @@ function resetFilters() {
   search.value = ''
   applyFilters()
 }
+
+watch([page, pageSize], saveListState)
 
 function openCreate() {
   editing.value = null

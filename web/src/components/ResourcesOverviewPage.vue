@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Collection, Document, Refresh, Search, View } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
+import { readListState, writeListState } from '../listState'
+import { recoverPage } from '../paging'
 import { courseTypeOptions, durationText, labelOf, resourceKindOptions } from '../teaching'
 import type { CoreCourseSeries, CourseDetail, CourseSummary, Paged } from '../types'
 
@@ -11,13 +13,18 @@ const isStudent = computed(() => props.role === 'Student')
 
 const items = ref<CourseSummary[]>([])
 const total = ref(0)
-const page = ref(1)
-const pageSize = ref(12)
+const listKey = 'resources-overview'
+const savedList = readListState(listKey, sessionStorage, [12, 24, 48], 12)
+const page = ref(savedList.page)
+const pageSize = ref(savedList.pageSize)
 const loading = ref(false)
 const error = ref('')
-const search = ref('')
-const typeFilter = ref('')
-const view = ref<'all' | 'core' | 'open'>('all')
+const search = ref(savedList.search)
+const typeFilter = ref(savedList.filters.type || '')
+const savedView = savedList.filters.view
+const view = ref<'all' | 'core' | 'open'>(savedView === 'core' || savedView === 'open' ? savedView : 'all')
+const savedSeriesId = savedList.filters.seriesId || ''
+let restoreSeriesPending = view.value === 'core' && !!savedSeriesId
 const series = ref<CoreCourseSeries[]>([])
 const activeSeries = ref<CoreCourseSeries | null>(null)
 let loadRequest = 0
@@ -27,14 +34,24 @@ const detailLoading = ref(false)
 const detailError = ref('')
 const detail = ref<CourseDetail | null>(null)
 
+async function loadSeries(request: number) {
+  const rows = await api<CoreCourseSeries[]>('/course-series')
+  if (request === loadRequest) series.value = rows
+  if (!restoreSeriesPending) return false
+  restoreSeriesPending = false
+  const match = rows.find(item => item.id === savedSeriesId)
+  if (!match) return false
+  activeSeries.value = match
+  return true
+}
+
 async function load() {
   const request = ++loadRequest
   loading.value = true
   error.value = ''
   try {
     if (view.value === 'core' && !activeSeries.value) {
-      const rows = await api<CoreCourseSeries[]>('/course-series')
-      if (request === loadRequest) series.value = rows
+      if (await loadSeries(request)) return load()
       return
     }
     const params = new URLSearchParams({
@@ -50,6 +67,11 @@ async function load() {
     if (request !== loadRequest) return
     items.value = data.items
     total.value = data.total
+    const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
+    if (recovered !== null && recovered !== page.value) {
+      page.value = recovered
+      return load()
+    }
   } catch (failure) {
     if (request === loadRequest) error.value = messageOf(failure)
   } finally {
@@ -64,8 +86,18 @@ function selectSeries(item: CoreCourseSeries | null) {
   resetFilters()
 }
 
+function saveListState() {
+  writeListState(listKey, {
+    search: search.value,
+    filters: { type: typeFilter.value, view: view.value, seriesId: activeSeries.value?.id || '' },
+    page: page.value,
+    pageSize: pageSize.value
+  })
+}
+
 function applyFilters() {
   page.value = 1
+  saveListState()
   void load()
 }
 
@@ -74,6 +106,8 @@ function resetFilters() {
   typeFilter.value = ''
   applyFilters()
 }
+
+watch([page, pageSize], saveListState)
 
 function enterCourse(course: Pick<CourseSummary, 'id'>) {
   emit('navigate', 'course-preview', { courseId: course.id, backKey: 'resources-overview' })

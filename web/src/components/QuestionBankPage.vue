@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   ArrowLeft,
   Delete,
@@ -13,6 +13,8 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError, api, dateTime, del, limits, listItems, maxUploadMegabytes, messageOf, post, put } from '../api'
+import { readListState, writeListState } from '../listState'
+import { recoverPage } from '../paging'
 import { examQuestionTypeLabel, examQuestionTypeOptions, optionLetters } from '../exam'
 import { focusFirstField } from '../focusField'
 import type {
@@ -52,12 +54,14 @@ const allowedQuestionTypes = computed(() =>
 
 const items = ref<ExamQuestionSummary[]>([])
 const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
+const listKey = `exam-questions:${props.bank.id}`
+const savedList = readListState(listKey)
+const page = ref(savedList.page)
+const pageSize = ref(savedList.pageSize)
 const loading = ref(false)
 const error = ref('')
-const search = ref('')
-const typeFilter = ref('')
+const search = ref(savedList.search)
+const typeFilter = ref(savedList.filters.type || '')
 const selected = ref<ExamQuestionSummary[]>([])
 const deleting = ref(false)
 let requestVersion = 0
@@ -128,6 +132,11 @@ async function load() {
     if (version !== requestVersion) return
     items.value = data.items
     total.value = data.total
+    const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
+    if (recovered !== null && recovered !== page.value) {
+      page.value = recovered
+      return load()
+    }
   } catch (failure) {
     if (version === requestVersion) error.value = messageOf(failure)
   } finally {
@@ -135,8 +144,18 @@ async function load() {
   }
 }
 
+function saveListState() {
+  writeListState(listKey, {
+    search: search.value,
+    filters: { type: typeFilter.value },
+    page: page.value,
+    pageSize: pageSize.value
+  })
+}
+
 function applyFilters() {
   page.value = 1
+  saveListState()
   void load()
 }
 
@@ -145,6 +164,8 @@ function resetFilters() {
   typeFilter.value = ''
   applyFilters()
 }
+
+watch([page, pageSize], saveListState)
 
 function resetAnswerState() {
   form.answers = []

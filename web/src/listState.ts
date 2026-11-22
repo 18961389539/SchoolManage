@@ -33,13 +33,14 @@ function cleanFilters(value: unknown): Record<string, string> {
 export function readListState(
   key: string,
   storage: ReadableStorage = sessionStorage,
-  allowedPageSizes: number[] = [10, 20, 50, 100]
+  allowedPageSizes: number[] = [10, 20, 50, 100],
+  fallbackPageSize: number = defaultPageSize
 ): ListState {
   const empty: ListState = {
     search: '',
     filters: {},
     page: 1,
-    pageSize: normalizePageSize(defaultPageSize, allowedPageSizes)
+    pageSize: normalizePageSize(fallbackPageSize, allowedPageSizes, fallbackPageSize)
   }
   try {
     const raw = storage.getItem(storageKey(key))
@@ -50,7 +51,7 @@ export function readListState(
       search: typeof data.search === 'string' ? data.search : '',
       filters: cleanFilters(data.filters),
       page: Number.isInteger(data.page) && (data.page ?? 0) > 0 ? (data.page as number) : 1,
-      pageSize: normalizePageSize(Number(data.pageSize), allowedPageSizes)
+      pageSize: normalizePageSize(Number(data.pageSize), allowedPageSizes, fallbackPageSize)
     }
   } catch {
     return empty

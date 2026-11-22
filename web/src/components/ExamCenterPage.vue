@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { CircleClose, EditPen, MoreFilled, Plus, Refresh, Search, Tickets, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, del, messageOf, post, put } from '../api'
+import { readListState, writeListState } from '../listState'
+import { recoverPage } from '../paging'
 import { rangeText } from '../time'
 import { examStatusLabel, examStatusOptions, examStatusType } from '../exam'
 import { durationText } from '../teaching'
@@ -20,12 +22,14 @@ const props = defineProps<{ admin: boolean }>()
 
 const items = ref<TrainingExamSummary[]>([])
 const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
+const listKey = 'exams'
+const savedList = readListState(listKey)
+const page = ref(savedList.page)
+const pageSize = ref(savedList.pageSize)
 const loading = ref(false)
 const error = ref('')
-const search = ref('')
-const statusFilter = ref('')
+const search = ref(savedList.search)
+const statusFilter = ref(savedList.filters.status || '')
 const tableViewport = window.matchMedia('(max-width: 1280px)')
 const narrowTable = ref(tableViewport.matches)
 function syncTableViewport(event: MediaQueryListEvent) {
@@ -85,6 +89,11 @@ async function load() {
     const data = await api<Paged<TrainingExamSummary>>(`/exams?${params.toString()}`)
     items.value = data.items
     total.value = data.total
+    const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
+    if (recovered !== null && recovered !== page.value) {
+      page.value = recovered
+      return load()
+    }
   } catch (failure) {
     error.value = messageOf(failure)
   } finally {
@@ -105,8 +114,18 @@ async function loadOptions() {
   }
 }
 
+function saveListState() {
+  writeListState(listKey, {
+    search: search.value,
+    filters: { status: statusFilter.value },
+    page: page.value,
+    pageSize: pageSize.value
+  })
+}
+
 function applyFilters() {
   page.value = 1
+  saveListState()
   void load()
 }
 
@@ -115,6 +134,8 @@ function resetFilters() {
   statusFilter.value = ''
   applyFilters()
 }
+
+watch([page, pageSize], saveListState)
 
 const filtering = computed(() => !!search.value.trim() || !!statusFilter.value)
 

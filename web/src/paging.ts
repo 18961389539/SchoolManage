@@ -10,6 +10,10 @@ export function recoverPage(page: number, pageSize: number, total: number, recei
   return Math.min(page - 1, lastPage)
 }
 
-export function normalizePageSize(value: number, allowed: number[] = [10, 20, 50, 100]): number {
-  return allowed.includes(value) ? value : (allowed[1] ?? 20)
+export function normalizePageSize(
+  value: number,
+  allowed: number[] = [10, 20, 50, 100],
+  fallback: number = allowed[1] ?? 20
+): number {
+  return allowed.includes(value) ? value : fallback
 }
