@@ -36,6 +36,8 @@ const editing = ref<CourseSummary | null>(null)
 const saving = ref(false)
 const formError = ref('')
 const form = reactive({ name: '', type: 'general', description: '', remark: '', seriesId: '' })
+const formBaseline = ref('')
+const formDirty = computed(() => JSON.stringify(form) !== formBaseline.value)
 const series = ref<CoreCourseSeries[]>([])
 const seriesVisible = ref(false)
 const seriesForm = reactive({ id: '', name: '', description: '' })
@@ -155,6 +157,7 @@ function openCreate() {
   form.remark = ''
   form.seriesId = ''
   formError.value = ''
+  formBaseline.value = JSON.stringify(form)
   dialogVisible.value = true
 }
 
@@ -166,7 +169,31 @@ function openEdit(course: CourseSummary) {
   form.remark = course.remark
   form.seriesId = course.seriesId || ''
   formError.value = ''
+  formBaseline.value = JSON.stringify(form)
   dialogVisible.value = true
+}
+
+async function confirmDiscardCourse() {
+  if (saving.value) return false
+  if (!formDirty.value) return true
+  try {
+    await ElMessageBox.confirm('课程信息还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
+      type: 'warning',
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续编辑'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function handleCourseBeforeClose(done: () => void) {
+  if (await confirmDiscardCourse()) done()
+}
+
+async function cancelCourse() {
+  if (await confirmDiscardCourse()) dialogVisible.value = false
 }
 
 async function saveCourse() {
@@ -400,6 +427,7 @@ onMounted(() => {
     v-model="dialogVisible"
     :title="editing ? '编辑课程' : '新建课程'"
     width="min(620px, 94vw)"
+    :before-close="handleCourseBeforeClose"
     @opened="focusNameInput"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
@@ -445,7 +473,7 @@ onMounted(() => {
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="dialogVisible = false">取消</el-button>
+      <el-button @click="cancelCourse">取消</el-button>
       <el-button type="primary" :loading="saving" @click="saveCourse">{{
         editing ? '保存修改' : '创建课程'
       }}</el-button>
