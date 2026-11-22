@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { ArrowDown, Close, QuestionFilled, School, Search } from '@element-plus/icons-vue'
 import type { NavGroup } from '../navigation'
 
@@ -22,6 +22,7 @@ const activeGroup = computed(
 )
 const collapsed = ref<Record<string, boolean>>({})
 const filter = ref('')
+const filterInput = useTemplateRef<{ focus?: () => void }>('filterInput')
 const filtering = computed(() => !!filter.value.trim())
 const filteredGroups = computed(() => {
   const keyword = filter.value.trim().toLowerCase()
@@ -65,7 +66,17 @@ function revealActiveItem(behavior: ScrollBehavior = 'auto') {
   nav.scrollTo({ top, behavior: reduceMotion ? 'auto' : behavior })
 }
 
-onMounted(() => revealActiveItem())
+onMounted(() => {
+  revealActiveItem()
+  window.addEventListener('keydown', focusFilter)
+})
+onBeforeUnmount(() => window.removeEventListener('keydown', focusFilter))
+
+function focusFilter(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') return
+  event.preventDefault()
+  filterInput.value?.focus?.()
+}
 
 watch(
   () => props.open,
@@ -152,11 +163,12 @@ function onTab(event: KeyboardEvent) {
     </div>
     <div class="sidebar-filter">
       <el-input
+        ref="filterInput"
         v-model="filter"
         size="small"
         clearable
         :prefix-icon="Search"
-        placeholder="搜索功能"
+        placeholder="搜索功能（Ctrl K）"
         aria-label="搜索导航功能"
         @keydown.esc="filter = ''"
       />
