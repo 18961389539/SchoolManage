@@ -188,7 +188,7 @@ function rowProgressType(row: ExamMonitorRow): 'success' | 'warning' | 'exceptio
 }
 
 .monitor-counts small {
-  color: #8495a6;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -198,15 +198,15 @@ function rowProgressType(row: ExamMonitorRow): 'success' | 'warning' | 'exceptio
 }
 
 .monitor-counts .in-progress strong {
-  color: #b8823d;
+  color: #94610f;
 }
 
 .monitor-counts .submitted strong {
-  color: #b18a3e;
+  color: #94610f;
 }
 
 .monitor-counts .graded strong {
-  color: #418476;
+  color: #12735f;
 }
 
 .monitor-actions {
@@ -220,18 +220,18 @@ function rowProgressType(row: ExamMonitorRow): 'success' | 'warning' | 'exceptio
 
 .monitor-hint {
   margin: 10px 0 16px;
-  color: #95a3b2;
+  color: #5d6f80;
   font-size: 12px;
 }
 
 .monitor-sub {
   margin: 3px 0 0;
-  color: #8a99a9;
+  color: #56697c;
   font-size: 12px;
 }
 
 .monitor-sub.auto {
-  color: #b58d45;
+  color: #94610f;
 }
 
 .progress-cell {
@@ -245,7 +245,7 @@ function rowProgressType(row: ExamMonitorRow): 'success' | 'warning' | 'exceptio
 }
 
 .progress-cell span {
-  color: #72879b;
+  color: #56697c;
   font-size: 12px;
   white-space: nowrap;
 }

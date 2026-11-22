@@ -1,0 +1,53 @@
+{
+    "suite":  "deployment-rollback-injected",
+    "completedAtUtc":  "2026-11-20T10:16:03.6524716Z",
+    "powershellVersion":  "5.1.26100.9818",
+    "installerSha256":  "9e010b0d6a5fb26deb157e22b7d9cb87da4b6d59150cfe119936f2c674bcf08e",
+    "commonScriptSha256":  "daecd14fd3f13186a5d5fe396eb38451dbeb842c0282d796f8d4eea494ef2abc",
+    "scope":  "Production install script copied to isolated fixtures with host service, registry, firewall, ACL and health operations replaced by test doubles. Real file copy, hashing, backup and rollback exercised. No elevated operations.",
+    "passed":  true,
+    "passedChecks":  10,
+    "totalChecks":  10,
+    "checks":  [
+                   {
+                       "name":  "fresh-early-failure",
+                       "passed":  true
+                   },
+                   {
+                       "name":  "fresh-reused-data",
+                       "passed":  true
+                   },
+                   {
+                       "name":  "fresh-lan",
+                       "passed":  true
+                   },
+                   {
+                       "name":  "fresh-unknown-file",
+                       "passed":  true
+                   },
+                   {
+                       "name":  "fresh-pre-existing-empty-program-root",
+                       "passed":  true
+                   },
+                   {
+                       "name":  "fresh-pre-existing-rule",
+                       "passed":  true
+                   },
+                   {
+                       "name":  "fresh-pre-existing-registration",
+                       "passed":  true
+                   },
+                   {
+                       "name":  "upgrade-healthy",
+                       "passed":  true
+                   },
+                   {
+                       "name":  "upgrade-stopped",
+                       "passed":  true
+                   },
+                   {
+                       "name":  "upgrade-unhealthy",
+                       "passed":  true
+                   }
+               ]
+}

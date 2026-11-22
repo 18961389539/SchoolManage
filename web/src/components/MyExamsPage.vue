@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Clock, Document, Monitor, Refresh, Search, Tickets } from '@element-plus/icons-vue'
-import { api, dateTime, messageOf } from '../api'
+import { api, messageOf } from '../api'
 import {
   attemptStatusLabel,
   attemptStatusType,
@@ -13,7 +13,7 @@ import {
   examStatusType
 } from '../exam'
 import { durationText } from '../teaching'
-import { parseApiDate } from '../time'
+import { parseApiDate, rangeText } from '../time'
 import type { ExamHallItem } from '../types'
 
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>] }>()
@@ -224,7 +224,7 @@ onBeforeUnmount(() => {
               <dt>
                 <el-icon><Clock /></el-icon>考试时间
               </dt>
-              <dd>{{ dateTime(item.startAt) }}<br />至 {{ dateTime(item.endAt) }}</dd>
+              <dd>{{ rangeText(item.startAt, item.endAt) }}</dd>
             </div>
             <div>
               <dt>

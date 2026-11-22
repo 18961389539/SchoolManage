@@ -1,0 +1,88 @@
+{
+  "status": "passed-local-development-host",
+  "version": "0.1.0-p6",
+  "verifiedAtUtc": "2026-11-20T00:24:48.7546431Z",
+  "host": {
+    "edition": "Microsoft Windows 11 家庭版 中文版",
+    "build": "26300",
+    "elevated": false,
+    "cleanTargetMachine": false
+  },
+  "sha256": {
+    "SchoolTraining-0.1.0-p6-win-x64.zip": "42552e4a9ba5ca5b04ef2345b30a58cde3ae48199bdbde107d2759de80b29965",
+    "SchoolTraining-0.1.0-p6-Setup.exe": "25a058c7dcb8496f99b81aa7a478d375f2120ff704a30b14cf26c634ba636c51"
+  },
+  "zipContents": {
+    "entries": 867,
+    "bundledWebAssets": 78,
+    "prohibitedPathPatternMatches": 0,
+    "containsReleaseMetadata": true,
+    "containsThirdPartyInventory": true
+  },
+  "packagedScriptSha256MatchingWorkspace": {
+    "deployment-common.ps1": "daecd14fd3f13186a5d5fe396eb38451dbeb842c0282d796f8d4eea494ef2abc",
+    "install-service.ps1": "9e010b0d6a5fb26deb157e22b7d9cb87da4b6d59150cfe119936f2c674bcf08e",
+    "restore-backup.ps1": "46390a91917ad5ef512f46cae327f52311ed650ee6e46e2bcadbd86b66e262e4",
+    "uninstall-service.ps1": "50082bf2e5bb552462f09b63377e54095ee395cf24cc68fcfad94ec9e8041aa3"
+  },
+  "releaseGate": {
+    "checks": 16,
+    "testedAssemblySha256": "7faf8737cab6db48905396d4373164639102ff7a09428bb952e935b1d5f6fc97",
+    "sameAssemblyExtractedFromZip": true
+  },
+  "installerPayloadValidation": {
+    "arguments": [
+      "--quiet",
+      "--validate-only"
+    ],
+    "exitCode": 0,
+    "schoolTrainingServicePresentBefore": false,
+    "schoolTrainingServicePresentAfter": false
+  },
+  "selfContainedProcess": {
+    "directlyLaunchedZipApphost": true,
+    "runtimeFrameworkVersion": "10.0.15",
+    "globalDotnetRootOverriddenWithMissingPath": true,
+    "packagedModules": [
+      "coreclr.dll",
+      "e_sqlite3.DLL",
+      "hostpolicy.dll"
+    ],
+    "versionFromStatus": "0.1.0-p6",
+    "schemaVersionFromStatus": 5,
+    "initializedAfterBrowserSetup": true,
+    "packagedHealthProbeCheckedVersion": true,
+    "observedRemoteTcpEndpoints": [
+      "0.0.0.0:0"
+    ]
+  },
+  "browser": {
+    "engine": "Microsoft Edge headless",
+    "policy": "Only isolated loopback origin allowed through browser HTTP and WebSocket interception, with service workers blocked",
+    "flows": [
+      "initial administrator setup",
+      "load split assets",
+      "create built-in simulation",
+      "load simulated device list after reload"
+    ],
+    "sameOriginHttpRequests": 40,
+    "distinctBundledAssetsRequested": 15,
+    "observedWebSocketConnections": 0,
+    "attemptedExternalRequests": 0
+  },
+  "loopbackTls": {
+    "untrustedCertificateRejected": true,
+    "MismatchedCertificateDnsNameRejected": true,
+    "UnconfiguredHttpHostRejected": true,
+    "expectedHostnameAndExplicitCertificateTrustAccepted": true,
+    "packagedCertificatePinningHealthProbePassed": true,
+    "certificateStoreChanged": false
+  },
+  "outstandingTargetMachineAcceptance": [
+    "Clean Win11 offline UAC installation, Program Files/ProgramData and LocalService ACL",
+    "SCM autostart after reboot and failure recovery",
+    "Cross-machine LAN DNS, trusted TLS certificate and inbound firewall policy",
+    "Upgrade of installed versions and rollback with original program, data and credentials",
+    "Installed service backup/restore, recovery on failed restore, uninstall retention and reinstall"
+  ]
+}

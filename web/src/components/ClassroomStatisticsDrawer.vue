@@ -643,7 +643,7 @@ watch(
   gap: 7px;
   align-items: center;
   margin: 0;
-  color: #73889b;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -741,7 +741,7 @@ watch(
   gap: 10px;
   align-items: flex-start;
   margin-bottom: 13px;
-  color: #7890a5;
+  color: #56697c;
 }
 
 .panel-head h3 {
@@ -817,13 +817,13 @@ watch(
 }
 
 .attention-name small {
-  color: #93a3b3;
+  color: #56697c;
   font-size: 9px;
 }
 
 .attention-rate {
   margin-left: auto;
-  color: #b0782d;
+  color: #94610f;
   font-size: 13px;
   font-weight: 600;
 }
@@ -1012,14 +1012,14 @@ watch(
 
 .resource-detail-head p {
   margin: 0;
-  color: #8a9cab;
+  color: #56697c;
   font-size: 11px;
 }
 
 .resource-detail-metrics {
   display: flex;
   gap: 15px;
-  color: #7b8fa2;
+  color: #56697c;
   font-size: 11px;
 }
 

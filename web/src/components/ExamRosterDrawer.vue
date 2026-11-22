@@ -371,13 +371,13 @@ watch(
 
 .roster-sub {
   margin: 3px 0 0;
-  color: #8a99a9;
+  color: #56697c;
   font-size: 12px;
   line-height: 1.4;
 }
 
 .roster-muted {
-  color: #9aa7b4;
+  color: #5d6f80;
 }
 
 .add-student-form :deep(.el-select) {
@@ -386,7 +386,7 @@ watch(
 
 .option-meta {
   float: right;
-  color: #8b9aa9;
+  color: #56697c;
   font-size: 12px;
 }
 

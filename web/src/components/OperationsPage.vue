@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Refresh,
@@ -12,12 +12,16 @@ import {
   Monitor,
   Document,
   FolderOpened,
-  Check
+  Check,
+  Delete,
+  EditPen
 } from '@element-plus/icons-vue'
 import { api, post, put, listItems, messageOf, dateTime, bytes, type Row } from '../api'
 import { downloadFile } from '../exam'
 import type { BackupItem, LicenseUploadResult, NodeRow, Paged } from '../types'
 import DataRecord from './DataRecord.vue'
+import EntityRowMenu, { type EntityRowAction } from './EntityRowMenu.vue'
+import ServerOverview from './ServerOverview.vue'
 import VmConsoleDialog from './VmConsoleDialog.vue'
 const props = defineProps<{ pageKey: string; productVersion: string }>()
 const data = ref<Row | null>(null),
@@ -42,6 +46,13 @@ const vmConsoleVisible = ref(false)
 const consoleMachine = ref<Row | null>(null)
 const powerActionNames = { start: '启动', stop: '停止', restart: '重启' }
 const detectionLabels: Record<string, string> = { reachable: '可连接', offline: '离线', unsupported: '未接入' }
+const vmViewport = window.matchMedia('(max-width: 1020px)')
+const compactVm = ref(vmViewport.matches)
+function syncVmViewport(event: MediaQueryListEvent) {
+  compactVm.value = event.matches
+}
+onMounted(() => vmViewport.addEventListener('change', syncVmViewport))
+onBeforeUnmount(() => vmViewport.removeEventListener('change', syncVmViewport))
 let loadVersion = 0,
   pageVersion = 0
 function resetSearch() {
@@ -169,6 +180,48 @@ async function vmAction(row: Row, action: keyof typeof powerActionNames) {
   } finally {
     saving.value = false
   }
+}
+
+function vmActions(row: Row): EntityRowAction[] {
+  return [
+    {
+      label: '连接',
+      icon: Monitor,
+      disabled: row.detectionStatus !== 'reachable',
+      run: () => void openConsole(row)
+    },
+    {
+      label: '启动',
+      icon: VideoPlay,
+      disabled: row.status !== 'stopped' || saving.value || !row.nodeEnabled || row.isReserved,
+      run: () => void vmAction(row, 'start')
+    },
+    {
+      label: '停止',
+      icon: VideoPause,
+      disabled: row.status !== 'running' || saving.value || row.isReserved,
+      run: () => void vmAction(row, 'stop')
+    },
+    {
+      label: '重启',
+      icon: Refresh,
+      disabled: row.status !== 'running' || !row.nodeEnabled || row.isReserved || saving.value,
+      run: () => void vmAction(row, 'restart')
+    },
+    {
+      label: '编辑',
+      icon: EditPen,
+      disabled: row.status === 'running' || vmLoading.value || row.isReserved || !row.isSimulated,
+      run: () => void openVm(row)
+    },
+    {
+      label: '销毁',
+      icon: Delete,
+      type: 'danger',
+      disabled: row.isReserved || (!row.isSimulated && row.status !== 'stopped') || saving.value,
+      run: () => void deleteVm(row)
+    }
+  ]
 }
 async function openVm(row?: Row) {
   if (vmLoading.value) return
@@ -309,7 +362,6 @@ watch(
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">{{ title.section }}</div>
       <h1>{{ title.title }}</h1>
       <p>{{ title.subtitle }}</p>
     </div>
@@ -364,7 +416,7 @@ watch(
         </div>
         <span class="record-count">{{ total }} 台虚拟机</span>
       </div>
-      <el-table :data="rows" empty-text="暂无虚拟机。请先接入节点或在控制台创建模拟环境。"
+      <el-table :data="rows" empty-text="暂无虚拟机。请先接入节点或在控制台创建模拟环境。" scrollbar-always-on
         ><el-table-column prop="name" label="虚拟机名称" min-width="180"
           ><template #default="{ row }"
             ><span class="table-name">{{ row.name }}</span>
@@ -379,7 +431,7 @@ watch(
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="nodeName" label="所属节点" min-width="150" /><el-table-column
+        <el-table-column prop="nodeName" label="所属节点" min-width="150" show-overflow-tooltip /><el-table-column
           label="运行状态"
           width="130"
           ><template #default="{ row }"
@@ -391,52 +443,60 @@ watch(
           ><template #default="{ row }">{{ row.memoryMb }} MB</template></el-table-column
         ><el-table-column label="磁盘" width="100"
           ><template #default="{ row }">{{ row.diskGb == null ? '—' : `${row.diskGb} GB` }}</template></el-table-column
-        ><el-table-column label="操作" width="316" fixed="right"
+        ><el-table-column
+          label="操作"
+          :width="compactVm ? 86 : 350"
+          :align="compactVm ? 'center' : 'left'"
+          fixed="right"
           ><template #default="{ row }"
-            ><el-button
-              link
-              type="primary"
-              :icon="Monitor"
-              :disabled="row.detectionStatus !== 'reachable'"
-              @click="openConsole(row)"
-              >连接</el-button
-            >
-            <el-button
-              link
-              type="primary"
-              :icon="VideoPlay"
-              :disabled="row.status !== 'stopped' || saving || !row.nodeEnabled || row.isReserved"
-              @click="vmAction(row, 'start')"
-              >启动</el-button
-            ><el-button
-              link
-              type="warning"
-              :icon="VideoPause"
-              :disabled="row.status !== 'running' || saving || row.isReserved"
-              @click="vmAction(row, 'stop')"
-              >停止</el-button
-            ><el-button
-              link
-              type="primary"
-              :disabled="row.status !== 'running' || !row.nodeEnabled || row.isReserved || saving"
-              @click="vmAction(row, 'restart')"
-              >重启</el-button
-            ><el-button
-              link
-              type="primary"
-              :disabled="row.status === 'running' || vmLoading || row.isReserved || !row.isSimulated"
-              @click="openVm(row)"
-              >编辑</el-button
-            ><el-button
-              link
-              type="danger"
-              :disabled="row.isReserved || (!row.isSimulated && row.status !== 'stopped') || saving"
-              @click="deleteVm(row)"
-              >销毁</el-button
-            ></template
+            ><EntityRowMenu v-if="compactVm" :row-name="row.name" :actions="vmActions(row)" />
+            <template v-else>
+              <el-button
+                link
+                type="primary"
+                :icon="Monitor"
+                :disabled="row.detectionStatus !== 'reachable'"
+                @click="openConsole(row)"
+                >连接</el-button
+              >
+              <el-button
+                link
+                type="primary"
+                :icon="VideoPlay"
+                :disabled="row.status !== 'stopped' || saving || !row.nodeEnabled || row.isReserved"
+                @click="vmAction(row, 'start')"
+                >启动</el-button
+              ><el-button
+                link
+                type="warning"
+                :icon="VideoPause"
+                :disabled="row.status !== 'running' || saving || row.isReserved"
+                @click="vmAction(row, 'stop')"
+                >停止</el-button
+              ><el-button
+                link
+                type="primary"
+                :disabled="row.status !== 'running' || !row.nodeEnabled || row.isReserved || saving"
+                @click="vmAction(row, 'restart')"
+                >重启</el-button
+              ><el-button
+                link
+                type="primary"
+                :disabled="row.status === 'running' || vmLoading || row.isReserved || !row.isSimulated"
+                @click="openVm(row)"
+                >编辑</el-button
+              ><el-button
+                link
+                type="danger"
+                :disabled="row.isReserved || (!row.isSimulated && row.status !== 'stopped') || saving"
+                @click="deleteVm(row)"
+                >销毁</el-button
+              >
+            </template></template
           ></el-table-column
         ></el-table
       >
+      <p v-if="compactVm && rows.length" class="table-scroll-hint">横向滚动可查看更多列</p>
       <div class="table-footer">
         <span>实训占用的虚拟机可从对应的监控页面重启。</span
         ><el-pagination
@@ -585,6 +645,9 @@ watch(
       ><el-button type="primary" :icon="Check" :loading="saving" native-type="submit">保存设置</el-button></el-form
     >
   </section>
+  <div v-else-if="pageKey === 'server'" v-loading="loading" class="server-page">
+    <ServerOverview :data="data" :loading="loading" />
+  </div>
   <section v-else class="surface host-surface" v-loading="loading">
     <div class="card-heading">
       <div>

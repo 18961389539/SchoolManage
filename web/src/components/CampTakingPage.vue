@@ -267,7 +267,6 @@ onBeforeUnmount(() => {
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">岗位训练营 / 测评作答</div>
       <h1>{{ detail?.name || '岗位测评' }}</h1>
       <p v-if="detail">{{ detail.description || '按岗位要求完成技能测评。' }}</p>
       <p v-else>正在加载岗位信息…</p>
@@ -294,8 +293,7 @@ onBeforeUnmount(() => {
           <el-tag v-else size="small" type="info" effect="plain">未开始</el-tag>
           <el-tag v-if="detail.attempt?.autoSubmitted" size="small" type="warning" effect="plain">超时自动提交</el-tag>
         </div>
-        <h2>测评说明</h2>
-        <p>{{ detail.description || '按岗位要求完成技能测评，系统将自动判分并生成能力报告。' }}</p>
+        <h2>测评概览</h2>
       </div>
       <el-button
         v-if="!detail.attempt"
@@ -690,7 +688,7 @@ onBeforeUnmount(() => {
 }
 
 .overview-meta dt {
-  color: #7a8da1;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -712,7 +710,7 @@ onBeforeUnmount(() => {
 
 .result-label {
   display: block;
-  color: #6c8377;
+  color: #12735f;
   font-size: 12px;
 }
 
@@ -725,7 +723,7 @@ onBeforeUnmount(() => {
 
 .result-panel strong em {
   margin-left: 4px;
-  color: #7a978e;
+  color: #12735f;
   font-size: 15px;
   font-style: normal;
   font-weight: 400;
@@ -744,7 +742,7 @@ onBeforeUnmount(() => {
 }
 
 .result-panel dt {
-  color: #7a8da1;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -857,7 +855,7 @@ onBeforeUnmount(() => {
 
 .question-score {
   margin-left: auto;
-  color: #8093a6;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -983,7 +981,7 @@ onBeforeUnmount(() => {
 .empty-hint {
   max-width: 420px;
   margin: 18px auto;
-  color: #718396;
+  color: #56697c;
   font-size: 13px;
   text-align: center;
 }

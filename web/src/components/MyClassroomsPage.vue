@@ -233,7 +233,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: #718497;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -260,7 +260,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #6e8297;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -278,7 +278,7 @@ onBeforeUnmount(() => {
 .empty-hint {
   max-width: 420px;
   margin: 0 auto;
-  color: #718396;
+  color: #56697c;
   font-size: 13px;
 }
 </style>

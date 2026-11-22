@@ -1,0 +1,42 @@
+{
+  "recordedAtUtc": "2026-11-19T16:08:39.5617081+00:00",
+  "release": "0.1.0-p4",
+  "testedAssemblySha256": "918e2e30f57744ed5e68c1bda41677ad35fc54c09283bbb4920a50b079decf19",
+  "status": "passed",
+  "processStopped": true,
+  "sources": [
+    "Win32_Processor",
+    "Win32_PhysicalMemory",
+    "Win32_OperatingSystem",
+    "System.Net.NetworkInformation.NetworkInterface"
+  ],
+  "scope": "Isolated loopback instance running on local Win11; device identities and network values are compared in memory and omitted from this report.",
+  "checks": {
+    "actualManagementHost": true,
+    "cpuSocketCountMatches": true,
+    "cpuPhysicalCoreCountMatches": true,
+    "cpuLogicalCoreCountMatches": true,
+    "cpuIdentityAndPerSocketCountMatch": true,
+    "memoryVisibleCapacityMatches": true,
+    "memoryModuleCountMatches": true,
+    "memoryModuleSlotTypeSpeedCapacityMatch": true,
+    "networkInterfaceCountMatches": true,
+    "networkInterfaceNamesMacSpeedTypeAndStatusMatch": true,
+    "ipv4AddressesMasksAndPrefixesMatch": true,
+    "ipv6AddressesAndPrefixesMatch": true,
+    "memoryAvailableWithinPhysicalBounds": true
+  },
+  "counts": {
+    "processorSockets": 1,
+    "physicalCores": 10,
+    "logicalCores": 16,
+    "memoryModules": 2,
+    "totalVisibleMemoryBytes": 17014874112,
+    "physicalMemoryTypeReportedByFirmware": 2,
+    "networkInterfaces": 41,
+    "ipv4UnicastAddresses": 7,
+    "ipv6UnicastAddresses": 12,
+    "apiWarnings": 0
+  },
+  "failedChecks": []
+}

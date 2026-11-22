@@ -1,0 +1,88 @@
+{
+    "version":  "0.1.0-p8",
+    "checkedAtUtc":  "2026-11-20T10:05:24.8804333Z",
+    "status":  "passed-local-isolated-input-validation",
+    "powershellVersion":  "5.1.26100.9818",
+    "zipSha256":  "f642062cc28f2196f7f522dde2262dd39d0451760489b656cc2a3545f68780af",
+    "testedAssemblySha256":  "4ebeac644b09f8d460f0f6e82fb1f20c738a7c874b1e842a2832ba2c67d5db2e",
+    "installScriptSha256":  "9e010b0d6a5fb26deb157e22b7d9cb87da4b6d59150cfe119936f2c674bcf08e",
+    "restoreScriptSha256":  "06fc9aff123216449f3dc750ab2ef44a4e541cc272b8e53be0db6f2f27c4a0b3",
+    "checks":  [
+                   {
+                       "test":  "install-lan-missing-configuration",
+                       "passed":  true,
+                       "expected":  "LAN access requires a server.json"
+                   },
+                   {
+                       "test":  "install-lan-http-not-https",
+                       "passed":  true,
+                       "expected":  "HTTPS endpoint address and port must match"
+                   },
+                   {
+                       "test":  "install-lan-no-certificate-file",
+                       "passed":  true,
+                       "expected":  "Configured HTTPS certificate file does not exist"
+                   },
+                   {
+                       "test":  "install-lan-expired-certificate",
+                       "passed":  true,
+                       "expected":  "Unable to load a currently valid HTTPS certificate with private key"
+                   },
+                   {
+                       "test":  "install-lan-no-private-key",
+                       "passed":  true,
+                       "expected":  "Unable to load a currently valid HTTPS certificate with private key"
+                   },
+                   {
+                       "test":  "install-lan-wrong-certificate-password",
+                       "passed":  true,
+                       "expected":  "Unable to load a currently valid HTTPS certificate with private key"
+                   },
+                   {
+                       "test":  "install-lan-certificate-hostname-mismatch",
+                       "passed":  true,
+                       "expected":  "AllowedHosts must include an access hostname matching the certificate DNS name"
+                   },
+                   {
+                       "test":  "restore-missing-manifest",
+                       "passed":  true,
+                       "expected":  "Backup requires school\\.db, manifest\\.json and product data marker"
+                   },
+                   {
+                       "test":  "restore-missing-product-marker",
+                       "passed":  true,
+                       "expected":  "Backup requires school\\.db, manifest\\.json and product data marker"
+                   },
+                   {
+                       "test":  "restore-manifest-missing-schema",
+                       "passed":  true,
+                       "expected":  "schemaVersion"
+                   },
+                   {
+                       "test":  "restore-manifest-missing-product",
+                       "passed":  true,
+                       "expected":  "product"
+                   },
+                   {
+                       "test":  "restore-wrong-product",
+                       "passed":  true,
+                       "expected":  "Unsupported backup product or schema version"
+                   },
+                   {
+                       "test":  "restore-duplicate-case-insensitive-entry",
+                       "passed":  true,
+                       "expected":  "Duplicate backup entry"
+                   },
+                   {
+                       "test":  "restore-bad-sqlite-header",
+                       "passed":  true,
+                       "expected":  "Backup is not a SQLite database"
+                   },
+                   {
+                       "test":  "restore-wrong-dpapi-key",
+                       "passed":  true,
+                       "expected":  "Backup failed the product database integrity/schema validation"
+                   }
+               ],
+    "scope":  "Deployment scripts from the exact p8 ZIP with only the administrator directive and local administration entry points replaced. All SCM, registry, firewall and ACL operations were blocked. Real isolated app host generated two synthetic SQLite and Windows DPAPI backups. Certificates were synthetic and were never imported into a system store. These checks do not exercise actual UAC or registration."
+}

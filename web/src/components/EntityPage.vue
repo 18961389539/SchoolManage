@@ -427,6 +427,8 @@ watch(
     page.value = 1
     search.value = ''
     filters.value = {}
+    rows.value = []
+    total.value = 0
     error.value = ''
     cabinet.value = null
     clearSelection()
@@ -456,6 +458,7 @@ watch(
     v-model:page-size="pageSize"
     :entity="entity"
     :entity-key="entityKey"
+    :cabinet-id="scopedCabinetId"
     :rows="rows"
     :total="total"
     :loading="loading"

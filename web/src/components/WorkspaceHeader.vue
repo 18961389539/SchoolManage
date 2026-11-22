@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, Lock, Menu, QuestionFilled, SwitchButton, User } from '@element-plus/icons-vue'
+import { ArrowDown, Expand, Lock, QuestionFilled, SwitchButton, User } from '@element-plus/icons-vue'
 
 defineProps<{ group: string; title: string; userName: string; displayName: string; role: string; menuOpen: boolean }>()
 const roleNames: Record<string, string> = { Admin: '管理员', Teacher: '教师', Student: '学生' }
@@ -9,16 +9,17 @@ const emit = defineEmits<{ menu: []; command: [command: string] }>()
 <template>
   <header class="topbar">
     <div class="breadcrumb">
-      <el-button
+      <button
         id="mobile-menu-toggle"
-        :icon="Menu"
+        type="button"
         class="mobile-menu"
-        text
         aria-label="打开导航"
         aria-controls="workspace-navigation"
         :aria-expanded="menuOpen"
         @click="emit('menu')"
-      />
+      >
+        <el-icon aria-hidden="true"><Expand /></el-icon>
+      </button>
       <span class="breadcrumb-group">{{ group }}</span><i aria-hidden="true">/</i><strong>{{ title }}</strong>
     </div>
     <div class="topbar-right">

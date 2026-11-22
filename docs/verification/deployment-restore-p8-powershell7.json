@@ -1,0 +1,39 @@
+{
+  "suite": "deployment-restore-injected",
+  "recordedAtUtc": "2026-11-20T09:55:18.8367232Z",
+  "powershellVersion": "7.6.9",
+  "testedApplicationVersion": "0.1.0-p8",
+  "testedAssemblySha256": "4ebeac644b09f8d460f0f6e82fb1f20c738a7c874b1e842a2832ba2c67d5db2e",
+  "restoreScriptSha256": "06fc9aff123216449f3dc750ab2ef44a4e541cc272b8e53be0db6f2f27c4a0b3",
+  "commonScriptSha256": "daecd14fd3f13186a5d5fe396eb38451dbeb842c0282d796f8d4eea494ef2abc",
+  "scope": "Production restore script with SCM and registration replaced by test doubles. Executed published app on loopback, two synthetic SQLite and Windows DPAPI key-rings, actual backup ZIPs and validation, guarded paths, real data replacement and database-backed HTTP health. No elevated operations, real service changes, or school data.",
+  "passed": true,
+  "passedChecks": 6,
+  "totalChecks": 6,
+  "checks": [
+    {
+      "name": "running-success",
+      "passed": true
+    },
+    {
+      "name": "previously-stopped",
+      "passed": true
+    },
+    {
+      "name": "replacement-unhealthy",
+      "passed": true
+    },
+    {
+      "name": "both-unhealthy",
+      "passed": true
+    },
+    {
+      "name": "partial-move",
+      "passed": true
+    },
+    {
+      "name": "lock-held",
+      "passed": true
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "version": "0.1.0-p5",
+  "testedAssembly": "artifacts/SchoolTraining-0.1.0-p5-win-x64/app/School.Training.dll",
+  "testedAssemblySha256": "64bd5783d3df2f08cb003a005acbaaacd4cb5cd6513e4c4df3ca4a07b32cea74",
+  "apphostSha256": "6f56a029141c1df9aef2b0e6ef28b169fd111b907d5a3416406c777f2b462839",
+  "testedOperationsAsset": "wwwroot/assets/OperationsPage-BFUstUGv.js",
+  "testedOperationsAssetSha256": "941f059663725e65c86243a4bdcf49d6919ec9ea4be581e4f801a787960fcba8",
+  "scope": "Exact published Windows apphost and bundled browser assets. Isolated Win11 loopback instance with real administrator endpoints, SQLite database, and Microsoft Edge. All virtual resources are simulated.",
+  "simulatedNodesCreated": 501,
+  "unconnectedNodesCreated": 1,
+  "checks": [
+    "空节点列表提示先建立模拟节点",
+    "模拟节点通过正式 API 请求第 1 和第 2 页，默认节点正确且排除未接入节点",
+    "Edge 搜索并选择第 501 个节点，正式 API 和数据库保留虚拟机归属",
+    "编辑自动回显第 501 个节点，修改虚拟机名称后原归属保留"
+  ],
+  "browserVersion": "157.0.4341.60",
+  "processStopped": true,
+  "completedAtUtc": "2026-11-20T00:18:31.949Z"
+}

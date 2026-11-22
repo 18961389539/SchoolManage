@@ -1,0 +1,17 @@
+{
+  "release": "0.1.0-p6",
+  "archiveSha256": "42552e4a9ba5ca5b04ef2345b30a58cde3ae48199bdbde107d2759de80b29965",
+  "dependency": {
+    "name": "lodash-unified",
+    "version": "1.0.3",
+    "registryLicense": "MIT",
+    "registrySource": "https://www.npmjs.com/package/lodash-unified/v/1.0.3",
+    "standaloneNoticeInInstalledNpmPackage": false
+  },
+  "verification": {
+    "method": "Rebuilt with the repository Vite configuration in memory and compared each emitted JavaScript chunk to the published application by SHA-256. Inspected Rollup's module list for matching chunks and inspected ZIP paths for the dependency source files.",
+    "matchingPublishedJavaScriptChunks": 15,
+    "matchingDependencyModulesInPublishedChunks": 0,
+    "matchingDependencySourcePathsInArchive": 0
+  }
+}

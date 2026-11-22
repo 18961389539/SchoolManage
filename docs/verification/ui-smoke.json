@@ -1,8 +1,13 @@
 {
   "status": "passed",
-  "base": "http://127.0.0.1:52685",
-  "workspace": "D:\\code\\School\\.local\\ui-test-1795098379940",
-  "previewMilliseconds": 1034,
+  "base": "http://127.0.0.1:51337",
+  "workspace": "D:\\code\\School\\.local\\ui-test-1795104313916",
+  "screenshots": [
+    "docs/verification/screenshots/learner-resources.jpg",
+    "docs/verification/screenshots/simulator-web.jpg",
+    "docs/verification/screenshots/student-management.jpg"
+  ],
+  "previewMilliseconds": 1444,
   "summary": "9897 行通过校验 103 行需要处理 移除问题行 仅看问题行",
   "pager": "第 1–50 行，共 10000 行 50条/页 1 2 3 4 200",
   "invalidFilterPager": "第 1–50 行，共 103 行 50条/页 1 2 3",
@@ -11,13 +16,17 @@
     "Failed to load resource: the server responded with a status of 404 (Not Found)",
     "Failed to load resource: net::ERR_FAILED"
   ],
-  "passed": 4,
+  "passed": 8,
   "checks": [
     "首次初始化并进入工作台",
+    "管理员可通过设备表单关联模拟节点",
+    "师生改密后只看见自己获分配的模拟资源，虚拟机状态只读",
+    "师生可在 Web 管理里更新运行配置并保存为启动配置",
+    "师生终端首次打开即连接，读取 Web 写入的配置，撤销分配自动关闭会话",
     "万行预览按页渲染：首屏50行、翻页定位正确",
     "“仅看问题行”只显示错误行并定位问题单元格",
     "服务异常显示可重试错误页，重连后恢复工作台"
   ],
-  "completedAt": "2026-11-19T14:26:25.900Z",
-  "testedAssemblySha256": "918140e9aa52584f0b4f289ab912402117d8d297573546af774f662f54aad952"
+  "completedAt": "2026-11-19T16:05:26.061Z",
+  "testedAssemblySha256": "918e2e30f57744ed5e68c1bda41677ad35fc54c09283bbb4920a50b079decf19"
 }

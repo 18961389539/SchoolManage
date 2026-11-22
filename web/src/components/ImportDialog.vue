@@ -31,6 +31,17 @@ const progressText = computed(() => {
   return '正在提交导入'
 })
 const activeJob = computed(() => ['queued', 'running', 'cancelling'].includes(jobStatus.value))
+const previewWidths: Record<string, number> = {
+  name: 90,
+  userName: 90,
+  number: 110,
+  className: 90,
+  gender: 64,
+  phone: 110,
+  email: 160
+}
+const previewColumnWidth = (key: string) => previewWidths[key] || 110
+
 const columns = [
   { key: 'name', label: '姓名' },
   { key: 'userName', label: '账号' },
@@ -326,11 +337,11 @@ onBeforeUnmount(() => {
         :stroke-width="6"
         class="import-progress" />
       <el-table :data="pagedRows" max-height="350" :row-class-name="rowClass" border
-        ><el-table-column prop="rowNumber" label="原始行" width="88" /><el-table-column
+        ><el-table-column prop="rowNumber" label="原始行" width="72" /><el-table-column
           v-for="column in columns"
           :key="column.key"
           :label="column.label"
-          :min-width="column.key === 'email' ? 170 : 110"
+          :min-width="previewColumnWidth(column.key)"
           ><template #default="{ row }"
             ><el-tooltip v-if="cellError(row, column.key)" :content="cellError(row, column.key)"
               ><span class="invalid-cell">{{ row.data?.[column.key] || '空值' }}</span></el-tooltip
@@ -392,6 +403,11 @@ onBeforeUnmount(() => {
   </el-dialog>
 </template>
 <style scoped>
+:global(.import-dialog .el-table .cell) {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
 .import-pager {
   display: flex;
   align-items: center;
@@ -399,6 +415,6 @@ onBeforeUnmount(() => {
   gap: 16px;
   margin-top: 12px;
   font-size: 12px;
-  color: #93a0ae;
+  color: #56697c;
 }
 </style>

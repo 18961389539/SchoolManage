@@ -182,7 +182,7 @@ watch(
 
 .analysis-hint {
   margin: 0 0 14px;
-  color: #8b9aa9;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -204,13 +204,13 @@ watch(
 }
 
 .analysis-accuracy span {
-  color: #667e94;
+  color: #56697c;
   font-size: 12px;
   white-space: nowrap;
 }
 
 .analysis-ok {
-  color: #6f8a82;
+  color: #12735f;
   font-size: 12px;
 }
 

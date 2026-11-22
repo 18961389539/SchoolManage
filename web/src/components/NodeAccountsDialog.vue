@@ -449,7 +449,7 @@ watch(
 }
 .node-account-summary > div:nth-child(2) {
   font-size: 14px;
-  color: #7b8c9d;
+  color: #56697c;
 }
 .node-account-summary strong {
   font-size: 20px;
@@ -481,7 +481,7 @@ watch(
 .node-account-panel-heading p {
   font-size: 12px;
   margin: 0;
-  color: #93a0b1;
+  color: #56697c;
 }
 .node-account-search {
   display: flex;
@@ -499,7 +499,7 @@ watch(
 }
 .account-secondary {
   font-size: 12px;
-  color: #8b9cad;
+  color: #56697c;
   line-height: 1.8;
 }
 .node-account-pagination {
@@ -521,7 +521,7 @@ watch(
   padding: 14px 20px;
 }
 .selection-warning {
-  color: #b86553;
+  color: #b8413f;
   font-size: 13px;
 }
 @media (max-width: 650px) {

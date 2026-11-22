@@ -472,6 +472,8 @@ watch(
   border: 1px solid var(--el-border-color);
   border-radius: 8px;
   background: #fff;
+  /* Cover the drawer body padding so scrolled questions do not flash above the sticky index. */
+  box-shadow: 0 -22px 0 #fff;
 }
 
 .review-index-panel summary {

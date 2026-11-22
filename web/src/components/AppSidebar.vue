@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { nextTick, useTemplateRef, watch } from 'vue'
-import { Close, QuestionFilled, School } from '@element-plus/icons-vue'
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { ArrowDown, Close, QuestionFilled, School } from '@element-plus/icons-vue'
 import type { NavGroup } from '../navigation'
 
 const props = defineProps<{
@@ -13,22 +13,87 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ navigate: [key: string]; help: []; close: [] }>()
 const sidebar = useTemplateRef<HTMLElement>('sidebar')
+const navigation = useTemplateRef<HTMLElement>('navigation')
 const closeButton = useTemplateRef<HTMLButtonElement>('closeButton')
+
+const storageKey = 'school-training:navigation-collapsed'
+const activeGroup = computed(
+  () => props.groups.find(group => group.items.some(item => item.key === props.route))?.label || ''
+)
+const collapsed = ref<Record<string, boolean>>({})
+try {
+  const saved = JSON.parse(localStorage.getItem(storageKey) || '{}') as Record<string, boolean> | null
+  if (saved && typeof saved === 'object' && !Array.isArray(saved)) collapsed.value = saved
+} catch {
+  collapsed.value = {}
+}
+if (!Object.keys(collapsed.value).length) {
+  const openGroup = activeGroup.value || props.groups[0]?.label || ''
+  collapsed.value = Object.fromEntries(props.groups.map(group => [group.label, group.label !== openGroup]))
+}
+
+function toggleGroup(label: string) {
+  collapsed.value = { ...collapsed.value, [label]: !collapsed.value[label] }
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(collapsed.value))
+  } catch {
+    // Storage may be unavailable in private browsing; collapsing still works for this session.
+  }
+}
+
+function revealActiveItem(behavior: ScrollBehavior = 'auto') {
+  const nav = navigation.value
+  const active = nav?.querySelector<HTMLElement>('.nav-group-items button.active')
+  if (!nav || !active || !active.offsetParent) return
+  const navBox = nav.getBoundingClientRect()
+  const activeBox = active.getBoundingClientRect()
+  if (activeBox.top >= navBox.top && activeBox.bottom <= navBox.bottom) return
+  const top = nav.scrollTop + activeBox.top - navBox.top - (navBox.height - activeBox.height) / 2
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  nav.scrollTo({ top, behavior: reduceMotion ? 'auto' : behavior })
+}
+
+onMounted(() => revealActiveItem())
 
 watch(
   () => props.open,
   async open => {
     if (!open) return
     await nextTick()
+    revealActiveItem()
     closeButton.value?.focus({ preventScroll: true })
+  }
+)
+watch(activeGroup, label => {
+  if (label && collapsed.value[label]) collapsed.value = { ...collapsed.value, [label]: false }
+})
+watch(
+  () => props.route,
+  async () => {
+    await nextTick()
+    revealActiveItem('smooth')
+  },
+  { flush: 'post' }
+)
+watch(
+  () => props.groups,
+  groups => {
+    const missing = groups.filter(group => !(group.label in collapsed.value))
+    if (!missing.length) return
+    collapsed.value = {
+      ...collapsed.value,
+      ...Object.fromEntries(missing.map(group => [group.label, group.label !== activeGroup.value]))
+    }
   }
 )
 
 function onTab(event: KeyboardEvent) {
   if (!props.open) return
-  const buttons = sidebar.value?.querySelectorAll<HTMLButtonElement>('button:not([disabled])')
-  const first = buttons?.[0]
-  const last = buttons?.[buttons.length - 1]
+  const buttons = [...(sidebar.value?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? [])].filter(
+    button => button.offsetParent !== null
+  )
+  const first = buttons[0]
+  const last = buttons[buttons.length - 1]
   const boundary = event.shiftKey ? first : last
   if (boundary && document.activeElement === boundary) {
     event.preventDefault()
@@ -61,23 +126,44 @@ function onTab(event: KeyboardEvent) {
       </button>
     </div>
     <div class="school-name" :title="schoolName">
-      <span class="school-symbol"
-        ><el-icon><School /></el-icon></span
-      ><span>{{ schoolName }}</span>
+      <span class="school-symbol" aria-hidden="true">
+        <el-icon><School /></el-icon>
+      </span>
+      <span>{{ schoolName }}</span>
     </div>
-    <nav class="main-navigation" aria-label="主导航">
-      <div v-for="group in groups" :key="group.label" class="nav-group">
-        <div class="nav-group-label">{{ group.label }}</div>
+    <nav ref="navigation" class="main-navigation" aria-label="主导航">
+      <div v-for="(group, index) in groups" :key="group.label" class="nav-group">
+        <div v-if="groups.length === 1 || group.items.length === 1" class="nav-group-label">{{ group.label }}</div>
         <button
-          v-for="item in group.items"
-          :key="item.key"
+          v-else
           type="button"
-          :class="{ active: route === item.key }"
-          :aria-current="route === item.key ? 'page' : undefined"
-          @click="emit('navigate', item.key)"
+          class="nav-group-toggle"
+          :class="{ 'has-current-page': group.label === activeGroup && collapsed[group.label] }"
+          :aria-expanded="!collapsed[group.label]"
+          :aria-controls="`nav-group-${index}`"
+          @click="toggleGroup(group.label)"
         >
-          <el-icon :size="18" aria-hidden="true"><component :is="item.icon" /></el-icon><span>{{ item.label }}</span>
+          <span>{{ group.label }}</span>
+          <el-icon class="nav-chevron" :class="{ 'is-collapsed': collapsed[group.label] }" aria-hidden="true">
+            <ArrowDown />
+          </el-icon>
         </button>
+        <div
+          v-show="groups.length === 1 || group.items.length === 1 || !collapsed[group.label]"
+          :id="`nav-group-${index}`"
+          class="nav-group-items"
+        >
+          <button
+            v-for="item in group.items"
+            :key="item.key"
+            type="button"
+            :class="{ active: route === item.key }"
+            :aria-current="route === item.key ? 'page' : undefined"
+            @click="emit('navigate', item.key)"
+          >
+            <el-icon :size="18" aria-hidden="true"><component :is="item.icon" /></el-icon><span>{{ item.label }}</span>
+          </button>
+        </div>
       </div>
     </nav>
     <div class="sidebar-bottom">

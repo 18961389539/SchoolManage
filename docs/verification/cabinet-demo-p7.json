@@ -1,0 +1,10 @@
+{
+  "version": "0.1.0-p7",
+  "testedAssemblySha256": "3cdefc9fa0989c051e36c31a575108f72ba07674ae45f5143fc1b9b588274e7d",
+  "destination": "artifacts\\SchoolTraining-0.1.0-p7-cabinet-demo.webm",
+  "sha256": "2446a7adff7d59a30a0267004e97e4c792b98a4b90f98cb3927fc70bf3829e33",
+  "cabinetBatchProbe": true,
+  "actualTerminalConfiguration": true,
+  "activeSessionsReclaimed": 1,
+  "newConnectionRetainedStartupConfiguration": true
+}

@@ -4,21 +4,11 @@ import type { Entity } from '../entities'
 
 defineProps<{ entity: Entity; entityKey: string; isPeople: boolean; cabinetScoped: boolean; cabinetName?: string }>()
 const emit = defineEmits<{ import: []; create: []; cabinets: [] }>()
-
-const sectionLabels: Record<string, string> = {
-  devices: '实训资源 / 资源管理',
-  cabinets: '实训资源 / 资源管理',
-  'device-types': '实训资源 / 资源管理',
-  nodes: '实训资源 / 资源管理'
-}
 </script>
 
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">
-        {{ isPeople ? '教学组织 / 人员档案' : sectionLabels[entityKey] || '教学组织 / 基础资料' }}
-      </div>
       <h1>{{ entity.title }}</h1>
       <p v-if="cabinetName">所属机柜：{{ cabinetName }}</p>
       <p v-else>{{ entity.subtitle }}</p>

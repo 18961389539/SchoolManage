@@ -196,7 +196,6 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 <template>
   <section class="page-heading preview-heading">
     <div>
-      <div class="eyebrow">教学中心 / 课程预览</div>
       <h1>{{ data?.course.name || '课程预览' }}</h1>
       <p>以学员视角浏览课程目录、教学资源、练习与实操环境；预览操作不会生成学习记录。</p>
     </div>
@@ -476,7 +475,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 }
 
 .outline-heading small {
-  color: #7b8da0;
+  color: #56697c;
   font-size: 11px;
   font-weight: 400;
 }
@@ -508,7 +507,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 }
 
 .outline-section-title small {
-  color: #8a9aa9;
+  color: #56697c;
   font-size: 10px;
 }
 
@@ -546,7 +545,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 
 .outline-empty {
   margin: 2px 0 0 4px;
-  color: #98a6b4;
+  color: #5d6f80;
   font-size: 11px;
 }
 
@@ -568,7 +567,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  color: #7b8da0;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -598,7 +597,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 
 .content-empty {
   margin: 16px 0 0;
-  color: #93a2b1;
+  color: #56697c;
   font-size: 13px;
 }
 
@@ -642,7 +641,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 }
 
 .file-list small {
-  color: #8a9aa9;
+  color: #56697c;
   font-size: 10px;
 }
 
@@ -657,7 +656,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 
 .block-heading p {
   margin: 3px 0 0;
-  color: #718396;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -727,7 +726,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
   gap: 9px;
   padding: 9px 12px;
   margin-bottom: 10px;
-  color: #6f8498;
+  color: #56697c;
   font-size: 12px;
   background: #f7fafd;
   border: 1px solid #e8eef5;

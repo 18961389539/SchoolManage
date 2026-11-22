@@ -49,3 +49,28 @@ export function shanghaiInputToIso(value: string): string | null {
   const date = new Date(`${value}+08:00`)
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
+
+/** Compact range for list columns: 11/22 09:32 → 11/29 10:02, same-day ranges share the date. */
+export function rangeText(start: unknown, end: unknown): string {
+  if (!start || !end) return '—'
+  const from = parseApiDate(start)
+  const to = parseApiDate(end)
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return `${dateTime(start)} 至 ${dateTime(end)}`
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: schoolTimeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  })
+  const parts = (date: Date) => Object.fromEntries(formatter.formatToParts(date).map(item => [item.type, item.value]))
+  const a = parts(from)
+  const b = parts(to)
+  const clock = (value: Record<string, string>) => `${value.hour}:${value.minute}`
+  if (a.year === b.year && a.month === b.month && a.day === b.day) {
+    return `${a.month}/${a.day} ${clock(a)}–${clock(b)}`
+  }
+  return `${a.month}/${a.day} ${clock(a)}→${b.month}/${b.day} ${clock(b)}`
+}

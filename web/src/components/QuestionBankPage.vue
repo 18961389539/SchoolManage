@@ -807,7 +807,7 @@ onMounted(load)
 
 .question-analysis-preview {
   margin: 4px 0 0;
-  color: #7d8fa2;
+  color: #56697c;
   font-size: 12px;
   display: -webkit-box;
   overflow: hidden;
@@ -816,7 +816,7 @@ onMounted(load)
 }
 
 .muted-text {
-  color: #8b9aab;
+  color: #56697c;
 }
 
 .question-form-grid {
@@ -929,7 +929,7 @@ onMounted(load)
 }
 
 .preview-block > span {
-  color: #7b8c9e;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -950,7 +950,7 @@ onMounted(load)
 
 .import-hint p {
   margin: 0 0 6px;
-  color: #64798e;
+  color: #56697c;
   font-size: 13px;
   line-height: 1.6;
 }
@@ -969,7 +969,7 @@ onMounted(load)
   align-items: center;
   gap: 12px;
   margin: 14px 0;
-  color: #6d8297;
+  color: #56697c;
   font-size: 13px;
 }
 

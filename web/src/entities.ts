@@ -71,14 +71,14 @@ const person = (kind: string): Entity => ({
   icon: 'User',
   filters: kind === 'teacher' ? [schoolClass, teacherRole] : [schoolClass],
   columns: [
-    { key: 'name', label: '姓名' },
-    { key: 'userName', label: '平台账号' },
-    { key: 'number', label: kind === 'teacher' ? '教师工号' : '学号' },
-    { key: 'className', label: '所属班级' },
-    ...(kind === 'teacher' ? [{ key: 'role', label: '所属角色' }] : []),
-    { key: 'gender', label: '性别', width: 75 },
-    { key: 'phone', label: '手机号码' },
-    { key: 'email', label: '电子邮箱' }
+    { key: 'name', label: '姓名', width: 95 },
+    { key: 'userName', label: '平台账号', width: 95 },
+    { key: 'number', label: kind === 'teacher' ? '教师工号' : '学号', width: 110 },
+    { key: 'className', label: '所属班级', width: 100 },
+    ...(kind === 'teacher' ? [{ key: 'role', label: '所属角色', width: 90 }] : []),
+    { key: 'gender', label: '性别', width: 60 },
+    { key: 'phone', label: '手机号码', width: 115 },
+    { key: 'email', label: '电子邮箱', width: 175 }
   ],
   fields: [
     { key: 'name', label: '姓名', required: true },
@@ -109,9 +109,9 @@ export const entities: Record<string, Entity> = {
     endpoint: '/professions',
     icon: 'Collection',
     columns: [
-      { key: 'name', label: '专业名称' },
-      { key: 'code', label: '专业代码' },
-      { key: 'remark', label: '备注' }
+      { key: 'name', label: '专业名称', width: 160 },
+      { key: 'code', label: '专业代码', width: 120 },
+      { key: 'remark', label: '备注', width: 220 }
     ],
     fields: [
       { key: 'name', label: '专业名称', required: true },
@@ -127,9 +127,9 @@ export const entities: Record<string, Entity> = {
     icon: 'School',
     filters: [profession],
     columns: [
-      { key: 'name', label: '班级名称' },
-      { key: 'professionName', label: '所属专业' },
-      { key: 'remark', label: '备注' }
+      { key: 'name', label: '班级名称', width: 160 },
+      { key: 'professionName', label: '所属专业', width: 140 },
+      { key: 'remark', label: '备注', width: 200 }
     ],
     fields: [{ key: 'name', label: '班级名称', required: true }, profession, remark]
   },
@@ -142,10 +142,10 @@ export const entities: Record<string, Entity> = {
     endpoint: '/device-types',
     icon: 'Grid',
     columns: [
-      { key: 'name', label: '类型名称' },
-      { key: 'newline', label: '换行符' },
-      { key: 'backspace', label: '回退键' },
-      { key: 'remark', label: '备注' }
+      { key: 'name', label: '类型名称', width: 150 },
+      { key: 'newline', label: '换行符', width: 90 },
+      { key: 'backspace', label: '回退键', width: 100 },
+      { key: 'remark', label: '备注', width: 160 }
     ],
     fields: [
       { key: 'name', label: '类型名称', required: true },
@@ -180,12 +180,12 @@ export const entities: Record<string, Entity> = {
     endpoint: '/cabinets',
     icon: 'OfficeBuilding',
     columns: [
-      { key: 'name', label: '机柜名称' },
-      { key: 'host', label: '控制器地址' },
+      { key: 'name', label: '机柜名称', width: 140 },
+      { key: 'host', label: '控制器地址', width: 140 },
       { key: 'port', label: '端口', width: 85 },
-      { key: 'jumpHost', label: '跳板机地址' },
-      { key: 'jumpUserName', label: '跳板机账号' },
-      { key: 'remark', label: '备注' }
+      { key: 'jumpHost', label: '跳板机地址', width: 140 },
+      { key: 'jumpUserName', label: '跳板机账号', width: 120 },
+      { key: 'remark', label: '备注', width: 140 }
     ],
     fields: [
       { key: 'name', label: '机柜名称', required: true },
@@ -214,13 +214,13 @@ export const entities: Record<string, Entity> = {
     endpoint: '/devices',
     icon: 'Monitor',
     columns: [
-      { key: 'name', label: '设备名称' },
-      { key: 'cabinetName', label: '所属机柜' },
-      { key: 'deviceTypeName', label: '设备类型' },
-      { key: 'nodeName', label: '实训节点' },
-      { key: 'connectionType', label: '连接方式', width: 130 },
-      { key: 'host', label: '连接地址' },
-      { key: 'port', label: '端口', width: 85 }
+      { key: 'name', label: '设备名称', width: 130 },
+      { key: 'cabinetName', label: '所属机柜', width: 115 },
+      { key: 'deviceTypeName', label: '设备类型', width: 115 },
+      { key: 'nodeName', label: '实训节点', width: 125 },
+      { key: 'connectionType', label: '连接方式', width: 110 },
+      { key: 'host', label: '连接地址', width: 145 },
+      { key: 'port', label: '端口', width: 75 }
     ],
     fields: [
       { key: 'name', label: '设备名称', required: true },
@@ -268,17 +268,17 @@ export const entities: Record<string, Entity> = {
     endpoint: '/nodes',
     icon: 'Connection',
     columns: [
-      { key: 'name', label: '节点名称' },
-      { key: 'host', label: '节点地址' },
-      { key: 'provider', label: '资源平台', width: 150 },
+      { key: 'name', label: '节点名称', width: 180 },
+      { key: 'host', label: '节点地址', width: 140 },
+      { key: 'provider', label: '资源平台', width: 110 },
       { key: 'enabled', label: '启用状态', width: 105 },
-      { key: 'healthStatus', label: '健康状态', width: 105 },
-      { key: 'cpuUsagePercent', label: 'CPU 使用率', width: 120 },
-      { key: 'memoryUsagePercent', label: '内存使用率', width: 120 },
-      { key: 'diskUsagePercent', label: '磁盘使用率', width: 120 },
-      { key: 'accountUsage', label: '账号数量 / 配额', width: 155 },
-      { key: 'virtualMachineUsage', label: '虚拟机数量 / 配额', width: 170 },
-      { key: 'remark', label: '备注' }
+      { key: 'healthStatus', label: '健康状态', width: 90 },
+      { key: 'cpuUsagePercent', label: 'CPU', width: 80 },
+      { key: 'memoryUsagePercent', label: '内存', width: 80 },
+      { key: 'diskUsagePercent', label: '磁盘', width: 80 },
+      { key: 'accountUsage', label: '账号数量 / 配额', width: 140 },
+      { key: 'virtualMachineUsage', label: '虚拟机数量 / 配额', width: 155 },
+      { key: 'remark', label: '备注', width: 120 }
     ],
     fields: [
       { key: 'name', label: '节点名称', required: true },

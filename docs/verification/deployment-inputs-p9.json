@@ -1,0 +1,83 @@
+{
+  "version": "0.1.0-p9",
+  "checkedAtUtc": "2026-11-20T10:17:43.9448173Z",
+  "status": "passed-local-isolated-input-validation",
+  "powershellVersion": "7.6.9",
+  "zipSha256": "f5657ed9651fbdf4dae621d2614e8169bd020efcc830981162070ecc35bc11dc",
+  "testedAssemblySha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36",
+  "installScriptSha256": "9e010b0d6a5fb26deb157e22b7d9cb87da4b6d59150cfe119936f2c674bcf08e",
+  "restoreScriptSha256": "ced45eda599c72867ba2d9bcc159f9c0566a72eb796145e9c4e1e44f981eb53d",
+  "checks": [
+    {
+      "test": "install-lan-missing-configuration",
+      "passed": true,
+      "expected": "LAN access requires a server.json"
+    },
+    {
+      "test": "install-lan-http-not-https",
+      "passed": true,
+      "expected": "HTTPS endpoint address and port must match"
+    },
+    {
+      "test": "install-lan-no-certificate-file",
+      "passed": true,
+      "expected": "Configured HTTPS certificate file does not exist"
+    },
+    {
+      "test": "install-lan-expired-certificate",
+      "passed": true,
+      "expected": "Unable to load a currently valid HTTPS certificate with private key"
+    },
+    {
+      "test": "install-lan-no-private-key",
+      "passed": true,
+      "expected": "Unable to load a currently valid HTTPS certificate with private key"
+    },
+    {
+      "test": "install-lan-wrong-certificate-password",
+      "passed": true,
+      "expected": "Unable to load a currently valid HTTPS certificate with private key"
+    },
+    {
+      "test": "install-lan-certificate-hostname-mismatch",
+      "passed": true,
+      "expected": "AllowedHosts must include an access hostname matching the certificate DNS name"
+    },
+    {
+      "test": "restore-missing-manifest",
+      "passed": true,
+      "expected": "Backup requires school\\.db, manifest\\.json and product data marker"
+    },
+    {
+      "test": "restore-missing-product-marker",
+      "passed": true,
+      "expected": "Backup requires school\\.db, manifest\\.json and product data marker"
+    },
+    {
+      "test": "restore-manifest-missing-schema",
+      "passed": true,
+      "expected": "schemaVersion"
+    },
+    {
+      "test": "restore-manifest-missing-product",
+      "passed": true,
+      "expected": "product"
+    },
+    {
+      "test": "restore-wrong-product",
+      "passed": true,
+      "expected": "Unsupported backup product or schema version"
+    },
+    {
+      "test": "restore-normal-product-backup",
+      "passed": true,
+      "expected": "Exact output bytes and valid protected credentials"
+    },
+    {
+      "test": "restore-normal-explicit-key-directory",
+      "passed": true,
+      "expected": "Exact output bytes and valid protected credentials"
+    }
+  ],
+  "scope": "Deployment scripts from the exact p8 ZIP with only the administrator directive and local administration entry points replaced. All SCM, registry, firewall and ACL operations were blocked. Real isolated app host generated two synthetic SQLite and Windows DPAPI backups. Certificates were synthetic and were never imported into a system store. These checks do not exercise actual UAC or registration."
+}

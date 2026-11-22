@@ -404,7 +404,7 @@ async function deleteResource(id: string, name: string) {
 }
 
 .chapter-title small {
-  color: #6c7f93;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -425,7 +425,7 @@ async function deleteResource(id: string, name: string) {
 
 .tree-empty {
   margin: 12px 0 0;
-  color: #7b8b9c;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -442,7 +442,7 @@ async function deleteResource(id: string, name: string) {
 
 .section-head span {
   margin-left: 9px;
-  color: #6c7f93;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -473,7 +473,7 @@ async function deleteResource(id: string, name: string) {
 }
 
 .resource-meta {
-  color: #718397;
+  color: #5d6f80;
   font-size: 12px;
   white-space: nowrap;
 }

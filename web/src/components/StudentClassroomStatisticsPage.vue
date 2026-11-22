@@ -46,7 +46,6 @@ onMounted(load)
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">学习空间 / 课堂统计</div>
       <h1>{{ detail ? detail.classroom.name : '我的课堂统计' }}</h1>
       <p>
         {{

@@ -1,0 +1,96 @@
+{
+  "status": "passed-local-development-host",
+  "version": "0.1.0-p9",
+  "verifiedAtUtc": "2026-11-20T10:17:17.5687082Z",
+  "host": {
+    "edition": "Microsoft Windows 11 家庭版 中文版",
+    "build": "26300",
+    "elevated": false,
+    "cleanTargetMachine": false
+  },
+  "sha256": {
+    "SchoolTraining-0.1.0-p9-win-x64.zip": "f5657ed9651fbdf4dae621d2614e8169bd020efcc830981162070ecc35bc11dc",
+    "SchoolTraining-0.1.0-p9-Setup.exe": "947367f46eb0809d2ffd6cd34cc9fc0043dd52fff7c5984420e129136d35e79b"
+  },
+  "zipContents": {
+    "entries": 1089,
+    "bundledWebAssets": 78,
+    "prohibitedPathPatternMatches": 0,
+    "containsReleaseMetadata": true,
+    "containsThirdPartyInventory": true
+  },
+  "packagedScriptSha256MatchingWorkspace": {
+    "deployment-common.ps1": "daecd14fd3f13186a5d5fe396eb38451dbeb842c0282d796f8d4eea494ef2abc",
+    "install-service.ps1": "9e010b0d6a5fb26deb157e22b7d9cb87da4b6d59150cfe119936f2c674bcf08e",
+    "restore-backup.ps1": "ced45eda599c72867ba2d9bcc159f9c0566a72eb796145e9c4e1e44f981eb53d",
+    "uninstall-service.ps1": "50082bf2e5bb552462f09b63377e54095ee395cf24cc68fcfad94ec9e8041aa3"
+  },
+  "releaseGate": {
+    "checks": 17,
+    "testedAssemblySha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36",
+    "sameAssemblyExtractedFromZip": true
+  },
+  "restoreRegression": {
+    "matchedPackagedApplicationAndScripts": true,
+    "passedChecks": 11,
+    "totalChecks": 11,
+    "powershellVersion": "5.1.26100.9818",
+    "streamChecks": 5,
+    "restoreChecks": 6
+  },
+  "installerPayloadValidation": {
+    "arguments": [
+      "--quiet",
+      "--validate-only"
+    ],
+    "exitCode": 0,
+    "schoolTrainingServicePresentBefore": false,
+    "schoolTrainingServicePresentAfter": false
+  },
+  "selfContainedProcess": {
+    "directlyLaunchedZipApphost": true,
+    "runtimeFrameworkVersion": "10.0.15",
+    "globalDotnetRootOverriddenWithMissingPath": true,
+    "packagedModules": [
+      "coreclr.dll",
+      "e_sqlite3.DLL",
+      "hostpolicy.dll"
+    ],
+    "versionFromStatus": "0.1.0-p9",
+    "schemaVersionFromStatus": 5,
+    "initializedAfterBrowserSetup": true,
+    "packagedHealthProbeCheckedVersion": true,
+    "observedRemoteTcpEndpoints": [
+      "0.0.0.0:0"
+    ]
+  },
+  "browser": {
+    "engine": "Microsoft Edge headless",
+    "policy": "Only isolated loopback origin allowed through browser HTTP and WebSocket interception, with service workers blocked",
+    "flows": [
+      "initial administrator setup",
+      "load split assets",
+      "create built-in simulation",
+      "load simulated device list after reload"
+    ],
+    "sameOriginHttpRequests": 39,
+    "distinctBundledAssetsRequested": 15,
+    "observedWebSocketConnections": 0,
+    "attemptedExternalRequests": 0
+  },
+  "loopbackTls": {
+    "untrustedCertificateRejected": true,
+    "MismatchedCertificateDnsNameRejected": true,
+    "UnconfiguredHttpHostRejected": true,
+    "expectedHostnameAndExplicitCertificateTrustAccepted": true,
+    "packagedCertificatePinningHealthProbePassed": true,
+    "certificateStoreChanged": false
+  },
+  "outstandingTargetMachineAcceptance": [
+    "Clean Win11 offline UAC installation, Program Files/ProgramData and LocalService ACL",
+    "SCM autostart after reboot and failure recovery",
+    "Cross-machine LAN DNS, trusted TLS certificate and inbound firewall policy",
+    "Upgrade of installed versions and rollback with original program, data and credentials",
+    "Installed service backup/restore, recovery on failed restore, uninstall retention and reinstall"
+  ]
+}

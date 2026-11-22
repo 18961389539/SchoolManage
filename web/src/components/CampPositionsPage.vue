@@ -16,6 +16,7 @@ import type {
   ExamQuestionType,
   NodeRow
 } from '../types'
+import TableEmpty from './TableEmpty.vue'
 
 interface EditableSkill {
   name: string
@@ -418,7 +419,6 @@ onMounted(() => {
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">教学中心 / 岗位训练营</div>
       <h1>岗位训练营</h1>
       <p>配置岗位技能、测评题库与实操评分项，学员完成后自动生成岗位能力报告。</p>
     </div>
@@ -431,17 +431,24 @@ onMounted(() => {
   <section class="surface">
     <div class="table-toolbar">
       <el-input v-model="search" class="search-box" clearable placeholder="搜索岗位名称或描述" :prefix-icon="Search" />
-      <span class="record-count">共 {{ filtered.length }} 个岗位</span>
+      <span class="record-count">共 {{ loading && !filtered.length ? '—' : filtered.length }} 个岗位</span>
     </div>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="table-error" />
-    <el-table v-loading="loading" :data="filtered" row-key="id" empty-text="暂无岗位，点击“新建岗位”开始配置">
+    <el-table v-loading="loading" :data="filtered" row-key="id" empty-text="">
+      <template #empty>
+        <TableEmpty
+          v-if="!loading"
+          :title="error ? '岗位加载失败' : '暂无岗位'"
+          :hint="error ? '请检查服务状态后刷新重试' : '点击「新建岗位」配置技能、测评题与评分项。'"
+        />
+      </template>
       <el-table-column prop="name" label="岗位" min-width="200">
         <template #default="{ row }">
           <div class="table-name">
             <strong>{{ row.name }}</strong>
             <el-tag v-if="row.attemptCount" size="small" type="info" effect="plain">已有测评</el-tag>
           </div>
-          <p class="position-description">{{ row.description || '暂无描述' }}</p>
+          <p class="position-description" :title="row.description || '暂无描述'">{{ row.description || '暂无描述' }}</p>
         </template>
       </el-table-column>
       <el-table-column label="技能" width="80">
@@ -727,7 +734,7 @@ onMounted(() => {
 <style scoped>
 .position-description {
   margin: 4px 0 0;
-  color: #718397;
+  color: #5d6f80;
   font-size: 12px;
   line-height: 1.45;
   display: -webkit-box;
@@ -894,7 +901,7 @@ onMounted(() => {
 }
 
 .rubric-heading small {
-  color: #7b8da0;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -907,7 +914,7 @@ onMounted(() => {
 }
 
 .rubric-total.invalid {
-  color: #b26a00;
+  color: #94610f;
 }
 
 .rubric-row {

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Collection, Document, Refresh, Search, View } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
 import { courseTypeOptions, durationText, labelOf, resourceKindOptions } from '../teaching'
 import type { CoreCourseSeries, CourseDetail, CourseSummary, Paged } from '../types'
 
+const props = defineProps<{ role?: string }>()
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>] }>()
+const isStudent = computed(() => props.role === 'Student')
 
 const items = ref<CourseSummary[]>([])
 const total = ref(0)
@@ -97,7 +99,6 @@ onMounted(load)
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">教学中心 / 资源概览</div>
       <h1>资源概览</h1>
       <p>浏览已发布课程的章节、小节与学习资源，了解课程内容规模。</p>
     </div>
@@ -199,8 +200,19 @@ onMounted(load)
       </article>
     </div>
 
-    <el-empty v-if="!loading && !error && !items.length" description="暂无已发布课程">
-      <p class="empty-hint">课程发布后会出现在这里；如需组课，请先在课程管理中创建并发布课程。</p>
+    <el-empty
+      v-if="!loading && !error && !items.length"
+      class="catalog-empty"
+      :image-size="80"
+      description="暂无已发布课程"
+    >
+      <p class="empty-hint">
+        {{
+          isStudent
+            ? '老师发布课程后会显示在这里，加入课堂后即可开始学习。'
+            : '课程发布后会出现在这里；如需组课，请先在课程管理中创建并发布课程。'
+        }}
+      </p>
     </el-empty>
 
     <div v-if="total > pageSize" class="table-footer">
@@ -270,6 +282,11 @@ onMounted(load)
   border-bottom: 1px solid #edf2f8;
 }
 
+.overview-toolbar > .table-filter {
+  width: 170px;
+  flex: 0 0 170px;
+}
+
 .overview-toolbar .record-count {
   margin-left: auto;
 }
@@ -309,7 +326,7 @@ onMounted(load)
 }
 
 .catalog-date {
-  color: #8a9aa9;
+  color: #56697c;
   font-size: 11px;
   text-align: right;
 }
@@ -328,7 +345,7 @@ onMounted(load)
   overflow: hidden;
   min-height: 51px;
   margin: 0 0 13px;
-  color: #687d91;
+  color: #56697c;
   font-size: 12px;
   line-height: 1.65;
 }
@@ -339,7 +356,7 @@ onMounted(load)
   padding: 10px 0;
   border-top: 1px solid #edf2f8;
   border-bottom: 1px solid #edf2f8;
-  color: #7b8da0;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -351,7 +368,7 @@ onMounted(load)
 
 .catalog-breakdown {
   margin: 8px 0 0;
-  color: #8494a5;
+  color: #64788a;
   font-size: 11px;
 }
 
@@ -374,7 +391,7 @@ onMounted(load)
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #8092a4;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -383,7 +400,7 @@ onMounted(load)
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  color: #6f8498;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -397,7 +414,7 @@ onMounted(load)
 
 .detail-remark {
   margin: 8px 0 0;
-  color: #7a8b9d;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -438,7 +455,7 @@ onMounted(load)
 }
 
 .catalog-section-heading span {
-  color: #8a9aa9;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -465,14 +482,14 @@ onMounted(load)
 }
 
 .catalog-resources small {
-  color: #8899a8;
+  color: #64788a;
   font-size: 10px;
   white-space: nowrap;
 }
 
 .tree-empty {
   margin: 6px 2px 0;
-  color: #94a3b1;
+  color: #64788a;
   font-size: 11px;
 }
 
@@ -483,11 +500,21 @@ onMounted(load)
 .empty-hint {
   max-width: 430px;
   margin: 0 auto;
-  color: #718396;
+  color: #56697c;
   font-size: 13px;
 }
 
+.catalog-empty {
+  grid-column: 1 / -1;
+  padding: 18px 0 6px;
+}
+
 @media (max-width: 640px) {
+  .overview-toolbar > .table-filter {
+    width: 100%;
+    flex-basis: 100%;
+  }
+
   .overview-toolbar .record-count {
     margin-left: 0;
     width: 100%;

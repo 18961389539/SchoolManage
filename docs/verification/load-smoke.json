@@ -1,11 +1,11 @@
 {
-  "recordedAtUtc": "2026-11-19T15:15:31.477Z",
+  "recordedAtUtc": "2026-11-20T10:15:56.042Z",
   "status": "passed",
   "command": "node tests/load-smoke.mjs",
-  "sourceDirectory": "src/School.Training/bin/Release/net10.0",
-  "runtimeDirectory": ".local/load-smoke-QSoujY/program",
-  "dataDirectory": ".local/load-smoke-QSoujY/data",
-  "serviceLog": ".local/load-smoke-QSoujY/service-output.log",
+  "sourceDirectory": "artifacts/SchoolTraining-0.1.0-p9-win-x64/app",
+  "runtimeDirectory": ".local/load-smoke-mcBTbM/program",
+  "dataDirectory": ".local/load-smoke-mcBTbM/data",
+  "serviceLog": ".local/load-smoke-mcBTbM/service-output.log",
   "machine": {
     "platform": "win32",
     "architecture": "x64",
@@ -21,7 +21,7 @@
     "readConcurrency": 20,
     "writeCount": 40,
     "writeConcurrency": 8,
-    "importStudentCount": 10000,
+    "importStudentCount": 100,
     "importProbeWriteCount": 8,
     "importProbeWriteConcurrency": 4,
     "warmupReadCount": 5,
@@ -34,12 +34,12 @@
       "concurrency": 20,
       "successCount": 100,
       "failureCount": 0,
-      "elapsedMs": 71.23,
-      "throughputRequestsPerSecond": 1403.83,
+      "elapsedMs": 64.73,
+      "throughputRequestsPerSecond": 1544.85,
       "latencyMs": {
-        "p50": 9.36,
-        "p95": 36.15,
-        "max": 40.29
+        "p50": 7.83,
+        "p95": 31.01,
+        "max": 35.38
       },
       "quantileMethod": "nearest-rank",
       "errors": []
@@ -49,292 +49,58 @@
       "concurrency": 8,
       "successCount": 40,
       "failureCount": 0,
-      "elapsedMs": 1103.74,
-      "throughputRequestsPerSecond": 36.24,
+      "elapsedMs": 952.85,
+      "throughputRequestsPerSecond": 41.98,
       "latencyMs": {
-        "p50": 2.41,
-        "p95": 789.31,
-        "max": 1103.42
+        "p50": 2.27,
+        "p95": 636.56,
+        "max": 952.15
       },
       "quantileMethod": "nearest-rank",
       "errors": []
     },
     "studentImportWithConcurrentWrites": {
-      "studentCount": 10000,
-      "previewLatencyMs": 679.8,
-      "commitLatencyMs": 237860.35,
+      "studentCount": 100,
+      "previewLatencyMs": 498.58,
+      "commitLatencyMs": 3130.51,
       "importResult": {
-        "batchId": "3d065d512eae449382657d1513b493ac",
+        "batchId": "c232e265c0f24ef29ed9c361af4b6575",
         "status": "completed",
-        "processedCount": 10000,
-        "totalCount": 10000,
-        "importedCount": 10000,
+        "processedCount": 100,
+        "totalCount": 100,
+        "importedCount": 100,
         "removedCount": 0,
         "failureMessage": "",
-        "createdAt": "2026-11-19T15:11:33.1287984Z",
-        "queuedAt": "2026-11-19T15:11:33.4165523Z",
-        "startedAt": "2026-11-19T15:11:33.4695581Z",
-        "completedAt": "2026-11-19T15:15:29.9503539Z",
-        "message": "已导入10000条记录"
+        "createdAt": "2026-11-20T10:15:52.7920891Z",
+        "queuedAt": "2026-11-20T10:15:52.8373017Z",
+        "startedAt": "2026-11-20T10:15:52.8674472Z",
+        "completedAt": "2026-11-20T10:15:55.8228125Z",
+        "message": "已导入100条记录"
       },
       "observedImportStates": [
         {
           "status": "queued",
           "processedCount": 0,
-          "totalCount": 10000,
-          "elapsedMs": 263.57
+          "totalCount": 100,
+          "elapsedMs": 36.25
         },
         {
           "status": "running",
           "processedCount": 0,
-          "totalCount": 10000,
-          "elapsedMs": 382.3
+          "totalCount": 100,
+          "elapsedMs": 144.8
         },
         {
           "status": "running",
-          "processedCount": 250,
-          "totalCount": 10000,
-          "elapsedMs": 7014.96
-        },
-        {
-          "status": "running",
-          "processedCount": 500,
-          "totalCount": 10000,
-          "elapsedMs": 13647.62
-        },
-        {
-          "status": "running",
-          "processedCount": 750,
-          "totalCount": 10000,
-          "elapsedMs": 19183.55
-        },
-        {
-          "status": "running",
-          "processedCount": 1000,
-          "totalCount": 10000,
-          "elapsedMs": 24615.66
-        },
-        {
-          "status": "running",
-          "processedCount": 1250,
-          "totalCount": 10000,
-          "elapsedMs": 30163.04
-        },
-        {
-          "status": "running",
-          "processedCount": 1500,
-          "totalCount": 10000,
-          "elapsedMs": 35820.51
-        },
-        {
-          "status": "running",
-          "processedCount": 1750,
-          "totalCount": 10000,
-          "elapsedMs": 41582.09
-        },
-        {
-          "status": "running",
-          "processedCount": 2000,
-          "totalCount": 10000,
-          "elapsedMs": 47466.01
-        },
-        {
-          "status": "running",
-          "processedCount": 2250,
-          "totalCount": 10000,
-          "elapsedMs": 53215.6
-        },
-        {
-          "status": "running",
-          "processedCount": 2500,
-          "totalCount": 10000,
-          "elapsedMs": 59642.36
-        },
-        {
-          "status": "running",
-          "processedCount": 2750,
-          "totalCount": 10000,
-          "elapsedMs": 65528.63
-        },
-        {
-          "status": "running",
-          "processedCount": 3000,
-          "totalCount": 10000,
-          "elapsedMs": 71296.89
-        },
-        {
-          "status": "running",
-          "processedCount": 3250,
-          "totalCount": 10000,
-          "elapsedMs": 76951.53
-        },
-        {
-          "status": "running",
-          "processedCount": 3500,
-          "totalCount": 10000,
-          "elapsedMs": 82734.89
-        },
-        {
-          "status": "running",
-          "processedCount": 3750,
-          "totalCount": 10000,
-          "elapsedMs": 88387.04
-        },
-        {
-          "status": "running",
-          "processedCount": 4000,
-          "totalCount": 10000,
-          "elapsedMs": 94155.82
-        },
-        {
-          "status": "running",
-          "processedCount": 4250,
-          "totalCount": 10000,
-          "elapsedMs": 100028.38
-        },
-        {
-          "status": "running",
-          "processedCount": 4500,
-          "totalCount": 10000,
-          "elapsedMs": 106000.19
-        },
-        {
-          "status": "running",
-          "processedCount": 4750,
-          "totalCount": 10000,
-          "elapsedMs": 112092.89
-        },
-        {
-          "status": "running",
-          "processedCount": 5000,
-          "totalCount": 10000,
-          "elapsedMs": 118100.27
-        },
-        {
-          "status": "running",
-          "processedCount": 5250,
-          "totalCount": 10000,
-          "elapsedMs": 124094.4
-        },
-        {
-          "status": "running",
-          "processedCount": 5500,
-          "totalCount": 10000,
-          "elapsedMs": 130084.52
-        },
-        {
-          "status": "running",
-          "processedCount": 5750,
-          "totalCount": 10000,
-          "elapsedMs": 136075.86
-        },
-        {
-          "status": "running",
-          "processedCount": 6000,
-          "totalCount": 10000,
-          "elapsedMs": 142173.9
-        },
-        {
-          "status": "running",
-          "processedCount": 6250,
-          "totalCount": 10000,
-          "elapsedMs": 148066.07
-        },
-        {
-          "status": "running",
-          "processedCount": 6500,
-          "totalCount": 10000,
-          "elapsedMs": 154056.27
-        },
-        {
-          "status": "running",
-          "processedCount": 6750,
-          "totalCount": 10000,
-          "elapsedMs": 159954.55
-        },
-        {
-          "status": "running",
-          "processedCount": 7000,
-          "totalCount": 10000,
-          "elapsedMs": 165840.88
-        },
-        {
-          "status": "running",
-          "processedCount": 7250,
-          "totalCount": 10000,
-          "elapsedMs": 171729.53
-        },
-        {
-          "status": "running",
-          "processedCount": 7500,
-          "totalCount": 10000,
-          "elapsedMs": 177520.78
-        },
-        {
-          "status": "running",
-          "processedCount": 7750,
-          "totalCount": 10000,
-          "elapsedMs": 183407.2
-        },
-        {
-          "status": "running",
-          "processedCount": 8000,
-          "totalCount": 10000,
-          "elapsedMs": 189182.17
-        },
-        {
-          "status": "running",
-          "processedCount": 8250,
-          "totalCount": 10000,
-          "elapsedMs": 195065.99
-        },
-        {
-          "status": "running",
-          "processedCount": 8500,
-          "totalCount": 10000,
-          "elapsedMs": 200954.32
-        },
-        {
-          "status": "running",
-          "processedCount": 8750,
-          "totalCount": 10000,
-          "elapsedMs": 206835.91
-        },
-        {
-          "status": "running",
-          "processedCount": 9000,
-          "totalCount": 10000,
-          "elapsedMs": 212838.92
-        },
-        {
-          "status": "running",
-          "processedCount": 9250,
-          "totalCount": 10000,
-          "elapsedMs": 218732.13
-        },
-        {
-          "status": "running",
-          "processedCount": 9500,
-          "totalCount": 10000,
-          "elapsedMs": 224633.95
-        },
-        {
-          "status": "running",
-          "processedCount": 9750,
-          "totalCount": 10000,
-          "elapsedMs": 230632.29
-        },
-        {
-          "status": "running",
-          "processedCount": 10000,
-          "totalCount": 10000,
-          "elapsedMs": 236518.05
+          "processedCount": 100,
+          "totalCount": 100,
+          "elapsedMs": 3019.76
         },
         {
           "status": "completed",
-          "processedCount": 10000,
-          "totalCount": 10000,
-          "elapsedMs": 237860.35
+          "processedCount": 100,
+          "totalCount": 100,
+          "elapsedMs": 3130.51
         }
       ],
       "pendingAtProbeDispatch": true,
@@ -345,12 +111,12 @@
         "concurrency": 4,
         "successCount": 8,
         "failureCount": 0,
-        "elapsedMs": 320.93,
-        "throughputRequestsPerSecond": 24.93,
+        "elapsedMs": 476.86,
+        "throughputRequestsPerSecond": 16.78,
         "latencyMs": {
-          "p50": 3.71,
-          "p95": 320.62,
-          "max": 320.62
+          "p50": 4.32,
+          "p95": 476.23,
+          "max": 476.23
         },
         "quantileMethod": "nearest-rank",
         "errors": []
@@ -359,73 +125,73 @@
         {
           "index": 0,
           "success": true,
-          "latencyMs": 16.74,
+          "latencyMs": 319.23,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 267.81,
+          "completedAfterImportStartMs": 571.97,
           "error": null
         },
         {
           "index": 1,
           "success": true,
-          "latencyMs": 320.62,
+          "latencyMs": 4.32,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 571.85,
+          "completedAfterImportStartMs": 257.37,
           "error": null
         },
         {
           "index": 2,
           "success": true,
-          "latencyMs": 156.36,
+          "latencyMs": 476.23,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 407.7,
+          "completedAfterImportStartMs": 729.42,
           "error": null
         },
         {
           "index": 3,
           "success": true,
-          "latencyMs": 172.49,
+          "latencyMs": 159.86,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 423.91,
+          "completedAfterImportStartMs": 413.16,
           "error": null
         },
         {
           "index": 4,
           "success": true,
-          "latencyMs": 3.32,
+          "latencyMs": 4.49,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 271.16,
+          "completedAfterImportStartMs": 261.89,
           "error": null
         },
         {
           "index": 5,
           "success": true,
-          "latencyMs": 3.71,
+          "latencyMs": 3.35,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 274.89,
+          "completedAfterImportStartMs": 265.26,
           "error": null
         },
         {
           "index": 6,
           "success": true,
-          "latencyMs": 3.62,
+          "latencyMs": 2.6,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 278.52,
+          "completedAfterImportStartMs": 267.87,
           "error": null
         },
         {
           "index": 7,
           "success": true,
-          "latencyMs": 2.61,
+          "latencyMs": 2.46,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 281.15,
+          "completedAfterImportStartMs": 270.35,
           "error": null
         }
       ],
@@ -444,14 +210,14 @@
       "matchedAllAcknowledgedWrites": true
     },
     "studentImport": {
-      "expectedCount": 10000,
-      "actualCount": 10000,
-      "uniqueIds": 10000,
-      "uniqueAccounts": 10000,
-      "uniqueNumbers": 10000,
+      "expectedCount": 100,
+      "actualCount": 100,
+      "uniqueIds": 100,
+      "uniqueAccounts": 100,
+      "uniqueNumbers": 100,
       "matchedAllInputAccountsAndNumbers": true,
       "correctClassAssociation": true,
-      "pagesVerified": 10
+      "pagesVerified": 1
     },
     "importOverlapWrites": {
       "expectedCount": 8,
@@ -466,9 +232,9 @@
     "Other development processes may share this machine. No claim is made about concurrent real users, sustained workloads, or other hardware.",
     "Import progress is observed through the persisted batch-status endpoint. The initial password stays in process memory and is never persisted. Password hashing finishes before the SQLite write transaction starts."
   ],
-  "sourceAssemblySha256": "D9170BCEB322A1171314147EB71954FB736BAD5B69D7FD716E47AEE59D01C818",
-  "testedAssemblySha256": "D9170BCEB322A1171314147EB71954FB736BAD5B69D7FD716E47AEE59D01C818",
-  "isolatedUrl": "http://127.0.0.1:62086",
+  "sourceAssemblySha256": "91C3D9DD79513FCA3447322320384AC9E0913D1FB64699E3B075E6215E2FFE36",
+  "testedAssemblySha256": "91C3D9DD79513FCA3447322320384AC9E0913D1FB64699E3B075E6215E2FFE36",
+  "isolatedUrl": "http://127.0.0.1:54712",
   "serviceExit": {
     "code": null,
     "signal": "SIGTERM"

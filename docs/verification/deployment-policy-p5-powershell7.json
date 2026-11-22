@@ -1,0 +1,92 @@
+{
+  "suite": "deployment-acl-host-policy",
+  "powershellVersion": "7.6.9",
+  "completedAtUtc": "2026-11-20T00:16:49.4301742Z",
+  "commonScriptSha256": "DAECD14FD3F13186A5D5FE396EB38451DBEB842C0282D796F8D4EEA494EF2ABC",
+  "passed": true,
+  "passedChecks": 20,
+  "totalChecks": 20,
+  "checks": [
+    {
+      "name": "Program directory ACL is administrator-owned, protected and read/execute-only for service/users",
+      "passed": true
+    },
+    {
+      "name": "Program file ACL explicitly grants LocalService read/execute after admin-only staging copy",
+      "passed": true
+    },
+    {
+      "name": "Data directory ACL excludes Users and allows service Modify",
+      "passed": true
+    },
+    {
+      "name": "Data file ACL is administrator-owned and excludes Users",
+      "passed": true
+    },
+    {
+      "name": "Default Program Files parent chain passes read-only validation",
+      "passed": true
+    },
+    {
+      "name": "Default ProgramData parent chain passes read-only validation",
+      "passed": true
+    },
+    {
+      "name": "Writable ordinary-user parent policy is refused",
+      "passed": true
+    },
+    {
+      "name": "Ordinary-user ownership of a parent is refused",
+      "passed": true
+    },
+    {
+      "name": "A parent allowing unrelated child creation without retarget rights is accepted",
+      "passed": true
+    },
+    {
+      "name": "GENERIC_ALL parent access for ordinary users is refused",
+      "passed": true
+    },
+    {
+      "name": "A null parent DACL is refused",
+      "passed": true
+    },
+    {
+      "name": "Explicit certificate hostname gets only additional loopback hosts",
+      "passed": true
+    },
+    {
+      "name": "Empty AllowedHosts is refused",
+      "passed": true
+    },
+    {
+      "name": "Global wildcard AllowedHosts is refused",
+      "passed": true
+    },
+    {
+      "name": "Wildcard mixed with an explicit host is refused",
+      "passed": true
+    },
+    {
+      "name": "URL/port values in AllowedHosts are refused",
+      "passed": true
+    },
+    {
+      "name": "Certificate hostname mismatch is refused",
+      "passed": true
+    },
+    {
+      "name": "LAN configuration containing only loopback hosts is refused",
+      "passed": true
+    },
+    {
+      "name": "An explicit host matching a one-label wildcard certificate is accepted",
+      "passed": true
+    },
+    {
+      "name": "Wildcard certificate does not match multiple extra labels",
+      "passed": true
+    }
+  ],
+  "scope": "ACL objects only in memory; existing default parent ACLs read only; AllowedHosts pure validation. No filesystem ACL changes, service registration, registry/firewall changes, real install or privileged-token enforcement test."
+}

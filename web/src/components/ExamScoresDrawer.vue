@@ -217,7 +217,7 @@ watch(
           >
             {{ row.status === 'submitted' ? '批阅' : '查看' }}
           </el-button>
-          <span v-else class="score-time">未作答</span>
+          <span v-else class="score-time">未参加</span>
         </div>
       </article>
     </div>

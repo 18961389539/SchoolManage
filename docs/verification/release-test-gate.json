@@ -1,120 +1,167 @@
-﻿{
-    "status":  "passed",
-    "version":  "0.1.0-p3",
-    "testedAssembly":  "D:\\code\\School\\artifacts\\SchoolTraining-0.1.0-p3-win-x64\\app\\School.Training.dll",
-    "testedAssemblySha256":  "9f4798ec72efb7abbe051580da4e4ce027965a922264ca6c4c8effbfaa9a095c",
-    "startedAtUtc":  "2026-11-19T14:37:12.9228811Z",
-    "completedAtUtc":  "2026-11-19T14:45:26.1217782Z",
-    "checks":  [
-                   {
-                       "name":  "csharp-format",
-                       "command":  "dotnet format D:\\code\\School\\src\\School.Training\\School.Training.csproj --verify-no-changes --verbosity minimal",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  9.01
-                   },
-                   {
-                       "name":  "csharp-format-tests",
-                       "command":  "dotnet format D:\\code\\School\\tests\\School.Training.Tests\\School.Training.Tests.csproj --verify-no-changes --verbosity minimal",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  7.54
-                   },
-                   {
-                       "name":  "unit-tests",
-                       "command":  "dotnet test D:\\code\\School\\tests\\School.Training.Tests\\School.Training.Tests.csproj -c Release --nologo -v minimal",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  2.58
-                   },
-                   {
-                       "name":  "schema-migration",
-                       "command":  "node tests/migration-smoke.mjs",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  11.08
-                   },
-                   {
-                       "name":  "application",
-                       "command":  "node tests/application-smoke.mjs",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  14.03
-                   },
-                   {
-                       "name":  "excel-csv",
-                       "command":  "node tests/excel-smoke.mjs",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  13.82
-                   },
-                   {
-                       "name":  "node-accounts",
-                       "command":  "node tests/node-accounts-smoke.mjs",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  10.14
-                   },
-                   {
-                       "name":  "infrastructure",
-                       "command":  "node tests/infrastructure-selfhost.mjs",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  9.11
-                   },
-                   {
-                       "name":  "load",
-                       "command":  "node tests/load-smoke.mjs",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  411.56
-                   },
-                   {
-                       "name":  "security",
-                       "command":  "dotnet run --project D:\\code\\School\\tools\\School.SecurityChecks\\School.SecurityChecks.csproj -c Release --no-build",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  1.19
-                   },
-                   {
-                       "name":  "deployment-policy",
-                       "command":  "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\\code\\School\\tests\\deployment-policy.ps1",
-                       "exitCode":  0,
-                       "passed":  true,
-                       "durationSeconds":  0.73
-                   }
-               ],
-    "boundReports":  [
-                         {
-                             "name":  "schema-migration",
-                             "file":  "migration-smoke.json",
-                             "sha256":  "9f4798ec72efb7abbe051580da4e4ce027965a922264ca6c4c8effbfaa9a095c"
-                         },
-                         {
-                             "name":  "application",
-                             "file":  "application-smoke.json",
-                             "sha256":  "9f4798ec72efb7abbe051580da4e4ce027965a922264ca6c4c8effbfaa9a095c"
-                         },
-                         {
-                             "name":  "excel-csv",
-                             "file":  "excel-smoke.json",
-                             "sha256":  "9f4798ec72efb7abbe051580da4e4ce027965a922264ca6c4c8effbfaa9a095c"
-                         },
-                         {
-                             "name":  "node-accounts",
-                             "file":  "node-accounts-smoke.json",
-                             "sha256":  "9f4798ec72efb7abbe051580da4e4ce027965a922264ca6c4c8effbfaa9a095c"
-                         },
-                         {
-                             "name":  "infrastructure",
-                             "file":  "infrastructure-smoke.json",
-                             "sha256":  "9f4798ec72efb7abbe051580da4e4ce027965a922264ca6c4c8effbfaa9a095c"
-                         },
-                         {
-                             "name":  "load",
-                             "file":  "load-smoke.json",
-                             "sha256":  "9f4798ec72efb7abbe051580da4e4ce027965a922264ca6c4c8effbfaa9a095c"
-                         }
-                     ],
-    "error":  null
+{
+  "status": "passed",
+  "version": "0.1.0-p9",
+  "testedAssembly": "D:\\code\\School\\artifacts\\SchoolTraining-0.1.0-p9-win-x64\\app\\School.Training.dll",
+  "testedAssemblySha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36",
+  "startedAtUtc": "2026-11-20T10:14:05.3682138Z",
+  "completedAtUtc": "2026-11-20T10:16:35.3370082Z",
+  "checks": [
+    {
+      "name": "csharp-format",
+      "command": "dotnet format D:\\code\\School\\src\\School.Training\\School.Training.csproj --verify-no-changes --verbosity minimal",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 8.47
+    },
+    {
+      "name": "csharp-format-tests",
+      "command": "dotnet format D:\\code\\School\\tests\\School.Training.Tests\\School.Training.Tests.csproj --verify-no-changes --verbosity minimal",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 6.78
+    },
+    {
+      "name": "unit-tests",
+      "command": "dotnet test D:\\code\\School\\tests\\School.Training.Tests\\School.Training.Tests.csproj -c Release --nologo -v minimal",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 2.99
+    },
+    {
+      "name": "schema-migration",
+      "command": "node tests/migration-smoke.mjs",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 17.73
+    },
+    {
+      "name": "application",
+      "command": "node tests/application-smoke.mjs",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 24.84
+    },
+    {
+      "name": "excel-csv",
+      "command": "node tests/excel-smoke.mjs",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 15.27
+    },
+    {
+      "name": "node-accounts",
+      "command": "node tests/node-accounts-smoke.mjs",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 10.23
+    },
+    {
+      "name": "infrastructure",
+      "command": "node tests/infrastructure-selfhost.mjs",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 10.71
+    },
+    {
+      "name": "load",
+      "command": "node tests/load-smoke.mjs",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 11.68
+    },
+    {
+      "name": "security",
+      "command": "dotnet run --project D:\\code\\School\\tools\\School.SecurityChecks\\School.SecurityChecks.csproj -c Release --no-build",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 1.01
+    },
+    {
+      "name": "deployment-policy",
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\\code\\School\\tests\\deployment-policy.ps1",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 0.62
+    },
+    {
+      "name": "deployment-rollback",
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\\code\\School\\tests\\deployment-rollback.ps1",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 6.0
+    },
+    {
+      "name": "deployment-restore",
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\\code\\School\\tests\\deployment-restore.ps1",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 26.08
+    },
+    {
+      "name": "frontend-format",
+      "command": "npm.cmd --prefix D:\\code\\School\\.local\\frontend-p8-dfba4b2f83b64d248b5a72a0da114e7b run format:check",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 1.42
+    },
+    {
+      "name": "frontend-lint",
+      "command": "npm.cmd --prefix D:\\code\\School\\.local\\frontend-p8-dfba4b2f83b64d248b5a72a0da114e7b run lint",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 1.6
+    },
+    {
+      "name": "frontend-tests",
+      "command": "npm.cmd --prefix D:\\code\\School\\.local\\frontend-p8-dfba4b2f83b64d248b5a72a0da114e7b run test",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 0.89
+    },
+    {
+      "name": "frontend-time",
+      "command": "npm.cmd --prefix D:\\code\\School\\.local\\frontend-p8-dfba4b2f83b64d248b5a72a0da114e7b run check:time",
+      "exitCode": 0,
+      "passed": true,
+      "durationSeconds": 1.65
+    }
+  ],
+  "boundReports": [
+    {
+      "name": "schema-migration",
+      "file": "migration-smoke.json",
+      "sha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36"
+    },
+    {
+      "name": "application",
+      "file": "application-smoke.json",
+      "sha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36"
+    },
+    {
+      "name": "excel-csv",
+      "file": "excel-smoke.json",
+      "sha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36"
+    },
+    {
+      "name": "node-accounts",
+      "file": "node-accounts-smoke.json",
+      "sha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36"
+    },
+    {
+      "name": "infrastructure",
+      "file": "infrastructure-smoke.json",
+      "sha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36"
+    },
+    {
+      "name": "load",
+      "file": "load-smoke.json",
+      "sha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36"
+    },
+    {
+      "name": "deployment-restore",
+      "file": "deployment-restore.json",
+      "sha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36"
+    }
+  ],
+  "error": null
 }

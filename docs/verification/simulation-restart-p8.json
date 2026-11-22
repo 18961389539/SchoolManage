@@ -1,0 +1,14 @@
+{
+  "status": "passed",
+  "version": "0.1.0-p8",
+  "testedAssemblySha256": "4ebeac644b09f8d460f0f6e82fb1f20c738a7c874b1e842a2832ba2c67d5db2e",
+  "scope": "Two launches of the exact self-contained apphost against one disposable local SQLite data directory. Windows Service Manager, real equipment, and real hypervisors were outside the fixture.",
+  "checks": [
+    "simulated cabinet, devices, node and VMs are explicitly identified and do not duplicate on bootstrapping",
+    "simulated browser terminal applies CR, LF, CRLF, BS and DEL before saving a real startup configuration",
+    "apphost restart preserves node configuration and clock offset, VM power, resource utilization and account assignments",
+    "process exit clears the terminal lease, and reopening or reclaiming the connection retains its saved settings"
+  ],
+  "processStopped": true,
+  "verifiedAtUtc": "2026-11-20T10:04:17.252Z"
+}

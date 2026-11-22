@@ -694,7 +694,7 @@ onUnmounted(stopTimer)
 }
 
 .muted {
-  color: #8494a5;
+  color: #64788a;
   font-size: 12px;
 }
 

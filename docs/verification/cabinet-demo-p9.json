@@ -1,0 +1,10 @@
+{
+  "version": "0.1.0-p9",
+  "testedAssemblySha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36",
+  "destination": "artifacts\\SchoolTraining-0.1.0-p9-cabinet-demo.webm",
+  "sha256": "b76e727c72da6307aa1835d1a18c17247dcb56a2244b61580d1ec4c6fe4f944e",
+  "cabinetBatchProbe": true,
+  "actualTerminalConfiguration": true,
+  "activeSessionsReclaimed": 1,
+  "newConnectionRetainedStartupConfiguration": true
+}

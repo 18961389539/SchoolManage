@@ -538,7 +538,6 @@ onMounted(() => {
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">学习空间 / 技能图谱</div>
       <h1>技能图谱</h1>
       <p>以课程章节为技能单元，串联资源学习与达标情况，定位优势与待补强方向。</p>
     </div>
@@ -661,7 +660,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div v-if="view === 'map' || view === 'graph'" class="map-tools">
+      <div v-if="(view === 'map' || view === 'graph') && mapLayout.nodes.length" class="map-tools">
         <el-button size="small" circle aria-label="缩小图谱" @click="zoomOut">−</el-button>
         <span>{{ Math.round(zoom * 100) }}%</span>
         <el-button size="small" circle aria-label="放大图谱" @click="zoomIn">＋</el-button>
@@ -669,7 +668,19 @@ onMounted(() => {
         <span class="map-hint">拖动平移 · 滚轮缩放 · 点击节点查看资源</span>
       </div>
       <div v-if="view === 'map'" class="map-wrap">
-        <div class="map-viewport">
+        <div v-if="!mapLayout.nodes.length" class="map-empty">
+          <el-icon :size="30" aria-hidden="true"><DataAnalysis /></el-icon>
+          <strong>暂无技能数据</strong>
+          <span>{{
+            isStaff
+              ? '该学生尚未加入课堂或学习资源，技能地图暂未生成。'
+              : '加入课堂并开始学习资源后，这里会按课程章节生成技能地图。'
+          }}</span>
+          <el-button v-if="!isStaff" type="primary" plain @click="emit('navigate', 'my-classrooms')"
+            >去我的课堂</el-button
+          >
+        </div>
+        <div v-else class="map-viewport">
           <svg
             class="map-svg"
             :width="MAP_WIDTH"
@@ -1059,7 +1070,7 @@ onMounted(() => {
 
 .student-identity p {
   margin: 3px 0 0;
-  color: #8296a8;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -1068,12 +1079,12 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 7px;
   align-items: center;
-  color: #71879a;
+  color: #56697c;
   font-size: 11px;
 }
 
 .scope-line span {
-  color: #9aa9b7;
+  color: #5d6f80;
 }
 
 .skill-shell {
@@ -1120,7 +1131,7 @@ onMounted(() => {
 
 .score-ring span {
   margin-top: 4px;
-  color: #8ba0b2;
+  color: #56697c;
   font-size: 9px;
 }
 
@@ -1128,7 +1139,7 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   gap: 10px;
-  color: #91a1b0;
+  color: #56697c;
   font-size: 9px;
   margin-top: 10px;
 }
@@ -1142,7 +1153,7 @@ onMounted(() => {
   justify-content: space-between;
   gap: 8px;
   padding: 7px 0;
-  color: #71879a;
+  color: #56697c;
   font-size: 11px;
   border-bottom: 1px dashed #eef3f8;
 }
@@ -1161,11 +1172,11 @@ onMounted(() => {
 }
 
 .side-row strong.warning {
-  color: #b07a26;
+  color: #94610f;
 }
 
 .side-row strong.info {
-  color: #7b8fa1;
+  color: #56697c;
 }
 
 .side-row strong.plain {
@@ -1179,7 +1190,7 @@ onMounted(() => {
 
 .side-title {
   margin-bottom: 7px;
-  color: #7f93a5;
+  color: #56697c;
   font-size: 10px;
   letter-spacing: 0.05em;
 }
@@ -1223,7 +1234,7 @@ onMounted(() => {
 
 .categories button em {
   margin-left: auto;
-  color: #8aa0b2;
+  color: #56697c;
   font-size: 9px;
   font-style: normal;
 }
@@ -1246,7 +1257,7 @@ onMounted(() => {
 .legend {
   display: flex;
   gap: 13px;
-  color: #8094a6;
+  color: #56697c;
   font-size: 10px;
 }
 
@@ -1275,13 +1286,44 @@ onMounted(() => {
   align-items: center;
   gap: 7px;
   padding: 10px 16px 0;
-  color: #647d92;
+  color: #56697c;
   font-size: 10px;
 }
 
 .map-hint {
   margin-left: 8px;
-  color: #9aaab8;
+  color: #5d6f80;
+}
+
+.map-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 360px;
+  padding: 24px;
+  text-align: center;
+}
+
+.map-empty .el-icon {
+  color: #b6c5d4;
+}
+
+.map-empty strong {
+  color: #3d5568;
+  font-size: 15px;
+}
+
+.map-empty span {
+  max-width: 380px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.map-empty .el-button {
+  margin-top: 4px;
 }
 
 .map-viewport {
@@ -1293,7 +1335,10 @@ onMounted(() => {
 
 .map-svg {
   display: block;
-  min-width: 760px;
+  width: 100%;
+  max-width: 800px;
+  height: auto;
+  margin-inline: auto;
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -1383,7 +1428,7 @@ onMounted(() => {
 }
 
 .insight-row span {
-  color: #8b9dae;
+  color: #56697c;
   font-size: 9px;
 }
 
@@ -1394,14 +1439,14 @@ onMounted(() => {
 
 .insight-row em {
   margin-left: auto;
-  color: #7e93a5;
+  color: #56697c;
   font-size: 9px;
   font-style: normal;
 }
 
 .radar-insights p {
   margin: 10px 0 0;
-  color: #97a6b4;
+  color: #5d6f80;
   font-size: 9px;
   line-height: 1.6;
 }
@@ -1424,12 +1469,12 @@ onMounted(() => {
 }
 
 .fallback-row span {
-  color: #94a4b3;
+  color: #5d6f80;
   font-size: 9px;
 }
 
 .fallback-hint {
-  color: #94a4b3;
+  color: #5d6f80;
   font-size: 10px;
 }
 
@@ -1439,7 +1484,7 @@ onMounted(() => {
 
 .graph-caption {
   margin-bottom: 4px;
-  color: #8094a6;
+  color: #56697c;
   font-size: 10px;
 }
 
@@ -1519,7 +1564,7 @@ onMounted(() => {
 
 .detail-head p {
   margin: 0;
-  color: #8b9dae;
+  color: #56697c;
   font-size: 10px;
 }
 
@@ -1551,7 +1596,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 3px;
   padding: 8px;
-  color: #8fa1b1;
+  color: #56697c;
   font-size: 9px;
   background: #f8fbfd;
   border: 1px solid #edf3f8;
@@ -1598,7 +1643,7 @@ onMounted(() => {
 }
 
 .resource-item-head > span {
-  color: #7c92a5;
+  color: #56697c;
   font-size: 9px;
 }
 
@@ -1614,13 +1659,13 @@ onMounted(() => {
 
 .resource-item p {
   margin: 3px 0 6px;
-  color: #94a4b3;
+  color: #5d6f80;
   font-size: 8.5px;
 }
 
 .detail-tip {
   margin: 9px 0 0;
-  color: #9aacba;
+  color: #5d6f80;
   font-size: 9px;
   line-height: 1.55;
 }
@@ -1633,8 +1678,31 @@ onMounted(() => {
 }
 
 .empty-hint {
-  color: #8fa2b2;
+  color: #56697c;
   font-size: 11px;
+}
+
+@media (max-width: 1680px) {
+  .skill-shell {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+
+  .skill-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .skill-detail {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .skill-side {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
 }
 
 @media (max-width: 1280px) {
@@ -1642,8 +1710,20 @@ onMounted(() => {
     grid-template-columns: 212px minmax(0, 1fr);
   }
 
+  .skill-main {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .skill-side {
+    grid-column: auto;
+    grid-row: auto;
+    grid-template-columns: 1fr;
+  }
+
   .skill-detail {
     grid-column: 1 / -1;
+    grid-row: auto;
     max-height: none;
   }
 
@@ -1662,7 +1742,7 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
   .student-picker {
     width: 100%;
   }
@@ -1671,8 +1751,17 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
 
+  .skill-main {
+    order: 1;
+  }
+
   .skill-side {
+    order: 2;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .skill-detail {
+    order: 3;
   }
 
   .categories {

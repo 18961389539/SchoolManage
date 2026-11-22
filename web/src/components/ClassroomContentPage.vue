@@ -3,11 +3,14 @@ import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref, wat
 import {
   ArrowDown,
   ArrowLeft,
+  ArrowRight,
   Check,
   Clock,
   Collection,
   DataAnalysis,
   Document,
+  EditPen,
+  Monitor,
   Reading,
   Refresh
 } from '@element-plus/icons-vue'
@@ -20,6 +23,7 @@ import {
   courseTypeOptions,
   labelOf,
   questionAnswerText,
+  questionTypeOptions,
   recordStatusLabels,
   recordStatusType,
   resourceKindOptions
@@ -45,25 +49,33 @@ const loading = ref(true)
 const error = ref('')
 const actionError = ref('')
 const selectedResourceId = ref('')
-const answers = reactive<Record<string, number[]>>({})
+const practices = reactive(new Map<string, { answers: Record<string, number[]>; result?: ClassroomPracticeResult }>())
 const submitting = ref(false)
 const completing = ref(false)
-const result = ref<ClassroomPracticeResult | null>(null)
 const selectedFileId = ref('')
 const outlineExpanded = ref(false)
+const outlineToggle = ref<HTMLButtonElement | null>(null)
+const outlineNavigation = ref<HTMLElement | null>(null)
 const lessonTitle = ref<HTMLElement | null>(null)
 const attachmentPreview = ref<HTMLElement | null>(null)
 let previewTrigger: HTMLElement | null = null
-let practiceStart: Promise<void> | null = null
+const pendingStarts = new Map<string, Promise<void>>()
+
+const resourceIcons = { theory: Reading, theoryPractice: EditPen, case: Document, casePractice: Monitor }
 
 const chapters = computed<ClassroomChapter[]>(() => data.value?.tree || [])
 const allResources = computed(() =>
   chapters.value.flatMap(chapter => chapter.sections.flatMap(section => section.resources))
 )
 const resourceCount = computed(() => allResources.value.length)
-const selectedResource = computed(
-  () => allResources.value.find(resource => resource.id === selectedResourceId.value) || null
-)
+const selectedIndex = computed(() => allResources.value.findIndex(resource => resource.id === selectedResourceId.value))
+const selectedResource = computed(() => allResources.value[selectedIndex.value])
+const previousResource = computed(() => allResources.value[selectedIndex.value - 1])
+const nextResource = computed(() => allResources.value[selectedIndex.value + 1])
+const activePractice = computed(() => practices.get(selectedResourceId.value))
+const answers = computed(() => activePractice.value?.answers ?? {})
+const result = computed(() => activePractice.value?.result)
+const savingProgress = computed(() => submitting.value || completing.value)
 const selectedLocation = computed(() => {
   for (const chapter of chapters.value) {
     const section = chapter.sections.find(item =>
@@ -75,9 +87,8 @@ const selectedLocation = computed(() => {
 })
 const preview = computed(() => !!data.value?.isPreview)
 const canLearn = computed(() => !!data.value?.canLearn)
-const selectedRecord = computed(() =>
-  (data.value?.records || []).find(record => record.resourceId === selectedResourceId.value)
-)
+const records = computed(() => new Map(data.value?.records.map(record => [record.resourceId, record])))
+const selectedRecord = computed(() => records.value.get(selectedResourceId.value))
 const isPractice = computed(() => selectedResource.value?.kind === 'theoryPractice')
 const isCasePractice = computed(() => selectedResource.value?.kind === 'casePractice')
 const isLecture = computed(() => selectedResource.value?.kind === 'theory' || selectedResource.value?.kind === 'case')
@@ -109,9 +120,12 @@ watch([resourceUrl, canLearn, isCasePractice], async ([url, allowed, practical],
 const completedResources = computed(
   () =>
     new Set(
-      (data.value?.records || [])
-        .filter(record => record.status === 'completed' || record.attemptCount > 0)
-        .map(record => record.resourceId)
+      allResources.value
+        .filter(resource => {
+          const record = records.value.get(resource.id)
+          return record && (record.status === 'completed' || record.attemptCount > 0)
+        })
+        .map(resource => resource.id)
     )
 )
 const completedCount = computed(() => completedResources.value.size)
@@ -125,8 +139,7 @@ const chapterProgress = computed(
           chapter.id,
           {
             completed,
-            total: resources.length,
-            percent: resources.length ? Math.round((completed * 100) / resources.length) : 0
+            total: resources.length
           }
         ]
       })
@@ -138,6 +151,31 @@ const averageScore = computed(() => {
   return Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 10) / 10
 })
 const resultMap = computed(() => new Map((result.value?.questions || []).map(item => [item.questionId, item])))
+
+watch(
+  [selectedResourceId, outlineExpanded],
+  () => {
+    const outline = outlineNavigation.value
+    const current = outline?.querySelector<HTMLElement>('[aria-current="true"]')
+    if (!outline?.clientHeight || !current) return
+    const visible = outline.getBoundingClientRect()
+    const item = current.getBoundingClientRect()
+    if (item.top < visible.top) outline.scrollTop += item.top - visible.top
+    else if (item.bottom > visible.bottom) outline.scrollTop += item.bottom - visible.bottom
+  },
+  { flush: 'post' }
+)
+
+function initialResource() {
+  const requested = allResources.value.find(resource => resource.id === props.resourceId)
+  if (requested) return requested
+  if (canLearn.value) {
+    const unfinished = allResources.value.filter(resource => !completedResources.value.has(resource.id))
+    const inProgress = unfinished.find(resource => records.value.get(resource.id)?.status === 'inProgress')
+    if (inProgress || unfinished.length) return inProgress || unfinished[0]
+  }
+  return allResources.value[0]
+}
 
 async function load(preserve = false) {
   if (!props.classroomId) {
@@ -162,8 +200,7 @@ async function load(preserve = false) {
     selectedResourceId.value = keepId
     return
   }
-  const target =
-    (props.resourceId && allResources.value.find(resource => resource.id === props.resourceId)) || allResources.value[0]
+  const target = initialResource()
   if (target) chooseResource(target, !preserve)
   else selectedResourceId.value = ''
 }
@@ -172,16 +209,13 @@ function chooseResource(resource: ClassroomResource, autoStart = true) {
   selectedResourceId.value = resource.id
   selectedFileId.value = ''
   previewTrigger = null
-  result.value = null
-  practiceStart = null
   actionError.value = ''
-  for (const key of Object.keys(answers)) delete answers[key]
-  if (resource.kind === 'theoryPractice')
-    for (const question of resource.questions) if (question.id) answers[question.id] = []
-  if (autoStart && canLearn.value && resource.kind !== 'casePractice') {
-    if (resource.kind === 'theoryPractice') practiceStart = startLearning(resource.id, true)
-    else void startLearning(resource.id)
+  if (resource.kind === 'theoryPractice' && !practices.has(resource.id)) {
+    const entries = resource.questions.flatMap(question => (question.id ? [[question.id, []]] : []))
+    practices.set(resource.id, { answers: Object.fromEntries(entries) })
   }
+  if (autoStart && canLearn.value && resource.kind !== 'casePractice' && !result.value)
+    void startLearning(resource.id, resource.kind === 'theoryPractice')
 }
 
 function focusInView(element: HTMLElement | null) {
@@ -189,11 +223,19 @@ function focusInView(element: HTMLElement | null) {
   element?.scrollIntoView({ block: 'nearest' })
 }
 
-async function selectFromOutline(resource: ClassroomResource) {
+async function selectResource(resource: ClassroomResource) {
+  if (savingProgress.value) return
   if (resource.id !== selectedResourceId.value) chooseResource(resource)
   outlineExpanded.value = false
   await nextTick()
   focusInView(lessonTitle.value)
+}
+
+function dismissOutline(event: KeyboardEvent) {
+  if (!outlineExpanded.value || !outlineToggle.value?.offsetParent) return
+  event.stopPropagation()
+  outlineExpanded.value = false
+  outlineToggle.value.focus({ preventScroll: true })
 }
 
 async function openFilePreview(file: CourseResourceFile, event: MouseEvent) {
@@ -229,26 +271,29 @@ function upsertRecord(record: LearningRecord) {
   else data.value.records.push(record)
 }
 
-async function startLearning(resourceId: string, isTheoryPractice = false) {
-  const existing = data.value?.records.find(record => record.resourceId === resourceId)
+function startLearning(resourceId: string, isTheoryPractice: boolean) {
+  const existing = records.value.get(resourceId)
   if (!isTheoryPractice && existing && existing.status !== 'notStarted') return
-  try {
-    const record = await post<LearningRecord>(`/classrooms/${props.classroomId}/resources/${resourceId}/start`)
-    upsertRecord(record)
-  } catch (failure) {
-    if (selectedResourceId.value === resourceId) actionError.value = messageOf(failure)
-  }
+  if (pendingStarts.has(resourceId)) return
+  const pending = post<LearningRecord>(`/classrooms/${props.classroomId}/resources/${resourceId}/start`)
+    .then(upsertRecord)
+    .catch(failure => {
+      if (selectedResourceId.value === resourceId) actionError.value = messageOf(failure)
+    })
+    .finally(() => pendingStarts.delete(resourceId))
+  pendingStarts.set(resourceId, pending)
 }
 
 async function completeLearning() {
-  if (!selectedResource.value) return
+  const resourceId = selectedResource.value?.id
+  if (!resourceId || savingProgress.value) return
   completing.value = true
   actionError.value = ''
   try {
-    const record = await post<LearningRecord>(
-      `/classrooms/${props.classroomId}/resources/${selectedResource.value.id}/complete`
-    )
+    await pendingStarts.get(resourceId)
+    const record = await post<LearningRecord>(`/classrooms/${props.classroomId}/resources/${resourceId}/complete`)
     upsertRecord(record)
+    actionError.value = ''
     ElMessage.success('已标记为完成')
   } catch (failure) {
     actionError.value = messageOf(failure)
@@ -260,14 +305,15 @@ async function completeLearning() {
 function setSingleAnswer(question: CourseQuestion, value: unknown) {
   if (!question.id) return
   const number = Number(value)
-  answers[question.id] = Number.isFinite(number) ? [number] : []
+  if (activePractice.value) activePractice.value.answers[question.id] = Number.isFinite(number) ? [number] : []
 }
 
 async function submitPractice() {
-  if (!selectedResource.value || !selectedQuestions.value.length) return
+  const practice = activePractice.value
+  if (!selectedResource.value || !selectedQuestions.value.length || !practice || savingProgress.value) return
   const submittingResourceId = selectedResourceId.value
   const missing = selectedQuestions.value.filter(
-    question => !question.id || !(answers[question.id] || []).length
+    question => !question.id || !practice.answers[question.id]?.length
   ).length
   if (missing) {
     ElMessage.warning(`还有 ${missing} 道题未作答，请完成后再提交。`)
@@ -277,15 +323,16 @@ async function submitPractice() {
   actionError.value = ''
   const submittedAnswers = selectedQuestions.value.map(question => ({
     questionId: question.id,
-    selected: [...(answers[question.id || ''] || [])]
+    selected: [...(practice.answers[question.id || ''] || [])]
   }))
   try {
-    await practiceStart
+    await pendingStarts.get(submittingResourceId)
     const submitted = await post<ClassroomPracticeResult>(
       `/classrooms/${props.classroomId}/resources/${submittingResourceId}/submit`,
       { answers: submittedAnswers }
     )
-    if (selectedResourceId.value === submittingResourceId) result.value = submitted
+    practice.result = submitted
+    actionError.value = ''
     ElMessage.success(`练习已提交，得分 ${submitted.score} / ${submitted.maxScore}`)
     await load(true)
   } catch (failure) {
@@ -295,8 +342,12 @@ async function submitPractice() {
   }
 }
 
-function retryPractice() {
-  if (selectedResource.value) chooseResource(selectedResource.value)
+async function retryPractice() {
+  if (!selectedResource.value) return
+  practices.delete(selectedResourceId.value)
+  chooseResource(selectedResource.value)
+  await nextTick()
+  focusInView(lessonTitle.value)
 }
 
 function optionLetter(index: number) {
@@ -315,8 +366,17 @@ function statusText(status: string | undefined) {
   return recordStatusLabels[status || 'notStarted'] || '未开始'
 }
 
+function outlineResourceDetail(resource: ClassroomResource) {
+  const kind = labelOf(resourceKindOptions, resource.kind)
+  if (preview.value) return `${kind}，${resource.completedCount} 人完成`
+  const status = completedResources.value.has(resource.id) ? 'completed' : records.value.get(resource.id)?.status
+  return `${kind}，${statusText(status)}`
+}
+
 const backLabels: Record<string, string> = {
   'skill-graph': '返回技能图谱',
+  'student-home': '返回学习首页',
+  'teacher-home': '返回教学首页',
   'classroom-statistics': '返回课堂统计'
 }
 const backLabel = computed(() => backLabels[props.backKey] || '返回课堂列表')
@@ -335,7 +395,7 @@ onMounted(() => load())
 
 <template>
   <section class="content-heading">
-    <button class="back-link" @click="back">
+    <button type="button" class="back-link" @click="back">
       <el-icon><ArrowLeft /></el-icon>{{ backLabel }}
     </button>
     <div v-if="data" class="content-heading-main">
@@ -345,8 +405,10 @@ onMounted(() => load())
           {{ data.course.name }}
           <span class="meta-dot">·</span>
           {{ labelOf(courseTypeOptions, data.course.type) }}
-          <span class="meta-dot">·</span>
-          {{ data.classroom.teacherName }}
+          <template v-if="data.classroom.teacherName">
+            <span class="meta-dot">·</span>
+            {{ data.classroom.teacherName }}
+          </template>
         </p>
       </div>
       <div class="content-heading-tags">
@@ -359,7 +421,10 @@ onMounted(() => load())
     </div>
     <div v-if="data" class="content-time">
       <el-icon><Clock /></el-icon>
-      {{ dateTime(data.classroom.openAt) }} 至 {{ dateTime(data.classroom.closeAt) }}
+      <span
+        ><time :datetime="data.classroom.openAt">{{ dateTime(data.classroom.openAt) }}</time> 至
+        <time :datetime="data.classroom.closeAt">{{ dateTime(data.classroom.closeAt) }}</time></span
+      >
     </div>
   </section>
 
@@ -401,6 +466,7 @@ onMounted(() => load())
       <el-progress
         :percentage="resourceCount ? Math.round((completedCount / resourceCount) * 100) : 0"
         :stroke-width="9"
+        aria-label="已完成的课堂资源比例"
       />
       <div class="study-progress-score">
         <span>练习最佳均分</span><strong>{{ averageScore ?? '—' }}</strong>
@@ -414,25 +480,31 @@ onMounted(() => load())
     </div>
 
     <div v-else class="content-layout">
-      <aside class="surface content-outline">
+      <aside class="surface content-outline" aria-label="课堂资源" @keydown.esc="dismissOutline">
         <div class="outline-heading">
-          <h2>课程目录</h2>
+          <h2>
+            <el-icon aria-hidden="true"><Collection /></el-icon>课程目录
+          </h2>
           <span>{{ resourceCount }} 个资源</span>
         </div>
         <button
+          ref="outlineToggle"
           type="button"
           class="outline-toggle"
           :aria-expanded="outlineExpanded"
           aria-controls="classroom-course-outline"
           @click="outlineExpanded = !outlineExpanded"
         >
-          <el-icon><Collection /></el-icon>
+          <el-icon aria-hidden="true"><Collection /></el-icon>
           <strong>课程目录</strong>
-          <span>{{ resourceCount }} 个资源</span>
-          <el-icon class="outline-chevron"><ArrowDown /></el-icon>
+          <span v-if="selectedResource" class="outline-position"
+            >第 {{ selectedIndex + 1 }} / {{ resourceCount }} 项</span
+          >
+          <el-icon class="outline-chevron" aria-hidden="true"><ArrowDown /></el-icon>
         </button>
         <nav
           id="classroom-course-outline"
+          ref="outlineNavigation"
           class="outline-navigation"
           :class="{ 'outline-open': outlineExpanded }"
           aria-label="课程目录"
@@ -440,13 +512,12 @@ onMounted(() => load())
           <section v-for="chapter in chapters" :key="chapter.id" class="outline-chapter">
             <h3>{{ chapter.name }}</h3>
             <p v-if="!preview && chapterProgress.get(chapter.id)?.total" class="chapter-progress">
-              已完成 {{ chapterProgress.get(chapter.id)?.completed }} / {{ chapterProgress.get(chapter.id)?.total }} ·
-              {{ chapterProgress.get(chapter.id)?.percent }}%
+              已完成 {{ chapterProgress.get(chapter.id)?.completed }} / {{ chapterProgress.get(chapter.id)?.total }}
             </p>
             <div v-for="section in chapter.sections" :key="section.id" class="outline-section">
               <div class="outline-section-title">
                 <span>{{ section.name }}</span>
-                <small>{{ section.durationMinutes }} 分钟</small>
+                <small v-if="section.durationMinutes">{{ section.durationMinutes }} 分钟</small>
               </div>
               <button
                 v-for="resource in section.resources"
@@ -454,13 +525,28 @@ onMounted(() => load())
                 type="button"
                 class="outline-resource"
                 :class="{ active: resource.id === selectedResourceId }"
+                :aria-label="resource.name"
+                :aria-description="outlineResourceDetail(resource)"
                 :aria-current="resource.id === selectedResourceId ? 'true' : undefined"
-                @click="selectFromOutline(resource)"
+                :disabled="savingProgress"
+                @click="selectResource(resource)"
               >
-                <el-icon><Document /></el-icon>
-                <span class="outline-resource-name">{{ resource.name }}</span>
-                <el-icon v-if="completedResources.has(resource.id)" class="done-icon"><Check /></el-icon>
+                <span class="outline-resource-icon" aria-hidden="true"
+                  ><el-icon><component :is="resourceIcons[resource.kind]" /></el-icon
+                ></span>
+                <span class="outline-resource-copy">
+                  <span class="outline-resource-name">{{ resource.name }}</span>
+                  <small>{{ labelOf(resourceKindOptions, resource.kind) }}</small>
+                </span>
+                <el-icon v-if="completedResources.has(resource.id)" class="done-icon" aria-hidden="true"
+                  ><Check
+                /></el-icon>
                 <small v-else-if="preview">{{ resource.completedCount }} 人完成</small>
+                <span
+                  v-else-if="records.get(resource.id)?.status === 'inProgress'"
+                  class="outline-in-progress"
+                  aria-hidden="true"
+                />
               </button>
               <p v-if="!section.resources.length" class="outline-empty">本节暂无资源</p>
             </div>
@@ -475,16 +561,19 @@ onMounted(() => load())
             <p v-if="selectedLocation" class="resource-location">{{ selectedLocation }}</p>
             <div class="resource-kind-line">
               <el-tag size="small" effect="plain">{{ labelOf(resourceKindOptions, selectedResource.kind) }}</el-tag>
-              <span
-                ><el-icon><Clock /></el-icon>{{ selectedResource.durationMinutes }} 分钟</span
+              <span v-if="selectedResource.durationMinutes"
+                ><el-icon aria-hidden="true"><Clock /></el-icon>{{ selectedResource.durationMinutes }} 分钟</span
               >
               <span v-if="isPractice">满分 {{ selectedResource.maxScore }} 分</span>
             </div>
             <h2 ref="lessonTitle" tabindex="-1">{{ selectedResource.name }}</h2>
           </div>
-          <el-tag v-if="!preview && selectedRecord" :type="recordStatusType(selectedRecord.status)" size="small">
-            {{ statusText(selectedRecord.status) }}
-          </el-tag>
+          <div class="resource-view-status">
+            <span class="resource-view-index">第 {{ selectedIndex + 1 }} / {{ resourceCount }} 项</span>
+            <el-tag v-if="!preview" :type="recordStatusType(selectedRecord?.status)" size="small">
+              {{ statusText(selectedRecord?.status) }}
+            </el-tag>
+          </div>
         </header>
 
         <el-alert
@@ -620,19 +709,7 @@ onMounted(() => load())
               <span class="question-number">{{ questionIndex + 1 }}</span>
               <div>
                 <strong>{{ question.stem }}</strong>
-                <small
-                  >{{
-                    labelOf(
-                      [
-                        { value: 'single', label: '单选题' },
-                        { value: 'multiple', label: '多选题' },
-                        { value: 'judge', label: '判断题' }
-                      ],
-                      question.type
-                    )
-                  }}
-                  · {{ question.score }} 分</small
-                >
+                <small>{{ labelOf(questionTypeOptions, question.type) }} · {{ question.score }} 分</small>
               </div>
             </div>
 
@@ -713,33 +790,56 @@ onMounted(() => load())
           </article>
         </div>
 
-        <footer v-if="!preview && !isCasePractice" class="resource-actions">
-          <span v-if="!canLearn" class="muted-text">课堂未开放，暂不能记录进度。</span>
-          <template v-else>
-            <el-button
-              v-if="!isPractice"
-              type="primary"
-              :icon="Check"
-              :loading="completing"
-              :disabled="selectedRecord?.status === 'completed'"
-              @click="completeLearning"
-            >
-              {{ selectedRecord?.status === 'completed' ? '已完成' : '标记完成' }}
-            </el-button>
-            <el-button
-              v-if="isPractice && !result"
-              type="primary"
-              :loading="submitting"
-              :disabled="!selectedQuestions.length"
-              @click="submitPractice"
-              >提交练习</el-button
-            >
-            <el-button v-if="isPractice && result" type="primary" @click="retryPractice">再练一次</el-button>
-            <span v-if="selectedRecord?.attemptCount" class="record-hint">
-              已作答 {{ selectedRecord.attemptCount }} 次，最佳 {{ selectedRecord.bestScore }} 分
-            </span>
-          </template>
+        <footer v-if="canLearn && !preview && !isCasePractice" class="resource-actions">
+          <el-button
+            v-if="!isPractice"
+            type="primary"
+            :icon="Check"
+            :loading="completing"
+            :disabled="selectedRecord?.status === 'completed'"
+            @click="completeLearning"
+          >
+            {{ selectedRecord?.status === 'completed' ? '已完成' : '标记完成' }}
+          </el-button>
+          <el-button
+            v-if="isPractice && !result"
+            type="primary"
+            :loading="submitting"
+            :disabled="!selectedQuestions.length"
+            @click="submitPractice"
+            >提交练习</el-button
+          >
+          <el-button v-if="isPractice && result" type="primary" @click="retryPractice">再练一次</el-button>
+          <span v-if="selectedRecord?.attemptCount" class="record-hint">
+            已作答 {{ selectedRecord.attemptCount }} 次，最佳 {{ selectedRecord.bestScore }} 分
+          </span>
         </footer>
+        <nav v-if="resourceCount > 1" class="resource-pagination" aria-label="切换学习资源">
+          <button
+            v-if="previousResource"
+            type="button"
+            class="resource-page-button"
+            :disabled="savingProgress"
+            @click="selectResource(previousResource)"
+          >
+            <el-icon aria-hidden="true"><ArrowLeft /></el-icon>
+            <span
+              ><small>上一项</small><strong>{{ previousResource.name }}</strong></span
+            >
+          </button>
+          <button
+            v-if="nextResource"
+            type="button"
+            class="resource-page-button next-resource"
+            :disabled="savingProgress"
+            @click="selectResource(nextResource)"
+          >
+            <span
+              ><small>下一项</small><strong>{{ nextResource.name }}</strong></span
+            >
+            <el-icon aria-hidden="true"><ArrowRight /></el-icon>
+          </button>
+        </nav>
       </section>
     </div>
   </template>
@@ -857,13 +957,13 @@ onMounted(() => load())
   margin-bottom: 10px;
   background: none;
   border: 0;
-  color: #2c6eaa;
+  color: var(--workspace-accent);
   font-size: 13px;
   cursor: pointer;
 }
 
 .back-link:hover {
-  color: #15558f;
+  color: #104d48;
 }
 
 .content-heading-main {
@@ -889,7 +989,7 @@ onMounted(() => load())
 
 .meta-dot {
   margin: 0 4px;
-  color: #aab7c6;
+  color: #64788a;
 }
 
 .content-heading-tags {
@@ -904,7 +1004,7 @@ onMounted(() => load())
   align-items: baseline;
   gap: 6px;
   margin-top: 7px;
-  color: #72859a;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -936,12 +1036,13 @@ onMounted(() => load())
   gap: 18px;
   padding: 16px 20px;
   margin-bottom: 16px;
+  background: linear-gradient(115deg, #fff 50%, #eef8f4);
 }
 
 .study-progress-copy span,
 .study-progress-score span {
   display: block;
-  color: #6e8296;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -967,7 +1068,7 @@ onMounted(() => load())
   top: 84px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  max-block-size: calc(100vh - 104px);
+  max-block-size: calc(100dvh - 104px);
   min-inline-size: 0;
 }
 
@@ -975,6 +1076,7 @@ onMounted(() => load())
   overflow: auto;
   overscroll-behavior: contain;
   padding-bottom: 10px;
+  scrollbar-width: thin;
 }
 
 .outline-toggle {
@@ -984,33 +1086,46 @@ onMounted(() => load())
 .outline-heading {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   padding: 17px 17px 12px;
-  border-bottom: 1px solid #edf2f8;
+  border-bottom: 1px solid var(--surface-border);
+  background: #f6f9fa;
 }
 
 .outline-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin: 0;
   color: #203f5c;
   font-size: 15px;
 }
 
+.outline-heading h2 .el-icon,
+.outline-toggle > .el-icon:first-child {
+  color: var(--workspace-accent);
+}
+
 .outline-heading span {
-  color: #8494a5;
+  color: #64788a;
   font-size: 11px;
 }
 
 .outline-chapter {
-  padding: 10px 10px 0;
+  padding: 12px 10px 0;
+}
+
+.outline-chapter + .outline-chapter {
+  border-top: 1px solid #eaf0f3;
 }
 
 .outline-chapter h3 {
   margin: 6px 7px;
   overflow-wrap: anywhere;
-  color: #57708a;
-  font-size: 12px;
-  font-weight: 600;
+  color: #29495d;
+  font-size: 13px;
+  font-weight: 650;
   letter-spacing: 0.02em;
 }
 
@@ -1033,20 +1148,20 @@ onMounted(() => load())
 }
 
 .outline-section-title small {
-  color: #6c7c8b;
+  color: #56697c;
   white-space: nowrap;
 }
 
 .outline-resource {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   width: 100%;
-  min-block-size: 40px;
+  min-block-size: 49px;
   padding: 7px 8px;
   background: none;
-  border: 0;
-  border-radius: 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   color: #526a81;
   font-size: 12px;
   text-align: left;
@@ -1054,34 +1169,78 @@ onMounted(() => load())
 }
 
 .outline-resource:hover {
-  background: #f0f5fb;
+  background: #f0f6f5;
 }
 
 .outline-resource.active {
-  background: #e8f2fd;
-  color: #1c5a92;
+  border-color: #d3e9e0;
+  background: #e7f4ee;
+  color: #145a50;
   font-weight: 600;
 }
 
-.outline-resource-name {
+.outline-resource:focus-visible {
+  outline-offset: -2px;
+}
+
+.outline-resource:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.outline-resource-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #edf2f5;
+  color: #45667a;
+  font-size: 15px;
+}
+
+.outline-resource.active .outline-resource-icon {
+  background: #d7ede3;
+  color: var(--workspace-accent);
+}
+
+.outline-resource-copy {
+  display: grid;
+  gap: 3px;
   flex: 1;
+  min-inline-size: 0;
+}
+
+.outline-resource-name {
   overflow-wrap: anywhere;
 }
 
 .outline-resource small {
-  color: #8a9bab;
-  font-size: 10px;
+  color: #56697c;
+  font-size: 11px;
+  font-weight: 400;
   white-space: nowrap;
 }
 
 .done-icon {
-  color: #3b9d72;
+  flex: none;
+  color: var(--workspace-accent);
+  font-size: 15px;
+}
+
+.outline-in-progress {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a87324;
 }
 
 .outline-empty {
   padding: 0 8px;
   margin: 4px 0;
-  color: #9aa8b5;
+  color: #5d6f80;
   font-size: 11px;
 }
 
@@ -1116,7 +1275,7 @@ onMounted(() => load())
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  color: #7a8c9e;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -1129,9 +1288,21 @@ onMounted(() => load())
 .resource-view-heading h2 {
   margin: 9px 0 0;
   color: #193a59;
-  font-size: 21px;
+  font-size: clamp(20px, 2.2vw, 26px);
   overflow-wrap: anywhere;
   scroll-margin-block-start: 84px;
+}
+
+.resource-view-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  flex: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .resource-body {
@@ -1154,7 +1325,7 @@ onMounted(() => load())
 }
 
 .muted-text {
-  color: #8092a4;
+  color: #56697c;
   font-size: 13px;
 }
 
@@ -1182,7 +1353,7 @@ onMounted(() => load())
 }
 
 .question-heading span {
-  color: #7f91a2;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -1264,7 +1435,7 @@ onMounted(() => load())
 .question-title small {
   display: block;
   margin-top: 3px;
-  color: #8999a8;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -1301,13 +1472,13 @@ onMounted(() => load())
 }
 
 .option-letter {
-  color: #8698a9;
+  color: #56697c;
   font-weight: 700;
 }
 
 .correct-label {
   margin-left: auto;
-  color: #2c9666;
+  color: #12735f;
   font-size: 11px;
   white-space: nowrap;
 }
@@ -1385,12 +1556,75 @@ onMounted(() => load())
 }
 
 .record-hint {
-  color: #74879b;
+  color: #56697c;
   font-size: 12px;
 }
 
+.resource-pagination {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--surface-border);
+}
+
+.resource-page-button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-block-size: 60px;
+  padding: 9px 12px;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  background: #f7fafb;
+  color: #264558;
+  text-align: left;
+}
+
+.resource-page-button.next-resource {
+  grid-column: 2;
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.resource-page-button:hover:not(:disabled) {
+  background: #ecf7f1;
+  border-color: #beddd1;
+}
+
+.resource-page-button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.resource-page-button .el-icon {
+  flex: none;
+  color: var(--workspace-accent);
+}
+
+.resource-page-button span {
+  display: grid;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.resource-page-button small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.resource-page-button strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
 .empty-hint {
-  color: #71859a;
+  color: #56697c;
   font-size: 13px;
 }
 
@@ -1410,12 +1644,14 @@ onMounted(() => load())
   }
 
   .content-layout {
-    grid-template-columns: minmax(0, 1fr);
+    display: block;
   }
 
   .content-outline {
-    position: static;
+    top: 68px;
+    z-index: 12;
     max-block-size: none;
+    margin-bottom: 14px;
   }
 
   .outline-heading {
@@ -1430,13 +1666,17 @@ onMounted(() => load())
     padding: 10px 15px;
     border: 0;
     border-radius: inherit;
-    background: transparent;
+    background: #fff;
     color: var(--el-text-color-primary);
     font-size: 14px;
     text-align: left;
   }
 
-  .outline-toggle span {
+  .outline-toggle:focus-visible {
+    outline-offset: -3px;
+  }
+
+  .outline-toggle .outline-position {
     margin-inline-start: auto;
     color: var(--el-text-color-regular);
     font-size: 12px;
@@ -1452,8 +1692,23 @@ onMounted(() => load())
 
   .outline-navigation.outline-open {
     display: block;
-    max-block-size: min(55vh, 24rem);
+    max-block-size: min(52dvh, 24rem);
     border-top: 1px solid var(--el-border-color-lighter);
+  }
+
+  .resource-view-index {
+    display: none;
+  }
+
+  .resource-view-heading h2,
+  .lecture-preview {
+    scroll-margin-block-start: 136px;
+  }
+}
+
+@media (max-width: 800px) {
+  .content-outline {
+    top: 62px;
   }
 }
 
@@ -1506,6 +1761,20 @@ onMounted(() => load())
 
   .resource-actions :deep(.el-button) {
     min-block-size: 42px;
+    margin-left: 0;
+  }
+
+  .resource-pagination {
+    gap: 8px;
+  }
+
+  .resource-page-button {
+    gap: 6px;
+    padding-inline: 8px;
+  }
+
+  .resource-page-button:only-child {
+    grid-column: 1 / -1;
   }
 }
 </style>

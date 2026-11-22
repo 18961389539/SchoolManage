@@ -283,7 +283,6 @@ onMounted(load)
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">教学中心 / 试卷编制</div>
       <h1>试卷管理</h1>
       <p>从题库挑选题目组成试卷并调整分值；重命名不影响已引用试卷的考试。</p>
     </div>
@@ -603,7 +602,7 @@ onMounted(load)
 <style scoped>
 .paper-description {
   margin: 4px 0 0;
-  color: #718397;
+  color: #5d6f80;
   font-size: 12px;
   line-height: 1.45;
   display: -webkit-box;
@@ -636,7 +635,7 @@ onMounted(load)
 }
 
 .summary-label {
-  color: #7d8fa2;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -660,14 +659,14 @@ onMounted(load)
 
 .paper-option-line {
   margin: 4px 0 0;
-  color: #7c8fa3;
+  color: #56697c;
   font-size: 12px;
   line-height: 1.5;
 }
 
 .paper-answer-line {
   margin: 4px 0 0;
-  color: #4d8477;
+  color: #12735f;
   font-size: 12px;
 }
 
@@ -677,7 +676,7 @@ onMounted(load)
   align-items: center;
   gap: 8px;
   margin-top: 18px;
-  color: #718497;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -687,7 +686,7 @@ onMounted(load)
 
 .picker-existing {
   margin: 4px 0 0;
-  color: #b08a4a;
+  color: #94610f;
   font-size: 12px;
 }
 </style>

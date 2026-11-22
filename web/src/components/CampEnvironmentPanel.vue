@@ -149,7 +149,7 @@ function openTerminal(device: { id: string; name: string }) {
   align-items: center;
   flex-wrap: wrap;
   gap: 9px;
-  color: #6f8498;
+  color: #56697c;
   font-size: 12px;
 }
 
@@ -171,7 +171,7 @@ function openTerminal(device: { id: string; name: string }) {
 
 .environment-hint {
   margin: 0;
-  color: #8494a5;
+  color: #64788a;
   font-size: 12px;
 }
 </style>

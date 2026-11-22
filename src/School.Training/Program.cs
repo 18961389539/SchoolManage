@@ -193,7 +193,7 @@ app.MapPost("/api/auth/login", async (LoginRequest body, HttpContext ctx, School
     var user = await db.Users.SingleOrDefaultAsync(x => x.UserName == body.UserName.Trim().ToLowerInvariant(), ctx.RequestAborted);
     if (!CredentialVerification.TryVerify(hasher, user, body.Password, out var authenticated))
     { Audit.Add(db, ctx, "登录失败", body.UserName.Length > 64 ? body.UserName[..64] : body.UserName); await db.SaveChangesAsync(ctx.RequestAborted); return Results.Json(new { message = "账号或密码不正确" }, statusCode: 401); }
-    await Session.SignIn(ctx, authenticated); db.Audits.Add(new AuditEntry { UserName = authenticated.UserName, Action = "登录", Target = authenticated.Id }); await db.SaveChangesAsync(ctx.RequestAborted);
+    await Session.SignIn(ctx, authenticated); db.Audits.Add(new AuditEntry { UserName = authenticated.UserName, Action = "登录", Target = authenticated.UserName }); await db.SaveChangesAsync(ctx.RequestAborted);
     return Results.Ok(Session.Response(ctx, authenticated, antiforgery));
 }).RequireRateLimiting("login");
 var api = app.MapGroup("/api").RequireAuthorization();
@@ -204,7 +204,7 @@ api.MapGet("/auth/me", async (HttpContext ctx, SchoolDbContext db, IAntiforgery 
 api.MapPost("/auth/logout", async (HttpContext ctx, SchoolDbContext db, SimulationSessions sessions) =>
 {
     var user = await db.Users.FindAsync([ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)], ctx.RequestAborted);
-    if (user != null) { user.SecurityStamp = Guid.NewGuid().ToString("N"); Audit.Add(db, ctx, "退出登录", user.Id); await db.SaveChangesAsync(ctx.RequestAborted); sessions.RevokeUser(user.Id); }
+    if (user != null) { user.SecurityStamp = Guid.NewGuid().ToString("N"); Audit.Add(db, ctx, "退出登录", user.UserName); await db.SaveChangesAsync(ctx.RequestAborted); sessions.RevokeUser(user.Id); }
     await ctx.SignOutAsync(); return Results.Ok(new { message = "已退出登录，终端会话已释放" });
 });
 api.MapPost("/auth/password", async (PasswordRequest body, HttpContext ctx, SchoolDbContext db, IPasswordHasher<AppUser> hasher, IAntiforgery antiforgery, SimulationSessions sessions) =>
@@ -214,7 +214,7 @@ api.MapPost("/auth/password", async (PasswordRequest body, HttpContext ctx, Scho
     var error = Validation.Password(body.NewPassword); if (error != null) return Results.BadRequest(new { message = error });
     if (body.CurrentPassword == body.NewPassword) return Results.BadRequest(new { message = "新密码不能与当前密码相同" });
     user.PasswordHash = hasher.HashPassword(user, body.NewPassword); user.SecurityStamp = Guid.NewGuid().ToString("N"); user.MustChangePassword = false;
-    Audit.Add(db, ctx, "修改密码", user.Id); await db.SaveChangesAsync(ctx.RequestAborted); sessions.RevokeUser(user.Id); await Session.SignIn(ctx, user); return Results.Ok(Session.Response(ctx, user, antiforgery));
+    Audit.Add(db, ctx, "修改密码", user.UserName); await db.SaveChangesAsync(ctx.RequestAborted); sessions.RevokeUser(user.Id); await Session.SignIn(ctx, user); return Results.Ok(Session.Response(ctx, user, antiforgery));
 });
 api.MapAcademicEndpoints(); api.MapImportEndpoints(); api.MapInfrastructureEndpoints(); api.MapOperationsEndpoints(); api.MapTeachingEndpoints(); api.MapExamQuestionEndpoints(); api.MapExamManagementEndpoints(); api.MapExamStudentEndpoints();
 api.MapCourseFileEndpoints(); api.MapTeachingImportEndpoints(); api.MapTeachingPreviewEndpoints(); api.MapCampEndpoints();

@@ -1,7 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Plus, User, School, Monitor, Connection, Document, ArrowRight, Cpu } from '@element-plus/icons-vue'
+import {
+  ArrowRight,
+  Connection,
+  Cpu,
+  DataAnalysis,
+  FolderOpened,
+  Monitor,
+  Plus,
+  Refresh,
+  School,
+  User,
+  UserFilled
+} from '@element-plus/icons-vue'
 import { api, post, messageOf, dateTime } from '../api'
 import type { AdminHomeResponse } from '../analytics'
 import type { BootstrapResult, DashboardResponse } from '../types'
@@ -14,10 +26,16 @@ const loading = ref(false),
   data = ref<DashboardResponse | null>(null)
 const stats = [
   { key: 'students', label: '学生档案', icon: User, route: 'students', tone: 'blue' },
-  { key: 'teachers', label: '教师档案', icon: User, route: 'teachers', tone: 'teal' },
+  { key: 'teachers', label: '教师档案', icon: UserFilled, route: 'teachers', tone: 'teal' },
   { key: 'classes', label: '教学班级', icon: School, route: 'classes', tone: 'indigo' },
   { key: 'devices', label: '实训设备', icon: Monitor, route: 'devices', tone: 'amber' }
 ] as const
+const quickActions = [
+  { label: '学生档案', description: '新增账号与批量导入', icon: User, route: 'students' },
+  { label: '设备终端', description: '查看设备与连接状态', icon: Monitor, route: 'devices' },
+  { label: '备份与恢复', description: '备份和恢复平台数据', icon: FolderOpened, route: 'backups' },
+  { label: '服务器信息', description: '查看主机运行状态', icon: Cpu, route: 'server' }
+]
 const resourceStats = computed(() => [
   { label: '专业目录', value: data.value?.counts.professions, route: 'professions' },
   { label: '机柜资源', value: data.value?.counts.cabinets, route: 'cabinets' },
@@ -41,6 +59,10 @@ const overviewMetrics = computed(() => {
     { label: '开放课堂', value: overview.openClassrooms, unit: `/ ${overview.totalClassrooms} 个` },
     { label: '资源达标率', value: overview.resourcePassRate, unit: '%' }
   ]
+})
+const isFresh = computed(() => {
+  const counts = data.value?.counts
+  return !!counts && !counts.students && !counts.teachers && !counts.classes && !counts.devices && !counts.professions
 })
 
 async function load() {
@@ -85,78 +107,99 @@ onMounted(load)
   <section class="page-heading dashboard-heading">
     <div>
       <h1>控制台</h1>
-      <p v-if="data?.schoolName">{{ data.schoolName }}</p>
     </div>
     <el-button :icon="Refresh" :loading="loading" @click="load">刷新数据</el-button>
   </section>
   <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="section-notice" />
   <el-skeleton v-if="loading && !data" :rows="4" animated class="dashboard-skeleton surface" />
-  <section v-if="admin" class="overview-panel surface" aria-labelledby="overview-heading">
-    <div class="overview-today">
-      <div class="overview-header">
-        <h2 id="overview-heading">教学运行概况</h2>
-        <time v-if="updatedAt" :datetime="updatedAt">更新于 {{ dateTime(updatedAt) }}</time>
+
+  <div v-if="data" class="stat-grid" role="group" aria-label="组织与设备">
+    <button v-for="stat in stats" :key="stat.key" type="button" class="stat-card" @click="emit('navigate', stat.route)">
+      <span class="stat-icon" :class="stat.tone" aria-hidden="true">
+        <el-icon :size="20"><component :is="stat.icon" /></el-icon>
+      </span>
+      <span class="stat-copy">
+        <span>{{ stat.label }}</span>
+        <strong>{{ data.counts[stat.key] }}</strong>
+      </span>
+      <el-icon class="stat-arrow" aria-hidden="true"><ArrowRight /></el-icon>
+    </button>
+  </div>
+
+  <div class="dashboard-columns dashboard-primary" :class="{ 'has-overview': admin }">
+    <section v-if="admin" class="overview-panel surface" aria-labelledby="overview-heading">
+      <div class="overview-today">
+        <div class="overview-header">
+          <div class="overview-title">
+            <span class="overview-icon" aria-hidden="true"
+              ><el-icon><DataAnalysis /></el-icon
+            ></span>
+            <h2 id="overview-heading">教学运行概况</h2>
+          </div>
+          <time v-if="updatedAt" :datetime="updatedAt">更新于 {{ dateTime(updatedAt) }}</time>
+        </div>
+        <dl class="overview-metrics">
+          <div v-for="metric in todayMetrics" :key="metric.label">
+            <dt>{{ metric.label }}</dt>
+            <dd>
+              {{ metric.value }} <small>{{ metric.unit }}</small>
+            </dd>
+          </div>
+        </dl>
       </div>
-      <dl class="overview-metrics">
-        <div v-for="metric in todayMetrics" :key="metric.label">
+      <dl class="overview-totals">
+        <div v-for="metric in overviewMetrics" :key="metric.label">
           <dt>{{ metric.label }}</dt>
           <dd>
             {{ metric.value }} <small>{{ metric.unit }}</small>
           </dd>
         </div>
       </dl>
-    </div>
-    <dl class="overview-totals">
-      <div v-for="metric in overviewMetrics" :key="metric.label">
-        <dt>{{ metric.label }}</dt>
-        <dd>
-          {{ metric.value }} <small>{{ metric.unit }}</small>
-        </dd>
-      </div>
-    </dl>
-  </section>
+    </section>
 
-  <div v-if="data" class="stat-grid" aria-label="组织与设备">
-    <button v-for="stat in stats" :key="stat.key" class="stat-card" @click="emit('navigate', stat.route)">
-      <div class="stat-card-top">
-        <span>{{ stat.label }}</span><span class="stat-icon" :class="stat.tone"
-          ><el-icon :size="22"><component :is="stat.icon" /></el-icon
-        ></span>
-      </div>
-      <div class="stat-value">
-        <strong>{{ data.counts[stat.key] }}</strong>
-        <el-icon aria-hidden="true"><ArrowRight /></el-icon>
-      </div>
-    </button>
-  </div>
-  <div class="dashboard-columns dashboard-actions">
-    <section class="surface">
+    <section class="surface dashboard-shortcuts" aria-labelledby="quick-actions-heading">
       <div class="card-heading">
-        <div>
-          <h2>常用操作</h2>
-        </div>
+        <h2 id="quick-actions-heading">常用操作</h2>
       </div>
       <div class="quick-actions">
-        <button @click="emit('navigate', 'students')">
-          <span class="quick-icon"><User /></span>
-          <div><strong>学生档案</strong><span>新增账号与批量导入</span></div></button
-        ><button @click="emit('navigate', 'devices')">
-          <span class="quick-icon"><Monitor /></span>
-          <div><strong>设备终端</strong><span>查看资源与远程连接</span></div></button
-        ><button @click="emit('navigate', 'backups')">
-          <span class="quick-icon"><Document /></span>
-          <div><strong>备份与恢复</strong><span>保护当前业务数据</span></div></button
-        ><button @click="emit('navigate', 'server')">
-          <span class="quick-icon"><Cpu /></span>
-          <div><strong>服务器信息</strong><span>查看真实主机状态</span></div>
-        </button>
-      </div>
-      <div class="resource-summary">
-        <button v-for="item in resourceStats" :key="item.route" @click="emit('navigate', item.route)">
-          <strong>{{ item.value ?? '—' }}</strong><span>{{ item.label }}</span>
+        <button
+          v-for="action in quickActions"
+          :key="action.route"
+          type="button"
+          @click="emit('navigate', action.route)"
+        >
+          <span class="quick-icon" aria-hidden="true"><component :is="action.icon" /></span>
+          <span class="quick-action-copy">
+            <strong>{{ action.label }}</strong><small>{{ action.description }}</small>
+          </span>
+          <el-icon class="quick-action-arrow" aria-hidden="true"><ArrowRight /></el-icon>
         </button>
       </div>
     </section>
+  </div>
+
+  <section v-if="isFresh" class="start-guide surface" aria-labelledby="start-guide-heading">
+    <div class="start-guide-copy">
+      <h2 id="start-guide-heading">首次使用</h2>
+      <p>从导入学生、准备实训资源和组课开始。</p>
+    </div>
+    <ol class="start-steps">
+      <li>
+        <div><strong>导入学生与班级</strong><span>CSV 批量导入，或逐个新增账号。</span></div>
+        <el-button link type="primary" @click="emit('navigate', 'students')">去导入</el-button>
+      </li>
+      <li>
+        <div><strong>创建模拟环境</strong><span>生成机柜、设备、节点与虚拟机。</span></div>
+        <el-button link type="primary" :loading="creating" @click="createSimulation">创建</el-button>
+      </li>
+      <li>
+        <div><strong>发布课程并开课</strong><span>课程发布后即可用于课堂。</span></div>
+        <el-button link type="primary" @click="emit('navigate', 'courses')">去组课</el-button>
+      </li>
+    </ol>
+  </section>
+
+  <div class="dashboard-columns dashboard-resources">
     <section class="surface simulation-card">
       <div class="card-heading">
         <div>
@@ -168,6 +211,14 @@ onMounted(load)
       <div class="simulation-actions">
         <el-button type="primary" :icon="Plus" :loading="creating" @click="createSimulation">创建模拟环境</el-button>
         <el-button text @click="emit('navigate', 'devices')">查看已有设备</el-button>
+      </div>
+    </section>
+    <section class="surface dashboard-inventory" aria-labelledby="inventory-heading">
+      <div class="card-heading"><h2 id="inventory-heading">资源统计</h2></div>
+      <div class="resource-summary">
+        <button v-for="item in resourceStats" :key="item.route" type="button" @click="emit('navigate', item.route)">
+          <span>{{ item.label }}</span><strong>{{ item.value ?? '—' }}</strong>
+        </button>
       </div>
     </section>
   </div>
@@ -228,7 +279,7 @@ onMounted(load)
       </div>
       <el-button text type="primary" @click="emit('navigate', 'audits')">全部日志</el-button>
     </div>
-    <el-table :data="data.recentAudits || []" empty-text="暂无操作记录"
+    <el-table :data="data.recentAudits || []" class="recent-table" empty-text="暂无操作记录"
       ><el-table-column label="时间（北京时间）" width="220"
         ><template #default="{ row }">{{ dateTime(row.at) }}</template></el-table-column
       ><el-table-column prop="userName" label="账号" min-width="130" /><el-table-column
@@ -236,42 +287,367 @@ onMounted(load)
         label="操作"
         min-width="180" /><el-table-column prop="target" label="目标" min-width="220" show-overflow-tooltip
     /></el-table>
+    <p class="scroll-hint">左右滑动表格可查看完整列</p>
   </section>
 </template>
 
 <style scoped>
+.dashboard-heading h1 {
+  margin: 0;
+  font-size: clamp(26px, 3vw, 34px);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  min-height: 94px;
+  padding: 15px 16px;
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--surface-shadow);
+  text-align: left;
+  color: #1b3548;
+}
+
+.stat-card:hover,
+.quick-actions > button:hover,
+.resource-summary > button:hover {
+  border-color: #a9cec4;
+  background: #f4faf8;
+}
+
+.stat-icon,
+.quick-icon,
+.overview-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 10px;
+}
+
+.stat-icon {
+  width: 43px;
+  height: 43px;
+}
+
+.stat-icon.blue {
+  background: #e9f1ff;
+  color: #3264a0;
+}
+
+.stat-icon.teal {
+  background: #e2f3ed;
+  color: #1d7564;
+}
+
+.stat-icon.indigo {
+  background: #f0ecfc;
+  color: #6755a1;
+}
+
+.stat-icon.amber {
+  background: #fbf0df;
+  color: #945f23;
+}
+
+.stat-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stat-copy span,
+.resource-summary span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.stat-copy strong {
+  font-size: 27px;
+  line-height: 1.1;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.stat-arrow,
+.quick-action-arrow {
+  color: var(--workspace-accent);
+  font-size: 14px;
+}
+
+.dashboard-columns {
+  display: grid;
+  gap: 20px;
+}
+
+.dashboard-primary.has-overview {
+  grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
+}
+
+.dashboard-resources,
+.admin-panels {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 20px;
+}
+
+.dashboard-shortcuts .card-heading,
+.dashboard-inventory .card-heading {
+  padding-bottom: 12px;
+}
+
+.quick-actions {
+  display: grid;
+  gap: 5px;
+  padding: 0 15px 14px;
+}
+
+.quick-actions > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #fff;
+  text-align: left;
+}
+
+.quick-icon {
+  width: 36px;
+  height: 36px;
+  background: #eaf4f1;
+  color: var(--workspace-accent);
+}
+
+.quick-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.quick-action-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.quick-action-copy strong {
+  color: #264155;
+  font-size: 14px;
+}
+
+.quick-action-copy small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.resource-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  padding: 0 24px 22px;
+}
+
+.resource-summary > button {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid var(--surface-border);
+  border-radius: 9px;
+  background: #f8fafb;
+  text-align: left;
+}
+
+.resource-summary strong {
+  font-size: 23px;
+  color: #234256;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.simulation-card {
+  padding-bottom: 22px;
+  background: linear-gradient(135deg, #fff 50%, #eaf5f0);
+}
+
+.simulation-card .card-heading {
+  padding-bottom: 12px;
+}
+
+.simulation-card p {
+  margin: 0 24px 15px;
+  font-size: 14px;
+}
+
+.simulation-icon {
+  color: var(--workspace-accent);
+}
+
+.simulation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 0 24px;
+}
+
+.simulation-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
+.scroll-hint {
+  display: none;
+}
+.start-guide {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 10px 28px;
+  padding: 20px 24px;
+  margin-top: 20px;
+}
+
+.start-guide h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+
+.start-guide p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.start-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.start-steps li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 12px 14px;
+  border: 1px solid #e8eef4;
+  border-radius: 9px;
+  background: #f9fbfd;
+}
+
+.start-steps li > div {
+  display: grid;
+  gap: 3px;
+}
+
+.start-steps strong {
+  color: #2b4257;
+  font-size: 13px;
+}
+
+.start-steps span {
+  color: #64788a;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.start-steps .el-button {
+  min-height: 0;
+  padding: 0;
+}
+
+@media (max-width: 1000px) {
+  .start-guide {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .start-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .start-steps li {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 12px;
+  }
+
+  .start-steps li > div {
+    display: block;
+  }
+
+  .start-steps span {
+    display: none;
+  }
+}
+
 .dashboard-skeleton {
   margin-bottom: 20px;
   padding: 26px;
 }
 
 .overview-panel {
-  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  border-color: #17454a;
+  color: #fff;
+  background: var(--workspace-hero);
 }
 
 .overview-today {
-  padding: 22px 24px 20px;
-  background: var(--workspace-hero);
-  color: #fff;
+  flex: 1;
+  padding: 22px 24px;
 }
 
 .overview-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 6px 14px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+}
+
+.overview-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.overview-icon {
+  width: 35px;
+  height: 35px;
+  background: #a2e7d92a;
+  color: #b8ebdf;
+  font-size: 19px;
 }
 
 .overview-header h2 {
   margin: 0;
   color: #f5fbff;
-  font-size: 19px;
+  font-size: 20px;
 }
 
 .overview-header time,
-.overview-metrics dt {
+.overview-metrics dt,
+.overview-totals dt {
   color: var(--workspace-on-hero);
   font-size: 12px;
 }
@@ -288,7 +664,7 @@ onMounted(load)
 }
 
 .overview-metrics > div {
-  padding: 12px 14px;
+  padding: 13px 14px;
   border: 1px solid #d6f3f333;
   border-radius: 9px;
   background: #dcfbfa13;
@@ -296,7 +672,7 @@ onMounted(load)
 
 .overview-metrics dd,
 .overview-totals dd {
-  margin: 5px 0 0;
+  margin: 6px 0 0;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -313,33 +689,25 @@ onMounted(load)
   font-weight: 500;
 }
 
-.overview-metrics small {
+.overview-metrics small,
+.overview-totals small {
   color: var(--workspace-on-hero);
 }
 
 .overview-totals {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding: 15px 24px;
-}
-
-.overview-totals dt,
-.overview-totals small {
-  color: var(--text-muted);
-  font-size: 12px;
+  padding: 16px 24px 18px;
+  border-top: 1px solid #d6f3f333;
+  background: #0a303568;
 }
 
 .overview-totals dd {
-  color: #203b4d;
+  color: #f5fbff;
   font-size: 20px;
 }
 
 .overview-totals > div {
   min-width: 0;
-}
-
-.dashboard-actions,
-.admin-panels {
-  margin-top: 18px;
 }
 
 .ranking-list {
@@ -430,7 +798,31 @@ onMounted(load)
   font-size: 12px;
 }
 
+@media (max-width: 1050px) {
+  .dashboard-primary.has-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 950px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 640px) {
+  .scroll-hint {
+    display: block;
+    margin: 0;
+    padding: 0 16px 14px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
   .dashboard-heading {
     display: flex;
     align-items: flex-start;
@@ -440,6 +832,36 @@ onMounted(load)
   .dashboard-heading > .el-button {
     flex: none;
     margin-top: 3px;
+  }
+
+  .dashboard-resources,
+  .admin-panels,
+  .quick-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stat-grid {
+    gap: 10px;
+  }
+
+  .stat-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px;
+    min-height: 76px;
+    padding: 10px;
+  }
+
+  .stat-icon {
+    width: 35px;
+    height: 35px;
+  }
+
+  .stat-copy strong {
+    font-size: 23px;
+  }
+
+  .stat-arrow {
+    display: none;
   }
 
   .overview-today {
@@ -456,7 +878,7 @@ onMounted(load)
   }
 
   .overview-metrics > div {
-    padding: 9px 8px;
+    padding: 10px 7px;
   }
 
   .overview-totals {
@@ -465,8 +887,14 @@ onMounted(load)
   }
 
   .ranking-list,
-  .teacher-activity {
+  .teacher-activity,
+  .resource-summary {
     padding-inline: 16px;
+  }
+
+  .simulation-card p,
+  .simulation-actions {
+    margin-inline: 19px;
   }
 }
 </style>

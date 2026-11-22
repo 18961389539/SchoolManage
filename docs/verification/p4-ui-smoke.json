@@ -1,0 +1,104 @@
+{
+  "phase": "P4",
+  "scope": [
+    "1.5 个人中心",
+    "1.6.8 实操监控",
+    "1.6.9 小组管理",
+    "1.6.10 分配机柜"
+  ],
+  "verifiedAt": "2026-11-20T15:33:40Z",
+  "environment": {
+    "backend": "http://127.0.0.1:5099 (isolated process, temporary data dir)",
+    "frontend": "http://127.0.0.1:5174 (vite production build served statically, /api reverse proxy to 5099, Host header preserved)",
+    "browser": "browser-use MCP in-app browser",
+    "browserLimitations": "The in-app browser surface was hidden, so screenshots were unavailable and CSS leave transitions never finished, leaving closed dialogs/drawers visually stuck. All assertions were made against DOM state and server side effects; pointer clicks were replaced with programmatic clicks.",
+    "devServer5173Untouched": true,
+    "accounts": {
+      "admin": "p4admin",
+      "teacher": "p4teacher1",
+      "student": "p4student2"
+    }
+  },
+  "checks": [
+    {
+      "id": "profile.load",
+      "result": "pass",
+      "detail": "个人中心标题与面包屑（个人空间 / 个人中心）正确；表单加载姓名、工号/内部编号、性别、手机号、邮箱；角色标签为管理员；账号安全卡片展示登录账号与资料范围。"
+    },
+    {
+      "id": "profile.save",
+      "result": "pass",
+      "detail": "将姓名改为“P4 管理员（改）”后保存，提示“个人信息已保存”，页头用户名经 profile-updated 事件即时更新；随后恢复原名并再次保存成功。"
+    },
+    {
+      "id": "teacher.groups.create",
+      "result": "pass",
+      "detail": "课堂管理 → 协作 → 小组管理：成员下拉显示本课堂 2 名学生（P4S001/P4S002）；创建“UI 验证一组”（备注 P4 浏览器验证创建、2 名成员），列表刷新为“共 1 个小组”，提示“小组已创建”。"
+    },
+    {
+      "id": "teacher.cabinets.assign",
+      "result": "pass",
+      "detail": "分配机柜对话框默认带入小组与案例实操题目“组态调试实操”；选择 P4-CAB-01、P4-CAB-02 后确认，抽屉列出两条分配记录（小组、题目、分配时间），提示“已分配 2 个机柜”。"
+    },
+    {
+      "id": "teacher.cabinets.test",
+      "result": "pass",
+      "detail": "勾选两条机柜分配后批量测试，结果对话框显示两个机柜均为“正常/模拟/模拟控制器响应正常”，提示“全部机柜连接正常”。"
+    },
+    {
+      "id": "teacher.monitor.active",
+      "result": "pass",
+      "detail": "实操监控（进行中）显示 P4 学生乙的组态调试实操会话，虚拟环境 P4-VM-02、节点 P4 实操节点 running，进行中 1 条。"
+    },
+    {
+      "id": "teacher.monitor.environment",
+      "result": "pass",
+      "detail": "环境对话框展示实训节点 P4 实操节点（已启用）、设备 P4 一号 PLC（P4-CAB-01）与 P4 二号 PLC（P4-CAB-02），虚拟机 P4-VM-01、P4-VM-02 均为运行中。"
+    },
+    {
+      "id": "teacher.monitor.restart",
+      "result": "pass",
+      "detail": "对进行中会话执行重启（确认框“重启”），提示“实操环境已重启”，监控行重启计数从 0 次变为 1 次。"
+    },
+    {
+      "id": "teacher.monitor.evidence",
+      "result": "pass",
+      "detail": "取证对话框上传两张 PNG（其中一张填写说明“P4 浏览器取证说明”），提示“截图已保存”；列表显示文件名、70 B、说明、取证人 P4 教师甲与时间，监控行截图计数变为 2 张。"
+    },
+    {
+      "id": "student.case.environment",
+      "result": "pass",
+      "detail": "学生 p4student2 进入 P4 机械 2401 课堂后自动选中案例实操资源“组态调试实操”（学习中），页面展示实操环境面板：节点、两台机柜设备与 P4-VM-01/P4-VM-02，页脚提供“结束实操/重开实操”。"
+    },
+    {
+      "id": "student.case.restart",
+      "result": "pass",
+      "detail": "学生端重开实操经确认后提示“实操环境已重新启动”，环境面板重新加载仍显示节点与虚拟机。"
+    },
+    {
+      "id": "student.case.complete",
+      "result": "pass",
+      "detail": "学生点击“结束实操”后提示“已标记为完成”，状态变为“已完成”，学习进度更新为 1/3（33%），页脚按钮变为禁用的“已完成”。"
+    },
+    {
+      "id": "teacher.monitor.afterComplete",
+      "result": "pass",
+      "detail": "教师端实时监控“进行中”归零（进行中 0 · 本次 0）；切换“全部记录”显示 2 条已结束会话，学生乙结束于 2026/11/20 23:32:39，重启 1 次、截图 2 张。"
+    }
+  ],
+  "relatedEvidence": {
+    "apiSuite": "docs/verification/p4-classroom-collaboration.json",
+    "backendTests": {
+      "framework": "dotnet test",
+      "passed": 206,
+      "failed": 0
+    },
+    "frontendChecks": {
+      "prettier": "clean",
+      "eslint": "0 problems",
+      "vue-tsc": "pass",
+      "viteBuild": "success"
+    }
+  },
+  "result": "pass"
+}

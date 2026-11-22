@@ -4,6 +4,7 @@ import { Refresh, Search } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
 import type { CampStaffReportRow, Paged } from '../types'
 import CampReportDrawer from './CampReportDrawer.vue'
+import TableEmpty from './TableEmpty.vue'
 
 const items = ref<CampStaffReportRow[]>([])
 const total = ref(0)
@@ -53,7 +54,6 @@ onMounted(load)
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">教学管理 / 岗位训练营</div>
       <h1>能力报告</h1>
       <p>查看学生岗位测评的成绩、技能维度表现与能力雷达。</p>
     </div>
@@ -80,7 +80,10 @@ onMounted(load)
   <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
 
   <section class="surface staff-table">
-    <el-table v-loading="loading" :data="items" row-key="attemptId" empty-text="暂无已完成的岗位测评报告">
+    <el-table v-loading="loading" :data="items" row-key="attemptId">
+      <template #empty>
+        <TableEmpty title="暂无能力报告" hint="学生提交岗位测评后，报告会显示在这里。" />
+      </template>
       <el-table-column label="学生" min-width="150">
         <template #default="{ row }">
           <div class="student-cell">
@@ -143,7 +146,7 @@ onMounted(load)
 }
 
 .staff-summary {
-  color: #6f8296;
+  color: #56697c;
   font-size: 13px;
 }
 
@@ -173,7 +176,7 @@ onMounted(load)
 }
 
 .student-cell span {
-  color: #8b9cad;
+  color: #56697c;
   font-size: 11px;
 }
 

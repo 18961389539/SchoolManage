@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { ElMessage } from 'element-plus'
-import { api, messageOf, passwordIssue, post, setLimits, setToken, type Row } from './api'
+import { api, messageOf, post, setLimits, setToken, type Row } from './api'
 import { createAuthForm } from './auth'
 import { entities } from './entities'
 import { findNavGroup, findNavItem, homeRoute, navigationFor } from './navigation'
@@ -56,7 +56,7 @@ const schoolName = ref('校内实训资源平台')
 const route = ref('dashboard')
 const routeParams = ref<Row>({})
 const sidebarOpen = ref(false)
-const mobileLayout = window.matchMedia('(max-width: 800px)')
+const mobileLayout = window.matchMedia('(max-width: 1000px)')
 const helpVisible = ref(false)
 const passwordVisible = ref(false)
 const passwordBusy = ref(false)
@@ -109,7 +109,7 @@ const currentTitle = computed(() => {
   return findNavItem(route.value, user.value?.role)?.label || '控制台'
 })
 function resolveGroup(key: string, role?: string): string {
-  const classroomGroup = role === 'Student' ? '学习空间' : '教学中心'
+  const classroomGroup = findNavGroup(role === 'Student' ? 'my-classrooms' : 'classrooms', role)?.label || '教学中心'
   const specialGroups: Record<string, string> = {
     profile: '个人空间',
     'classroom-content': classroomGroup,
@@ -123,11 +123,15 @@ function resolveGroup(key: string, role?: string): string {
 const currentGroup = computed(() => resolveGroup(route.value, user.value?.role))
 
 function readRoute() {
+  const wasOpen = sidebarOpen.value
   const [path, query] = location.hash.replace(/^#\/?/, '').split('?')
   route.value = availableRoutes.value.has(path || '') ? path! : homeKey.value
   routeParams.value = Object.fromEntries(new URLSearchParams(query || ''))
   sidebarOpen.value = false
-  void nextTick(() => window.scrollTo(0, 0))
+  void nextTick(() => {
+    window.scrollTo(0, 0)
+    if (wasOpen) focusMain()
+  })
 }
 
 function navigate(key: string, params?: Row) {
@@ -211,26 +215,8 @@ async function boot() {
 }
 
 async function authenticate() {
+  if (busy.value) return
   authError.value = ''
-  if (!authForm.userName.trim() || !authForm.password) {
-    authError.value = '请填写账号和密码'
-    return
-  }
-  if (!initialized.value) {
-    if (!authForm.schoolName.trim() || !authForm.displayName.trim()) {
-      authError.value = '请填写学校名称和管理员姓名'
-      return
-    }
-    const issue = passwordIssue(authForm.password)
-    if (issue) {
-      authError.value = issue
-      return
-    }
-    if (authForm.password !== authForm.confirmation) {
-      authError.value = '两次输入的密码不一致'
-      return
-    }
-  }
   busy.value = true
   try {
     const result = await post<SessionResponse>(
@@ -315,10 +301,16 @@ function dropdown(command: string) {
   else helpVisible.value = true
 }
 
+const documentTitle = computed(() => {
+  if (user.value) return currentTitle.value
+  if (startup.value || startupError.value) return ''
+  return initialized.value ? '登录' : '初始化实训平台'
+})
+
 watch(
-  currentTitle,
+  documentTitle,
   title => {
-    document.title = `${title} · 实训资源平台`
+    document.title = title ? `${title} · 实训资源平台` : '实训资源平台'
   },
   { immediate: true }
 )
@@ -360,12 +352,15 @@ onBeforeUnmount(() => {
       v-else-if="!user"
       :auth="authForm"
       :initialized="initialized"
+      :school-name="schoolName"
       :version="version"
       :busy="busy"
       :error="authError"
       @submit="authenticate"
+      @edit="authError = ''"
     />
     <div v-else class="app-layout">
+      <a class="skip-link" href="#main-content" :inert="sidebarOpen" @click.prevent="focusMain">跳到主要内容</a>
       <AppSidebar
         :open="sidebarOpen"
         :groups="navGroups"
@@ -378,7 +373,6 @@ onBeforeUnmount(() => {
         @help="openSidebarHelp"
       />
       <div class="main-frame" :inert="sidebarOpen">
-        <a class="skip-link" href="#main-content" @click.prevent="focusMain">跳到主要内容</a>
         <WorkspaceHeader
           :group="currentGroup"
           :title="currentTitle"
@@ -450,7 +444,7 @@ onBeforeUnmount(() => {
               :initial-search="routeParams.search"
               @navigate="navigate"
             />
-            <ResourcesOverviewPage v-else-if="route === 'resources-overview'" @navigate="navigate" />
+            <ResourcesOverviewPage v-else-if="route === 'resources-overview'" :role="user.role" @navigate="navigate" />
             <CampPositionsPage v-else-if="route === 'camp-positions' && isAdmin" />
             <MyCampPage v-else-if="route === 'my-camp' && isStudent" @navigate="navigate" />
             <CampTakingPage
@@ -494,7 +488,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .startup-hint {
   font-size: 12px;
-  color: #93a0ae;
+  color: #56697c;
   margin: 14px 0 0;
 }
 </style>

@@ -1,0 +1,73 @@
+{
+  "status": "passed-local-development-host",
+  "version": "0.1.0-p4",
+  "verifiedAtUtc": "2026-11-20T00:06:41.3882755Z",
+  "host": {
+    "edition": "Microsoft Windows 11 家庭版 中文版",
+    "build": "26300",
+    "elevated": false,
+    "cleanTargetMachine": false
+  },
+  "sha256": {
+    "SchoolTraining-0.1.0-p4-win-x64.zip": "a50a1f46297c7dcc564491a3200490b8774fd0e48bb6a665aacf2e346e90ce5c",
+    "SchoolTraining-0.1.0-p4-Setup.exe": "bfcfe2d6a93397c34bc47cd2d4f98190713570321559833306b67ef192035e5d"
+  },
+  "zipContents": {
+    "entries": 751,
+    "bundledWebAssets": 78,
+    "prohibitedPathPatternMatches": 0,
+    "containsReleaseMetadata": true,
+    "containsThirdPartyInventory": true
+  },
+  "releaseGate": {
+    "checks": 15,
+    "testedAssemblySha256": "918e2e30f57744ed5e68c1bda41677ad35fc54c09283bbb4920a50b079decf19",
+    "sameAssemblyExtractedFromZip": true
+  },
+  "installerPayloadValidation": {
+    "arguments": [
+      "--quiet",
+      "--validate-only"
+    ],
+    "exitCode": 0,
+    "schoolTrainingServicePresentBefore": false,
+    "schoolTrainingServicePresentAfter": false
+  },
+  "selfContainedProcess": {
+    "directlyLaunchedZipApphost": true,
+    "runtimeFrameworkVersion": "10.0.15",
+    "globalDotnetRootOverriddenWithMissingPath": true,
+    "packagedModules": [
+      "coreclr.dll",
+      "e_sqlite3.DLL",
+      "hostpolicy.dll"
+    ],
+    "versionFromStatus": "0.1.0-p4",
+    "schemaVersionFromStatus": 5,
+    "initializedAfterBrowserSetup": true,
+    "observedRemoteTcpEndpoints": [
+      "0.0.0.0:0"
+    ]
+  },
+  "browser": {
+    "engine": "Microsoft Edge headless",
+    "policy": "Only isolated loopback origin allowed through browser HTTP and WebSocket interception, with service workers blocked",
+    "flows": [
+      "initial administrator setup",
+      "load split assets",
+      "create built-in simulation",
+      "load simulated device list after reload"
+    ],
+    "sameOriginHttpRequests": 39,
+    "distinctBundledAssetsRequested": 15,
+    "observedWebSocketConnections": 0,
+    "attemptedExternalRequests": 0
+  },
+  "outstandingTargetMachineAcceptance": [
+    "Clean Win11 offline UAC installation, Program Files/ProgramData and LocalService ACL",
+    "SCM autostart after reboot and failure recovery",
+    "Cross-machine LAN DNS, trusted TLS certificate and inbound firewall policy",
+    "Upgrade of installed versions and rollback with original program, data and credentials",
+    "Installed service backup/restore, recovery on failed restore, uninstall retention and reinstall"
+  ]
+}

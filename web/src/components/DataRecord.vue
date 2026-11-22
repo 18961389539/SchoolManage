@@ -162,6 +162,27 @@ const entries = computed(() =>
       )
     : []
 )
+const technicalKeys = new Set([
+  'id',
+  'classId',
+  'professionId',
+  'nodeId',
+  'userId',
+  'personId',
+  'deviceTypeId',
+  'cabinetId',
+  'courseId',
+  'chapterId',
+  'sectionId',
+  'examId',
+  'paperId',
+  'positionId',
+  'attemptId',
+  'resourceId'
+])
+const isTechnicalKey = (key: string) => technicalKeys.has(key)
+const primaryEntries = computed(() => entries.value.filter(([key]) => !isTechnicalKey(key)))
+const technicalEntries = computed(() => entries.value.filter(([key]) => isTechnicalKey(key)))
 Object.assign(labels, {
   productAuthorizationCode: '产品授权码',
   assignedAt: '分配时间',
@@ -264,7 +285,7 @@ const scalar = (key: string, value: any) =>
   </div>
   <dl v-else-if="typeof data === 'object'" class="data-record">
     <div
-      v-for="[key, value] in entries"
+      v-for="[key, value] in primaryEntries"
       :key="key"
       class="data-record-entry"
       :class="{ 'nested-entry': value !== null && typeof value === 'object' }"
@@ -277,6 +298,19 @@ const scalar = (key: string, value: any) =>
           :unavailable-text="unavailableText"
         />
         <span v-else>{{ scalar(key, value) }}</span>
+      </dd>
+    </div>
+    <div v-if="technicalEntries.length" class="data-record-entry nested-entry technical-block">
+      <dt>技术信息</dt>
+      <dd>
+        <dl class="data-record technical-record">
+          <div v-for="[key, value] in technicalEntries" :key="key" class="data-record-entry">
+            <dt>{{ label(key) }}</dt>
+            <dd>
+              <span>{{ scalar(key, value) }}</span>
+            </dd>
+          </div>
+        </dl>
       </dd>
     </div>
   </dl>

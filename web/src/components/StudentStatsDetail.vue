@@ -305,7 +305,7 @@ function letters(indexes: number[]) {
 .detail-summary span {
   display: block;
   margin-bottom: 4px;
-  color: #72869a;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -324,7 +324,7 @@ function letters(indexes: number[]) {
 
 .detail-summary p {
   margin: 5px 0 0;
-  color: #8497a9;
+  color: #56697c;
   font-size: 10px;
 }
 
@@ -359,7 +359,7 @@ function letters(indexes: number[]) {
 
 .kind-item p {
   margin: 6px 0 0;
-  color: #8a9cad;
+  color: #56697c;
   font-size: 9px;
 }
 
@@ -370,7 +370,7 @@ function letters(indexes: number[]) {
 
 .resource-path {
   margin: 3px 0 0;
-  color: #8a9cad;
+  color: #56697c;
   font-size: 10px;
 }
 
@@ -398,7 +398,7 @@ function letters(indexes: number[]) {
 .attempt-head p,
 .case-head p {
   margin: 0;
-  color: #8497aa;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -457,7 +457,7 @@ function letters(indexes: number[]) {
 .question-title em {
   margin-left: auto;
   flex: none;
-  color: #8193a6;
+  color: #56697c;
   font-size: 10px;
   font-style: normal;
 }
@@ -467,14 +467,14 @@ function letters(indexes: number[]) {
   flex-wrap: wrap;
   gap: 8px 20px;
   margin: 8px 0 0;
-  color: #617a90;
+  color: #56697c;
   font-size: 11px;
 }
 
 .analysis {
   margin: 8px 0 0;
   padding-top: 8px;
-  color: #6f8497;
+  color: #56697c;
   font-size: 11px;
   line-height: 1.6;
   border-top: 1px dashed #e1e9f1;

@@ -4,6 +4,7 @@ import { Refresh, Search } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
 import type { CampStaffRecordRow, Paged } from '../types'
 import CampRecordDrawer from './CampRecordDrawer.vue'
+import TableEmpty from './TableEmpty.vue'
 
 const items = ref<CampStaffRecordRow[]>([])
 const total = ref(0)
@@ -53,7 +54,6 @@ onMounted(load)
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">教学管理 / 岗位训练营</div>
       <h1>测评记录</h1>
       <p>按学生查看岗位测评的作答明细、评分要点与自动判分结果。</p>
     </div>
@@ -80,7 +80,10 @@ onMounted(load)
   <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
 
   <section class="surface staff-table">
-    <el-table v-loading="loading" :data="items" row-key="attemptId" empty-text="暂无已完成的岗位测评记录">
+    <el-table v-loading="loading" :data="items" row-key="attemptId">
+      <template #empty>
+        <TableEmpty title="暂无测评记录" hint="学生完成岗位测评后，作答记录会显示在这里。" />
+      </template>
       <el-table-column label="学生" min-width="150">
         <template #default="{ row }">
           <div class="student-cell">
@@ -99,11 +102,9 @@ onMounted(load)
       <el-table-column label="开始时间" min-width="160">
         <template #default="{ row }">{{ dateTime(row.startedAt) }}</template>
       </el-table-column>
-      <el-table-column label="提交时间" min-width="160">
-        <template #default="{ row }">{{ dateTime(row.submittedAt) }}</template>
-      </el-table-column>
-      <el-table-column label="提交方式" width="130">
+      <el-table-column label="提交时间" min-width="185">
         <template #default="{ row }">
+          <div>{{ dateTime(row.submittedAt) }}</div>
           <el-tag v-if="row.autoSubmitted" size="small" type="warning" effect="plain">超时自动提交</el-tag>
           <el-tag v-else size="small" type="info" effect="plain">主动提交</el-tag>
         </template>
@@ -142,7 +143,7 @@ onMounted(load)
 }
 
 .staff-summary {
-  color: #6f8296;
+  color: #56697c;
   font-size: 13px;
 }
 
@@ -172,7 +173,7 @@ onMounted(load)
 }
 
 .student-cell span {
-  color: #8b9cad;
+  color: #56697c;
   font-size: 11px;
 }
 

@@ -79,7 +79,6 @@ onMounted(load)
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">个人空间 / 账号</div>
       <h1>个人中心</h1>
       <p>维护姓名、学号/工号与联系方式；登录密码可随时在账号安全中修改。</p>
     </div>
@@ -198,7 +197,7 @@ onMounted(load)
 
 .profile-card-heading p {
   margin: 4px 0 0;
-  color: #7a8d9f;
+  color: #64788a;
   font-size: 12px;
 }
 
@@ -214,19 +213,21 @@ onMounted(load)
   font-weight: 700;
 }
 
+.profile-card .entity-form {
+  display: block;
+}
 .profile-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 16px;
 }
-
 .profile-wide {
   grid-column: 1 / -1;
 }
 
 .field-help {
   margin: 0;
-  color: #8494a5;
+  color: #64788a;
   font-size: 12px;
 }
 
@@ -247,7 +248,7 @@ onMounted(load)
 
 .profile-side p {
   margin: 0 0 16px;
-  color: #6f8498;
+  color: #56697c;
   font-size: 13px;
   line-height: 1.7;
 }
@@ -266,7 +267,7 @@ onMounted(load)
 }
 
 .profile-meta dt {
-  color: #8494a5;
+  color: #64788a;
 }
 
 .profile-meta dd {

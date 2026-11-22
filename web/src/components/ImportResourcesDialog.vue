@@ -181,7 +181,7 @@ async function confirmImport() {
 
 .source-sub {
   margin-top: 2px;
-  color: #7b8da0;
+  color: #56697c;
   font-size: 11px;
 }
 </style>

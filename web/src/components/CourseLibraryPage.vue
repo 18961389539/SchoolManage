@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { Delete, EditPen, Plus, Refresh, Search, UploadFilled, View } from '@element-plus/icons-vue'
+import { Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
 import { courseStatusOptions, courseTypeOptions, durationText, labelOf } from '../teaching'
 import type { CoreCourseSeries, CourseSummary, Paged } from '../types'
 import CourseTreeEditor from './CourseTreeEditor.vue'
+import TableEmpty from './TableEmpty.vue'
 
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>]; 'activation-changed': [] }>()
 
@@ -228,7 +229,6 @@ onMounted(() => {
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">教学中心 / 课程目录</div>
       <h1>课程管理</h1>
       <p>课程发布后进入资源概览，激活后可用于开设课堂。</p>
     </div>
@@ -270,11 +270,18 @@ onMounted(() => {
         <el-button type="primary" :icon="Search" @click="applyFilters">查询</el-button>
         <el-button @click="resetFilters">重置</el-button>
       </div>
-      <span class="record-count">共 {{ total }} 门课程</span>
+      <span class="record-count">共 {{ loading && !total ? '—' : total }} 门课程</span>
     </div>
 
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="table-error" />
-    <el-table v-loading="loading" :data="items" row-key="id" empty-text="暂无课程">
+    <el-table v-loading="loading" :data="items" row-key="id" empty-text="">
+      <template #empty>
+        <TableEmpty
+          v-if="!loading"
+          :title="error ? '课程加载失败' : '暂无课程'"
+          :hint="error ? '请检查服务状态后刷新重试' : '点击右上角「新建课程」，配置章节资源后发布。'"
+        />
+      </template>
       <el-table-column prop="name" label="课程" min-width="210">
         <template #default="{ row }">
           <div class="table-name">
@@ -309,12 +316,12 @@ onMounted(() => {
       <el-table-column label="创建时间" width="170">
         <template #default="{ row }">{{ dateTime(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="395" fixed="right">
+      <el-table-column label="操作" width="330" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" :icon="View" @click="openTree(row as CourseSummary)">管理目录</el-button>
           <el-button link type="primary" @click="previewCourse(row as CourseSummary)">预览</el-button>
-          <el-button link :icon="EditPen" @click="openEdit(row as CourseSummary)">编辑</el-button>
-          <el-button link type="warning" :icon="UploadFilled" @click="togglePublish(row as CourseSummary)">
+          <el-button link @click="openEdit(row as CourseSummary)">编辑</el-button>
+          <el-button link type="warning" @click="togglePublish(row as CourseSummary)">
             {{ row.status === 'published' ? '下线' : '发布' }}
           </el-button>
           <el-button
@@ -325,7 +332,7 @@ onMounted(() => {
           >
             {{ row.isActive ? '停用' : '激活' }}
           </el-button>
-          <el-button link type="danger" :icon="Delete" @click="removeCourse(row as CourseSummary)">删除</el-button>
+          <el-button link type="danger" @click="removeCourse(row as CourseSummary)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -335,7 +342,7 @@ onMounted(() => {
         v-model:page-size="pageSize"
         :total="total"
         :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next"
+        :layout="loading && !total ? 'prev, pager, next' : 'total, sizes, prev, pager, next'"
         @current-change="load"
         @size-change="applyFilters"
       />
@@ -419,7 +426,7 @@ onMounted(() => {
 <style scoped>
 .course-description {
   margin: 4px 0 0;
-  color: #718397;
+  color: #5d6f80;
   font-size: 12px;
   line-height: 1.45;
   display: -webkit-box;
@@ -435,7 +442,7 @@ onMounted(() => {
 
 .resource-breakdown {
   margin: 3px 0 0;
-  color: #8494a5;
+  color: #64788a;
   font-size: 11px;
   line-height: 1.4;
 }

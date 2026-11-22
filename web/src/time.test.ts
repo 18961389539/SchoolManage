@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dateTime, parseApiDate, shanghaiInputTime, shanghaiInputToIso } from './time'
+import { dateTime, parseApiDate, rangeText, shanghaiInputTime, shanghaiInputToIso } from './time'
 
 describe('parseApiDate', () => {
   it('treats timestamps without a zone as UTC', () => {
@@ -59,5 +59,24 @@ describe('shanghaiInputToIso', () => {
     const iso = shanghaiInputToIso('2026-01-01T00:00')
     expect(iso).not.toBeNull()
     expect(shanghaiInputTime(iso)).toBe('2026-01-01T00:00:00')
+  })
+})
+
+describe('rangeText', () => {
+  it('shares the date for same-day ranges in Beijing time', () => {
+    expect(rangeText('2026-11-19T01:00:00Z', '2026-11-19T04:00:00Z')).toBe('11/19 09:00–12:00')
+  })
+
+  it('keeps both dates for cross-day ranges', () => {
+    expect(rangeText('2026-11-19T01:00:00Z', '2026-11-26T02:00:00Z')).toBe('11/19 09:00→11/26 10:00')
+  })
+
+  it('splits at the Beijing midnight boundary, not the UTC one', () => {
+    expect(rangeText('2026-11-19T15:00:00Z', '2026-11-19T17:00:00Z')).toBe('11/19 23:00→11/20 01:00')
+  })
+
+  it('returns a dash when either end is missing', () => {
+    expect(rangeText('', '2026-11-19T01:00:00Z')).toBe('—')
+    expect(rangeText('2026-11-19T01:00:00Z', null)).toBe('—')
   })
 })

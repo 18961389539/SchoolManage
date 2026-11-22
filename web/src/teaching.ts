@@ -74,6 +74,18 @@ export function classroomResourceCounts(counts: {
   return `理论讲解 ${counts.theoryCount} · 理论练习 ${counts.theoryPracticeCount} · 案例讲解 ${counts.caseCount} · 案例实操 ${counts.casePracticeCount}`
 }
 
+export function classroomResourceCountLines(counts: {
+  theoryCount: number
+  theoryPracticeCount: number
+  caseCount: number
+  casePracticeCount: number
+}): [string, string] {
+  return [
+    `理论讲解 ${counts.theoryCount} · 理论练习 ${counts.theoryPracticeCount}`,
+    `案例讲解 ${counts.caseCount} · 案例实操 ${counts.casePracticeCount}`
+  ]
+}
+
 export function questionAnswerText(question: { options: string[]; answers?: number[] }): string {
   const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
   return (question.answers || [])

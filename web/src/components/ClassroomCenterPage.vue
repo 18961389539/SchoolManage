@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { DataAnalysis, Delete, EditPen, MoreFilled, Plus, Refresh, Search, User, View } from '@element-plus/icons-vue'
+import { MoreFilled, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, dateTime, del, messageOf, post, put } from '../api'
+import { api, del, messageOf, post, put } from '../api'
+import { rangeText } from '../time'
 import {
+  classroomResourceCountLines,
   classroomResourceCounts,
   classroomStatusOptions,
   classroomStatusType,
@@ -25,6 +27,7 @@ import ClassroomGroupsDrawer from './ClassroomGroupsDrawer.vue'
 import ClassroomCabinetDrawer from './ClassroomCabinetDrawer.vue'
 import ClassroomCaseMonitorDrawer from './ClassroomCaseMonitorDrawer.vue'
 import ClassroomStudentPicker from './ClassroomStudentPicker.vue'
+import TableEmpty from './TableEmpty.vue'
 
 const props = defineProps<{ admin: boolean; initialStatisticsId?: string }>()
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>] }>()
@@ -187,6 +190,13 @@ function openCreate() {
   editing.value = null
   resetForm()
   dialogVisible.value = true
+}
+
+function classroomCommand(command: string, item: ClassroomSummary) {
+  if (command === 'edit') openEdit(item)
+  else if (command === 'toggle') void toggleOpen(item)
+  else if (command === 'delete') void removeClassroom(item)
+  else openCollaboration(item, command)
 }
 
 function openEdit(item: ClassroomSummary) {
@@ -406,7 +416,6 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
 <template>
   <section class="page-heading management-header">
     <div>
-      <div class="eyebrow">教学中心 / 课堂</div>
       <h1>{{ admin ? '课堂管理' : '我的课堂' }}</h1>
       <p>
         {{
@@ -454,41 +463,48 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
         <el-button type="primary" :icon="Search" @click="applyFilters">查询</el-button>
         <el-button @click="resetFilters">重置</el-button>
       </div>
-      <span class="record-count">共 {{ total }} 个课堂</span>
+      <span class="record-count">共 {{ loading && !total ? '—' : total }} 个课堂</span>
     </div>
 
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="table-error" />
     <p v-if="narrowTable && items.length" class="table-scroll-hint">横向滚动可查看更多信息和操作</p>
     <el-table
       v-loading="loading"
+      empty-text=""
       :data="items"
       row-key="id"
-      empty-text="暂无课堂"
       :scrollbar-tabindex="narrowTable && items.length ? 0 : undefined"
       :scrollbar-always-on="narrowTable"
     >
-      <el-table-column prop="name" label="课堂" min-width="185">
+      <template #empty>
+        <TableEmpty
+          v-if="!loading"
+          :title="error ? '课堂加载失败' : '暂无课堂'"
+          :hint="error ? '请检查服务状态后刷新重试' : '点击右上角「新建课堂」，选择已激活课程与班级。'"
+        />
+      </template>
+      <el-table-column prop="name" label="课堂" min-width="230">
         <template #default="{ row }">
           <div class="table-name">
             <strong>{{ row.name }}</strong>
+            <el-tag size="small" effect="plain">{{ courseOptionName(row.courseType) }}</el-tag>
           </div>
           <p class="classroom-subline">{{ row.courseName }}</p>
         </template>
       </el-table-column>
-      <el-table-column label="课程类型" width="96">
-        <template #default="{ row }">
-          <el-tag size="small" effect="plain">{{ courseOptionName(row.courseType) }}</el-tag>
-        </template>
-      </el-table-column>
       <el-table-column prop="teacherName" label="授课教师" min-width="96" />
-      <el-table-column label="时间" min-width="170">
+      <el-table-column label="时间" min-width="165">
         <template #default="{ row }">
-          <span class="time-range">{{ dateTime(row.openAt) }}<br />{{ dateTime(row.closeAt) }}</span>
+          <span class="time-range">{{ rangeText(row.openAt, row.closeAt) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="课程资源" min-width="154">
+      <el-table-column label="课程资源" min-width="185">
         <template #default="{ row }">
-          <span class="classroom-subline">{{ classroomResourceCounts(row.resources) }}</span>
+          <span class="classroom-subline"
+            >{{ classroomResourceCountLines(row.resources)[0] }}<br />{{
+              classroomResourceCountLines(row.resources)[1]
+            }}</span
+          >
         </template>
       </el-table-column>
       <el-table-column label="学生" width="75">
@@ -501,29 +517,27 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" :width="narrowTable ? 195 : 252" :fixed="narrowTable ? false : 'right'">
+      <el-table-column label="操作" :width="narrowTable ? 175 : 215" :fixed="narrowTable ? false : 'right'">
         <template #default="{ row }">
           <div class="management-actions">
-            <el-button link type="primary" :icon="View" @click="openContent(row as ClassroomSummary)">内容</el-button>
-            <el-button link :icon="User" @click="openRoster(row as ClassroomSummary)">学生</el-button>
-            <el-button link :icon="DataAnalysis" @click="openStatistics(row as ClassroomSummary)">统计</el-button>
-            <el-dropdown trigger="click" @command="command => openCollaboration(row as ClassroomSummary, command)">
-              <el-button link :icon="MoreFilled">协作</el-button>
+            <el-button link type="primary" @click="openContent(row as ClassroomSummary)">内容</el-button>
+            <el-button link @click="openRoster(row as ClassroomSummary)">学生</el-button>
+            <el-button link @click="openStatistics(row as ClassroomSummary)">统计</el-button>
+            <el-dropdown trigger="click" @command="command => classroomCommand(command, row as ClassroomSummary)">
+              <el-button link :icon="MoreFilled">更多</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="groups">小组管理</el-dropdown-item>
                   <el-dropdown-item command="cabinets">分配机柜</el-dropdown-item>
                   <el-dropdown-item command="monitor">实操监控</el-dropdown-item>
+                  <el-dropdown-item command="edit" divided>编辑课堂</el-dropdown-item>
+                  <el-dropdown-item command="toggle">{{
+                    row.storedStatus === 'open' && row.status !== 'closed' ? '结课' : '一键开课'
+                  }}</el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>删除课堂</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
-            <el-button link :icon="EditPen" @click="openEdit(row as ClassroomSummary)">编辑</el-button>
-            <el-button link type="warning" @click="toggleOpen(row as ClassroomSummary)">
-              {{ row.storedStatus === 'open' && row.status !== 'closed' ? '结课' : '一键开课' }}
-            </el-button>
-            <el-button link type="danger" :icon="Delete" @click="removeClassroom(row as ClassroomSummary)"
-              >删除</el-button
-            >
           </div>
         </template>
       </el-table-column>
@@ -534,7 +548,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
         v-model:page-size="pageSize"
         :total="total"
         :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next"
+        :layout="loading && !total ? 'prev, pager, next' : 'total, sizes, prev, pager, next'"
         @current-change="load"
         @size-change="applyFilters"
       />
@@ -714,7 +728,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
 <style scoped>
 .classroom-subline {
   margin: 3px 0 0;
-  color: #718397;
+  color: #5d6f80;
   font-size: 12px;
 }
 

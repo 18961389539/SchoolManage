@@ -1,0 +1,115 @@
+{
+  "status": "passed",
+  "scope": "P3 三类角色首页、课堂统计与技能图谱（合同 1.4、1.6.5、1.7.4、1.9）",
+  "date": "2026-11-20",
+  "environment": {
+    "backend": "dotnet src/School.Training/bin/Debug/net10.0/School.Training.dll --urls http://127.0.0.1:5099，隔离数据目录 .local/p3-qa-data，schema v8",
+    "frontend": "vite --config vite.p3-qa.config.ts --port 5174，/api 代理至 5099，临时配置已移除",
+    "userDevServer": "http://localhost:5173 未触碰，清理后仍在监听",
+    "browser": "应用内浏览器表面隐藏，无法截图；浏览器 E2E 通过 DOM 结构、真实点击与网络请求断言完成，未做像素级核对",
+    "cleanup": "5099 后端与 5174 Vite 已停止，隔离数据目录、运行日志和临时 Vite 配置已清理；端口 5099/5174 已释放"
+  },
+  "backendTests": {
+    "command": "dotnet test tests/School.Training.Tests --nologo -v minimal",
+    "result": "PASS",
+    "failed": 0,
+    "passed": 198,
+    "skipped": 0,
+    "duration": "955 ms"
+  },
+  "frontendChecks": {
+    "typeCheck": "vue-tsc --noEmit 通过",
+    "lint": "eslint . --max-warnings 0 通过",
+    "format": "prettier --check 通过；StudentHomePage.vue、TeacherHomePage.vue、StudentStatsDetail.vue、SkillGraphPage.vue 已统一格式化",
+    "unitTests": "vitest run：5 个文件、31 项全部通过",
+    "build": "vite build 通过"
+  },
+  "apiChecks": {
+    "result": "PASS",
+    "assertions": 23,
+    "permissionDenials": 14,
+    "base": "http://127.0.0.1:5099",
+    "dataset": {
+      "courseId": "8b7b9bbb26914a2d843adf32afddc5ee",
+      "classroomAId": "ac3226f84e0f4b4f81e80e9f82ed46c0",
+      "classroomBId": "93ffe8e912094fce944544757d41af38",
+      "students": 3,
+      "teachers": 2,
+      "resources": 8,
+      "skills": 4,
+      "chapters": 3
+    },
+    "coverage": [
+      "初始管理员创建、三类角色首次登录强制改密",
+      "学生本人课堂统计：成绩单 8 项、理论练习 3 次、案例记录 2 条",
+      "学生首页：今日学习 8、今日练习 3、班级达标率 50、四类资源与班级榜",
+      "教师首页：今日活跃 2、今日达标 2、管理学生 2、学习率 75、资源达标率 63",
+      "管理员首页：总体达标 1/3、开放课堂 2/2、资源达标率 42、班级排行 50%/0、教师活动 3 人",
+      "教师课堂统计总览：16 项资源、学习率 75、达标率 63；章节筛选后总资源收敛为 8",
+      "学生成绩单、练习历史、案例记录与教师端学生明细",
+      "资源维度统计与学生名单：2 人学习、1 人达标、最佳 20 分",
+      "理论练习两次作答详情（第 1 次 10 分未达标、第 2 次 20 分达标）",
+      "案例实操记录详情：故障排查实操已完成",
+      "CSV 导出：UTF-8 BOM、资源维度 16 行、学生维度 2 行、公式注入防护",
+      "学生技能图谱：4 技能全部掌握、综合分 100",
+      "部分学习与未学习学生：学生乙 38 分/1 项掌握，学生丙 0 分/4 项未开始",
+      "技能图谱学生列表：教师课堂范围 2 人、管理员全校 3 人、2 个班级筛选",
+      "教师跨课堂学生图谱 404，角色与课堂级 14 项越权请求返回 401/403"
+    ],
+    "evidenceFile": ".local/p3-api-result.json",
+    "script": ".local/p3-qa-api.mjs"
+  },
+  "browserE2E": {
+    "admin": [
+      "控制台加载为 P3 验证学院工作空间，服务状态正常：今日活跃班级 1、今日活跃学生 2、今日达标学生 2、总体达标 1/3、开放课堂 2/2、资源达标率 42%",
+      "工作空间统计卡：学生档案 3 项、教师档案 2 项、教学班级 2 项、实训设备 0 项",
+      "班级达标排行：P3 机械 2301 为 50%，P3 电气 2301 为 0%；教师活跃表展示管理员、教师甲、教师乙的班级数、操作数与最近操作时间"
+    ],
+    "teacher": [
+      "教学首页标题「P3 教师甲，教学概览」；今日活跃 2 人、今日达标 2 人、总体达标 1 人/50%，课堂卡片展示 2 名学生与 50% 班级达标率",
+      "首页指标：管理学生 2、我的课堂 1、资源学习率 75%、资源达标率 63%；班级榜为学生甲 100%、学生乙 25%",
+      "课堂统计抽屉：整体达标率 63%、1/2 名学生达标、已学习 12/16；四类资源达标率 75/50/75/50，章节进度 75/50/50，重点关注学生乙 25% 未达标",
+      "统计抽屉提供总览、资源维度、学生维度，可查看学生详情；移动端全屏抽屉新增「关闭」按钮，点击后回到 #classrooms",
+      "技能图谱：学生选择器显示教师管理范围内的 1 个课堂，学生甲综合分 100、4 项已掌握、4 项技能，地图 8 个节点",
+      "能力雷达 3 个章节轴均为 100 分并给出优势/待提升解读；知识关联图 4 个节点（1 课程 + 3 章节）",
+      "点击技能 2.1 资源「参数设置理论」进入 #classroom-content，URL 含 classroomId、resourceId、backKey=skill-graph；返回按钮显示「返回技能图谱」并回到 #skill-graph"
+    ],
+    "student": [
+      "学习首页标题「你好，P3 学生甲」：今日学习资源 8、今日练习次数 3、累计活跃 1 天、资源达标率 100%；已学习 8/8、已达标 8/8",
+      "今日课堂卡片展示课堂 100%、2 名同学；班级学习榜首位为学生甲并标记「我」，学生乙 4 项/25%；四类资源达标率均为 100%",
+      "我的课堂仅有 1 个进行中课堂，可进入「课堂统计」；统计页展示资源达标率 100%、学习率 100%、活跃 1 天与四类资源 2/2",
+      "成绩单 8 项全部已达标；理论练习历史 3 次（10/20 未达标、20/20 达标、10/10 达标）",
+      "答卷弹窗展示题目、我的答案 B、正确答案 B、得分 10/10 与解析；案例实操记录弹窗展示完成时间、启动节点、尝试次数与 HMI → PLC → 现场传感器拓扑",
+      "从统计页进入课堂后返回按钮显示「返回课堂统计」并正确返回统计页",
+      "学生技能图谱无学生选择器，综合分 100、4 项已掌握、8 个地图节点；雷达 3 章与知识关联 4 节点正常",
+      "点击「1.1 安全规范」下资源进入课堂内容，URL 携带 backKey=skill-graph；返回按钮显示「返回技能图谱」并回到技能地图"
+    ],
+    "console": "最终学生技能图谱页无 error/warn 控制台消息；前置登录 401 属未登录探测，导航后清除"
+  },
+  "fixedIssues": [
+    {
+      "file": "src/School.Training/ClassroomStatisticsEndpoints.cs",
+      "issue": "教师课堂统计带 chapterId 筛选时，学生行与导出已按章节收敛，但汇总仍使用全部资源，导致筛选后总资源仍为 16",
+      "fix": "汇总改为基于章节筛选后的 resources 计算，筛选后总资源正确为 8",
+      "verification": "API 断言「教师课堂统计总览与大章筛选」通过：filteredTotal=8"
+    },
+    {
+      "file": "web/src/components/ClassroomStatisticsDrawer.vue",
+      "issue": "统计抽屉使用 :with-header=false 且移动端全宽，没有可见关闭控件，打开后只能刷新页面退出",
+      "fix": "在统计头部操作区新增「关闭」按钮，触发现有 update:visible 事件",
+      "verification": "浏览器点击关闭后抽屉卸载，hash 由 #classrooms?statistics=... 回到 #classrooms"
+    },
+    {
+      "file": "web/src/components/ClassroomContentPage.vue",
+      "issue": "课堂内容页返回按钮固定显示「返回课堂列表」，从统计页或技能图谱进入时文案与真实去向不一致",
+      "fix": "按 backKey 映射返回文案：技能图谱→返回技能图谱，课堂统计→返回课堂统计，其余保持返回课堂列表",
+      "verification": "教师与学生两条技能图谱跳转均显示「返回技能图谱」；统计页进入课堂显示「返回课堂统计」，点击后均回到正确页面"
+    }
+  ],
+  "notes": [
+    "浏览器 QA 使用隔离端口 5174 与独立数据目录，未影响用户 5173 开发服务",
+    "应用内浏览器无可见表面，因此无法截图与做像素级布局核对；页面结构与交互均通过真实 DOM 事件与后端请求验证",
+    "无头页 document.hidden=true 时 CSS 动画被浏览器冻结，弹层关闭动画停在 0ms；弹层业务内容与关闭状态通过 DOM 与组件状态验证，未将其误判为产品缺陷",
+    "本次未创建 git 提交"
+  ]
+}

@@ -8,6 +8,7 @@ import { countdownText } from '../exam'
 import { parseApiDate } from '../time'
 import type { CampMonitorRow, CampRestartResponse } from '../types'
 import CampEnvironmentPanel from './CampEnvironmentPanel.vue'
+import TableEmpty from './TableEmpty.vue'
 
 const items = ref<CampMonitorRow[]>([])
 const loading = ref(false)
@@ -96,7 +97,6 @@ onBeforeUnmount(() => {
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow">教学管理 / 岗位训练营</div>
       <h1>测评监控</h1>
       <p>查看正在进行的岗位测评、剩余时间与虚拟机状态，必要时可重启测评环境。</p>
     </div>
@@ -106,7 +106,7 @@ onBeforeUnmount(() => {
   <section class="surface monitor-toolbar">
     <div class="monitor-summary">
       <span
-        >进行中 <strong>{{ items.length }}</strong> 人</span
+        >进行中 <strong>{{ loading && !items.length ? '—' : items.length }}</strong> 人</span
       >
       <span v-if="nearest > 0" class="monitor-nearest">
         <el-icon><Clock /></el-icon>最近截止 {{ countdownText(nearest) }}
@@ -118,7 +118,14 @@ onBeforeUnmount(() => {
   <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
 
   <section class="surface monitor-table">
-    <el-table v-loading="loading" :data="items" row-key="attemptId" empty-text="当前没有正在进行的岗位测评">
+    <el-table v-loading="loading" :data="items" row-key="attemptId" empty-text="">
+      <template #empty>
+        <TableEmpty
+          v-if="!loading"
+          :title="error ? '监控数据加载失败' : '暂无进行中的测评'"
+          :hint="error ? '请检查服务状态后刷新重试' : '学生开始测评后，这里会显示实时状态。'"
+        />
+      </template>
       <el-table-column label="学生" min-width="150">
         <template #default="{ row }">
           <div class="student-cell">
@@ -196,7 +203,7 @@ onBeforeUnmount(() => {
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
-  color: #6f8296;
+  color: #56697c;
   font-size: 13px;
 }
 
@@ -209,11 +216,11 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: #b26a00;
+  color: #94610f;
 }
 
 .monitor-hint {
-  color: #93a2b2;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -232,7 +239,7 @@ onBeforeUnmount(() => {
 }
 
 .student-cell span {
-  color: #8b9cad;
+  color: #56697c;
   font-size: 11px;
 }
 
@@ -254,7 +261,7 @@ onBeforeUnmount(() => {
 }
 
 .muted {
-  color: #98a7b6;
+  color: #5d6f80;
   font-size: 12px;
 }
 </style>

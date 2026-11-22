@@ -1,0 +1,59 @@
+{
+  "suite": "deployment-restore-injected",
+  "recordedAtUtc": "2026-11-20T10:15:14.7190337Z",
+  "powershellVersion": "7.6.9",
+  "testedApplicationVersion": "0.1.0-p9",
+  "testedAssemblySha256": "91c3d9dd79513fca3447322320384ac9e0913d1fb64699e3b075e6215e2ffe36",
+  "restoreScriptSha256": "ced45eda599c72867ba2d9bcc159f9c0566a72eb796145e9c4e1e44f981eb53d",
+  "commonScriptSha256": "daecd14fd3f13186a5d5fe396eb38451dbeb842c0282d796f8d4eea494ef2abc",
+  "scope": "Five ordinary memory-stream checks use the production copy routine. Six workflow checks use the published app on loopback with two synthetic SQLite databases, DPAPI key-rings, and actual backup ZIPs. SCM and registration are test doubles. No elevated operations, real service changes, or school data.",
+  "passed": true,
+  "passedChecks": 11,
+  "totalChecks": 11,
+  "checks": [
+    {
+      "name": "exact-copy-empty",
+      "passed": true
+    },
+    {
+      "name": "exact-copy-multiple-reads",
+      "passed": true
+    },
+    {
+      "name": "exact-copy-short-stream",
+      "passed": true
+    },
+    {
+      "name": "exact-copy-over-budget",
+      "passed": true
+    },
+    {
+      "name": "exact-copy-zero-budget",
+      "passed": true
+    },
+    {
+      "name": "running-success",
+      "passed": true
+    },
+    {
+      "name": "previously-stopped",
+      "passed": true
+    },
+    {
+      "name": "replacement-unhealthy",
+      "passed": true
+    },
+    {
+      "name": "both-unhealthy",
+      "passed": true
+    },
+    {
+      "name": "partial-move",
+      "passed": true
+    },
+    {
+      "name": "lock-held",
+      "passed": true
+    }
+  ]
+}

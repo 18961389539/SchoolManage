@@ -34,3 +34,78 @@
 .terminal-dialog .terminal-help .el-button {
   flex-shrink: 0;
 }
+
+/* Keep import actions reachable on short Windows laptop viewports. */
+.import-dialog.el-dialog {
+  margin: 3vh auto !important;
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+}
+.import-dialog .el-dialog__header,
+.import-dialog .el-dialog__footer {
+  flex: 0 0 auto;
+}
+.import-dialog .el-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Keyboard focus rings.
+   Element Plus draws button rings with --el-*-light-5 tokens (2.2:1 on white),
+   which is below the 3:1 required for a focus indicator. Point them at the solid
+   semantic colour and give inputs the same 2px weight. */
+.el-button,
+.el-button--primary,
+.el-button--success,
+.el-button--warning,
+.el-button--danger,
+.el-button--info {
+  --el-button-outline-color: var(--el-color-primary);
+}
+.el-button--success {
+  --el-button-outline-color: var(--el-color-success);
+}
+.el-button--warning {
+  --el-button-outline-color: var(--el-color-warning);
+}
+.el-button--danger {
+  --el-button-outline-color: var(--el-color-danger);
+}
+.el-button--info {
+  --el-button-outline-color: var(--el-color-info);
+}
+.el-button:focus-visible {
+  outline-offset: 2px;
+}
+
+.el-input__wrapper.is-focus,
+.el-input__wrapper.is-focus:hover,
+.el-select__wrapper.is-focused,
+.el-select__wrapper.is-focused:hover,
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 2px var(--el-color-primary) inset;
+}
+
+.el-pagination .btn-prev:focus-visible,
+.el-pagination .btn-next:focus-visible,
+.el-pager li:focus-visible,
+html .el-pagination .btn-prev:focus-visible,
+html .el-pagination .btn-next:focus-visible,
+html .el-pager li:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: -2px;
+}
+
+/* Element injects per-component CSS after this file, so the select ring needs the extra specificity. */
+html .el-select__wrapper.is-focused,
+html .el-select__wrapper.is-focused:hover {
+  box-shadow: 0 0 0 2px var(--el-color-primary) inset;
+}
+
+.el-checkbox input:focus-visible + .el-checkbox__inner,
+.el-radio input:focus-visible + .el-radio__inner,
+.el-switch input:focus-visible + .el-switch__core {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}

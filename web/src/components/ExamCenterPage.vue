@@ -2,7 +2,8 @@
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { CircleClose, EditPen, MoreFilled, Plus, Refresh, Search, Tickets, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, dateTime, del, messageOf, post, put } from '../api'
+import { api, del, messageOf, post, put } from '../api'
+import { rangeText } from '../time'
 import { examStatusLabel, examStatusOptions, examStatusType } from '../exam'
 import { durationText } from '../teaching'
 import { shanghaiInputTime, shanghaiInputToIso } from '../time'
@@ -12,6 +13,7 @@ import ExamMonitorDrawer from './ExamMonitorDrawer.vue'
 import ExamRosterDrawer from './ExamRosterDrawer.vue'
 import ExamScoresDrawer from './ExamScoresDrawer.vue'
 import ExamStatisticsDrawer from './ExamStatisticsDrawer.vue'
+import TableEmpty from './TableEmpty.vue'
 
 const props = defineProps<{ admin: boolean }>()
 
@@ -282,7 +284,6 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
 <template>
   <section class="page-heading management-header">
     <div>
-      <div class="eyebrow">教学中心 / 在线考试</div>
       <h1>考试管理</h1>
       <p>
         {{ props.admin ? '管理全校考试安排、名单、成绩与统计分析。' : '管理你创建的考试，分配学生并完成成绩批阅。' }}
@@ -317,19 +318,26 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
         <el-button type="primary" :icon="Search" @click="applyFilters">查询</el-button>
         <el-button @click="resetFilters">重置</el-button>
       </div>
-      <span class="record-count">共 {{ total }} 场考试</span>
+      <span class="record-count">共 {{ loading && !total ? '—' : total }} 场考试</span>
     </div>
 
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="table-error" />
     <p v-if="narrowTable && items.length" class="table-scroll-hint">横向滚动可查看更多信息和操作</p>
     <el-table
+      empty-text=""
       v-loading="loading"
       :data="items"
       row-key="id"
-      empty-text="暂无考试"
       :scrollbar-tabindex="narrowTable && items.length ? 0 : undefined"
       :scrollbar-always-on="narrowTable"
     >
+      <template #empty>
+        <TableEmpty
+          v-if="!loading"
+          :title="error ? '考试加载失败' : '暂无考试'"
+          :hint="error ? '请检查服务状态后刷新重试' : '点击右上角「新建考试」，从试卷创建并分配学生。'"
+        />
+      </template>
       <el-table-column label="考试" min-width="230">
         <template #default="{ row }">
           <div class="table-name">
@@ -345,22 +353,21 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
           <p class="exam-sub">{{ row.questionCount }} 题 · {{ row.totalScore }} 分</p>
         </template>
       </el-table-column>
-      <el-table-column label="考试时间" min-width="196">
+      <el-table-column label="考试时间" min-width="175">
         <template #default="{ row }">
-          <span class="exam-time">{{ dateTime(row.startAt) }}</span>
-          <span class="exam-time">至 {{ dateTime(row.endAt) }}</span>
+          <span class="exam-time">{{ rangeText(row.startAt, row.endAt) }}</span>
           <p class="exam-sub">限时 {{ durationText(row.durationMinutes) }}</p>
         </template>
       </el-table-column>
-      <el-table-column label="参考情况" min-width="170">
+      <el-table-column label="参考情况" min-width="190">
         <template #default="{ row }">
           <span class="exam-counts">
-            应考 {{ row.studentCount }} · 开考 {{ row.attemptCount }} · 提交 {{ row.submittedCount }} · 已阅
-            {{ row.gradedCount }}
+            应考 {{ row.studentCount }} · 开考 {{ row.attemptCount }}<br />
+            提交 {{ row.submittedCount }} · 已阅 {{ row.gradedCount }}
           </span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" :width="narrowTable ? 185 : 250" :fixed="narrowTable ? false : 'right'">
+      <el-table-column label="操作" :width="narrowTable ? 210 : 290" :fixed="narrowTable ? false : 'right'">
         <template #default="{ row }">
           <div class="management-actions">
             <el-button
@@ -404,7 +411,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
         v-model:page-size="pageSize"
         :total="total"
         :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next"
+        :layout="loading && !total ? 'prev, pager, next' : 'total, sizes, prev, pager, next'"
         @current-change="load"
         @size-change="applyFilters"
       />
@@ -521,7 +528,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
 <style scoped>
 .exam-description {
   margin: 4px 0 0;
-  color: #718397;
+  color: #5d6f80;
   font-size: 12px;
   line-height: 1.45;
   display: -webkit-box;
@@ -532,7 +539,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
 
 .exam-sub {
   margin: 3px 0 0;
-  color: #8a99a9;
+  color: #56697c;
   font-size: 12px;
   line-height: 1.4;
 }

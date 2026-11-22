@@ -224,12 +224,12 @@ watch(
 }
 
 .member-remark {
-  color: #8494a5;
+  color: #64788a;
 }
 
 .empty-member {
   margin: 0;
-  color: #8494a5;
+  color: #64788a;
   font-size: 12px;
 }
 </style>

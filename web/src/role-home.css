@@ -1,0 +1,137 @@
+.role-home-heading h1 {
+  margin: 0 0 5px;
+  font-size: clamp(26px, 3vw, 34px);
+}
+
+.role-home-heading p {
+  overflow-wrap: anywhere;
+}
+
+.role-home-grid,
+.role-home-stack {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+  align-items: start;
+}
+
+.role-home-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+}
+
+.role-home-loading {
+  padding: 24px;
+}
+
+.role-overview {
+  border-color: #17454a;
+  background: var(--workspace-hero);
+  color: #f5fbff;
+}
+
+.role-overview h2 {
+  color: inherit;
+  margin: 0;
+}
+
+.role-overview .card-heading {
+  padding: 20px 20px 12px;
+}
+
+.role-overview-goal {
+  margin: 0 20px 15px;
+}
+
+.role-overview-goal p {
+  margin: 7px 0 0;
+  color: var(--workspace-on-hero);
+  font-size: 12px;
+}
+
+.role-overview-goal > div:first-child {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.role-overview-goal strong {
+  font-size: 27px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.role-overview .el-progress-bar__outer {
+  background: #ffffff30;
+}
+
+.role-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0 20px 20px;
+}
+
+.role-overview-metrics > div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #ffffff28;
+  border-radius: 8px;
+  background: #ffffff0d;
+}
+
+.role-overview-metrics dt,
+.role-overview-metrics small {
+  color: var(--workspace-on-hero);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.role-overview-metrics dd {
+  margin: 3px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.role-overview-metrics small {
+  font-weight: 400;
+}
+
+.role-overview-caption {
+  margin: -6px 20px 16px;
+  color: var(--workspace-on-hero);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1050px) {
+  .role-home-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 550px) {
+  .role-home-heading .heading-actions {
+    gap: 8px;
+  }
+
+  .role-home-heading .heading-actions .el-button {
+    padding-inline: 9px;
+  }
+
+  .role-overview .card-heading,
+  .role-overview-metrics {
+    padding-inline: 14px;
+  }
+
+  .role-overview-goal,
+  .role-overview-caption {
+    margin-inline: 14px;
+  }
+}
