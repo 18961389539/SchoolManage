@@ -121,6 +121,18 @@ function entityUi(page) {
   const openPage = async name => {
     await expandNavigation();
     await page.getByRole('button', {name, exact: true}).click();
+    // Wait for the lazy page to mount before inspecting its toolbar; a few pages title their
+    // heading differently from the menu entry, hence the silent fallback.
+    await page.getByRole('heading', {name, exact: true}).first().waitFor({timeout: 5000}).catch(() => {});
+    // Lists remember their filters between visits; start each page from the unfiltered set so
+    // a keyword left over from an earlier check cannot hide the row a later check looks for.
+    const clearFilters = page.getByRole('button', {name: '清除筛选', exact: true});
+    if (await clearFilters.count()) {
+      await clearFilters.click();
+      await page.waitForFunction(() => ![...document.querySelectorAll('.el-loading-mask')].some(
+        mask => mask.getClientRects().length > 0 && getComputedStyle(mask).opacity !== '0'
+      ));
+    }
   };
   const rowNamed = name => page.getByRole('row').filter({
     has: page.getByRole('cell', {name, exact: true})
@@ -720,6 +732,9 @@ try {
   }
 
   await openPage('班级管理');
+  // Filters are remembered per list now, so target the class explicitly instead of assuming
+  // the list still shows everything from the earlier filter checks.
+  await searchList('班级管理', '/classes', className);
   await rowNamed(className).getByRole('button', {name: '编辑', exact: true}).click();
   const classEdit = page.getByRole('dialog', {name: '编辑班级'});
   await selectFormOption(classEdit, '所属专业', otherProfessionName);
@@ -767,45 +782,58 @@ try {
   mark('设备类型新增、搜索、删除及 CRLF / CR / LF、DEL / BS 参数编辑');
 
   await openPage('服务器信息');
-  const host = page.locator('.host-surface');
+  const host = page.locator('.server-page');
   const inventory = await adminApi('/server/info');
   assert.equal(inventory.isSimulated, false);
   assert.ok(inventory.cpu.logicalCoreCount > 0);
   assert.ok(inventory.networks.length > 0);
-  for (const field of ['物理核心总数', '逻辑核心总数', '处理器信息', '内存条信息', '网卡信息']) {
+  for (const field of ['主机名称', 'CPU 核心', '内存', '处理器', '网络接口']) {
     await host.getByText(field, {exact: true}).first().waitFor();
   }
-  const hostLabel = (target, label) => target.locator('dt').and(target.getByText(label, {exact: true}));
-  const hostEntry = (target, label) => hostLabel(target, label).locator('xpath=following-sibling::dd');
-  const sensitiveLabels = ['主机名称', 'MAC 地址', 'IPv4 地址', 'IPv6 地址', '地址', '网关', 'DNS 服务器'];
-  const networkInfo = hostEntry(host, '网卡信息').locator(':scope > .data-array > .data-array-item');
-  const hostMasks = [
-    ...sensitiveLabels.map(label => hostEntry(host, label)),
-    hostEntry(networkInfo, '名称'), hostEntry(networkInfo, '说明')
-  ];
-  const connectedAdapter = Math.max(0, inventory.networks.findIndex(adapter => adapter.ipv4.length > 0));
-  const network = networkInfo.nth(connectedAdapter);
-  for (const field of ['MAC 地址', '速率 (Mbps)', 'IPv4 地址', 'IPv6 地址']) {
-    await network.getByText(field, {exact: true}).waitFor();
+  const coreSummary = host.locator('.summary-grid > div').filter({hasText: 'CPU 核心'}).locator('strong');
+  await coreSummary.waitFor();
+  assert.equal(
+    (await coreSummary.innerText()).replace(/\s+/g, ' ').trim(),
+    `${inventory.cpu.physicalCoreCount ?? '—'} 物理 / ${inventory.cpu.logicalCoreCount ?? '—'} 逻辑`
+  );
+  const blockFor = heading => host.locator('.server-block').filter({
+    has: page.getByRole('heading', {name: heading, exact: true})
+  });
+  const cpuBlock = blockFor('处理器');
+  const processors = inventory.cpu.processors || [];
+  if (processors.length) {
+    const firstProcessor = cpuBlock.locator('.el-table__body tr').first();
+    await firstProcessor.waitFor();
+    const cells = firstProcessor.locator('td');
+    assert.ok((await cells.nth(0).innerText()).trim().length > 0, '处理器型号为空');
+    assert.equal((await cells.nth(1).innerText()).trim(), String(processors[0].coreCount ?? '—'));
+    assert.equal((await cells.nth(2).innerText()).trim(), String(processors[0].logicalCoreCount ?? '—'));
   }
-  if (!legacyUi && report.productVersion !== '0.1.0-p5') {
-    const cpu = hostEntry(host, 'CPU 信息');
-    const cpuTotals = cpu.locator(':scope > .data-record > .data-record-entry > dt');
-    const processors = cpuTotals.filter({hasText: /^物理处理器数$/}).locator('xpath=following-sibling::dd');
-    const logicalCores = cpuTotals.filter({hasText: /^逻辑核心总数$/}).locator('xpath=following-sibling::dd');
-    await processors.waitFor();
-    assert.equal((await processors.innerText()).trim(), String(inventory.cpu.processorCount));
-    assert.equal((await logicalCores.innerText()).trim(), String(inventory.cpu.logicalCoreCount));
-    mark('服务器信息分别显示物理处理器数和逻辑核心总数，并与主机采集值一致');
+  const memoryBlock = blockFor('内存');
+  for (const field of ['插槽', '容量', '类型', '主频']) {
+    await memoryBlock.getByRole('columnheader', {name: field, exact: true}).waitFor();
   }
+  const networkSection = host.locator('.server-network');
+  for (const field of ['接口', 'MAC 地址', 'IPv4', '速率']) {
+    await networkSection.getByRole('columnheader', {name: field, exact: true}).waitFor();
+  }
+  // The default view only lists physical adapters that are up; switch to the full list so the
+  // capture covers every adapter the collector returned, including virtual ones.
+  await networkSection.getByText('全部', {exact: true}).click();
+  await networkSection.locator('.el-table__body tr.el-table__row').first().waitFor();
+  const hostnameCell = host.locator('.summary-grid > div').filter({hasText: '主机名称'}).locator('strong');
+  const adapterCells = networkSection.locator(
+    '.el-table__body tr td:nth-child(3), .el-table__body tr td:nth-child(5), .el-table__body tr td:nth-child(6)'
+  );
+  const hostMasks = [hostnameCell, adapterCells];
   await capture(page, 'server-information-redacted.jpg', {fullPage: false, mask: hostMasks});
-  await capture(hostEntry(host, '内存信息').locator('xpath=..'), 'server-memory.jpg', {
+  await capture(memoryBlock, 'server-memory.jpg', {
     fullPage: false, style: '.topbar { visibility: hidden; }'
   });
-  await capture(network, 'server-network-redacted.jpg', {
-    fullPage: false, mask: hostMasks, style: '.topbar { visibility: hidden; }'
+  await capture(networkSection, 'server-network-redacted.jpg', {
+    fullPage: false, mask: [adapterCells], style: '.topbar { visibility: hidden; }'
   });
-  report.hostScreenshotRedactions = [...sensitiveLabels, '网卡名称', '网卡说明'];
+  report.hostScreenshotRedactions = ['主机名称', '网卡说明', 'MAC 地址', 'IPv4 地址'];
   mark('服务器信息页面显示真实只读 CPU、内存、网卡，截图隐去主机和网络标识');
 
   const nodesTitle = '集群节点';
@@ -832,8 +860,8 @@ try {
     await page.setViewportSize({width: 2240, height: 1000});
     const [listed] = matchingNodes.items;
     for (const [key, header] of [
-      ['cpuUsagePercent', 'CPU 使用率'], ['memoryUsagePercent', '内存使用率'],
-      ['diskUsagePercent', '磁盘使用率']
+      ['cpuUsagePercent', 'CPU'], ['memoryUsagePercent', '内存'],
+      ['diskUsagePercent', '磁盘']
     ]) {
       assert.ok(listed[key] > 0, `${header}没有反映运行资源`);
       assert.equal(listed[key], nodeStatus[key]);
