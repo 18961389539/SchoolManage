@@ -14,7 +14,7 @@ export class ApiError extends Error {
 export interface ApiOptions extends RequestInit {
   /**
    * Milliseconds before the request is abandoned. 0 waits indefinitely — reserve it for
-   * operations the server may legitimately spend minutes on (backups, VM power, uploads).
+   * operations the server may legitimately spend minutes on (backups, VM power, file transfer).
    */
   timeoutMs?: number
   /**
@@ -24,13 +24,13 @@ export interface ApiOptions extends RequestInit {
   pageScoped?: boolean
 }
 const defaultTimeoutMs = 60_000
-const uploadTimeoutMs = 10 * 60_000
+const fileTimeoutMs = 10 * 60_000
 const timedOut = { reason: 'timeout' }
 
 function requestTimeout(init: RequestInit, override?: number): number {
   if (override !== undefined) return override
   const isUpload = typeof FormData !== 'undefined' && init.body instanceof FormData
-  return isUpload ? uploadTimeoutMs : defaultTimeoutMs
+  return isUpload ? fileTimeoutMs : defaultTimeoutMs
 }
 /** Mirror an optional caller signal onto our controller so `fetch` only listens to one. */
 function relayAbort(controller: AbortController, external?: AbortSignal | null): () => void {
@@ -61,8 +61,7 @@ function describeError(body: any, status: number): string {
   if (body?.traceId) message += `（追踪号 ${body.traceId}）`
   return message
 }
-// T has no `any` default on purpose: callers must name the response contract.
-export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
+async function request<T>(path: string, options: ApiOptions, read: (response: Response) => Promise<T>): Promise<T> {
   const { timeoutMs, pageScoped, ...init } = options
   const isRead = readMethods.has((init.method ?? 'GET').toUpperCase())
   const limit = requestTimeout(init, timeoutMs)
@@ -78,9 +77,11 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
       credentials: 'same-origin',
       signal: controller.signal
     })
-    const body = await readBody(response)
-    if (!response.ok) throw new ApiError(describeError(body, response.status), response.status, body)
-    return body as T
+    if (!response.ok) {
+      const body = await readBody(response)
+      throw new ApiError(describeError(body, response.status), response.status, body)
+    }
+    return await read(response)
   } catch (error) {
     // The page that asked is gone: leave the awaiting caller suspended rather than handing it
     // an error it would render on the screen that has already replaced it.
@@ -96,6 +97,29 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     release()
     detach()
   }
+}
+
+// T has no `any` default on purpose: callers must name the response contract.
+export const api = <T>(path: string, options: ApiOptions = {}) =>
+  request<T>(path, options, async response => (await readBody(response)) as T)
+
+/**
+ * Saves an authenticated API file under the given name. A download is an explicit click like a
+ * save, not page content: navigation must not cancel it, and it gets the same long deadline as
+ * an upload. Session expiry is still handled by the shared pipeline.
+ */
+export async function downloadFile(path: string, fileName: string): Promise<void> {
+  await request(path, { pageScoped: false, timeoutMs: fileTimeoutMs }, async response => {
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = fileName
+    document.body.append(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  })
 }
 async function send(path: string, init: RequestInit) {
   try {

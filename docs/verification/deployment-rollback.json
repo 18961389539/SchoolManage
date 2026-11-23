@@ -1,9 +1,9 @@
 {
     "suite":  "deployment-rollback-injected",
-    "completedAtUtc":  "2026-11-20T10:16:03.6524716Z",
+    "completedAtUtc":  "2026-11-23T07:03:33.2513299Z",
     "powershellVersion":  "5.1.26100.9818",
-    "installerSha256":  "9e010b0d6a5fb26deb157e22b7d9cb87da4b6d59150cfe119936f2c674bcf08e",
-    "commonScriptSha256":  "daecd14fd3f13186a5d5fe396eb38451dbeb842c0282d796f8d4eea494ef2abc",
+    "installerSha256":  "b776bad8b5c850fdad6aed07806da81da506134aa33a89960f37eb3ba0eda30c",
+    "commonScriptSha256":  "1f4788fcdb883eb5dbecd2c52ca16e7ce49b398f047b5c3d955961dbb7132167",
     "scope":  "Production install script copied to isolated fixtures with host service, registry, firewall, ACL and health operations replaced by test doubles. Real file copy, hashing, backup and rollback exercised. No elevated operations.",
     "passed":  true,
     "passedChecks":  10,

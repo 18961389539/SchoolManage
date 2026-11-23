@@ -1,9 +1,9 @@
 {
-  "recordedAtUtc": "2026-11-20T10:15:33.647Z",
+  "recordedAtUtc": "2026-11-23T07:02:27.320Z",
   "status": "passed",
   "command": "node tests/node-accounts-smoke.mjs",
-  "dataDirectory": ".local/node-accounts-smoke-LKlSuI/data",
-  "runtimeDirectory": ".local/node-accounts-smoke-LKlSuI/program",
+  "dataDirectory": ".local/node-accounts-smoke-iFizqB/data",
+  "runtimeDirectory": ".local/node-accounts-smoke-iFizqB/program",
   "checks": [
     "default quotas; eligible teacher/student candidates exclude initial administrator and duplicate input",
     "same account can span nodes; node-local uniqueness and actual status/list counts",
@@ -13,14 +13,14 @@
     "parallel VM creation, migration admission and shrinking respect VM quotas including stopped VMs",
     "simulation bootstrap cannot bypass a configured zero VM quota",
     "node account lists, candidates and assignment remain administrator-only",
-    "fresh v5 database with quota fields and assignment FKs passes DatabaseSafety"
+    "fresh v17 database with quota fields and assignment FKs passes DatabaseSafety"
   ],
   "processStopped": true,
   "scope": "Single-instance simulated node platform-account associations and quotas. Does not create OS accounts, change physical hypervisors, migrate prior development databases or establish production capacity.",
-  "sourceAssemblySha256": "91C3D9DD79513FCA3447322320384AC9E0913D1FB64699E3B075E6215E2FFE36",
-  "testedAssemblySha256": "91C3D9DD79513FCA3447322320384AC9E0913D1FB64699E3B075E6215E2FFE36",
-  "isolatedUrl": "http://127.0.0.1:62134",
-  "newBaselineSchemaVersion": 5,
+  "sourceAssemblySha256": "68FA8D7B56B60DD203327C52C58D63B848DC99D3135AC1126AAF61CE9405D638",
+  "testedAssemblySha256": "68FA8D7B56B60DD203327C52C58D63B848DC99D3135AC1126AAF61CE9405D638",
+  "isolatedUrl": "http://127.0.0.1:40831",
+  "newBaselineSchemaVersion": 17,
   "concurrentAllocation": {
     "simultaneousAccountRequests": 8,
     "quota": 3,

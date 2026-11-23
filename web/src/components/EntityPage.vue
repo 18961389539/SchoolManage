@@ -6,6 +6,7 @@ import type { CabinetSummary, ConnectionProbe, ConnectionProbeList, MessageRespo
 import { entities, type Field } from '../entities'
 import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
+import { useRequestGeneration } from '../requestGeneration'
 import DataRecord from './DataRecord.vue'
 import EntityFormDialog from './EntityFormDialog.vue'
 import EntityTable from './EntityTable.vue'
@@ -55,12 +56,12 @@ const configuration = reactive<Row>({})
 const accountNode = ref<Row | null>(null)
 const isPeople = computed(() => !!entity.value.kind)
 const tableRef = ref<InstanceType<typeof EntityTable>>()
-let loadVersion = 0
-let filterVersion = 0
+const listLoads = useRequestGeneration()
+const filterLoads = useRequestGeneration()
+const formLoads = useRequestGeneration()
+const configurationLoads = useRequestGeneration()
+const actionLoads = useRequestGeneration()
 let contextVersion = 0
-let formRequest = 0
-let configurationRequest = 0
-let actionVersion = 0
 
 type EntityList = Paged<Row> & { cabinet?: CabinetSummary | null }
 
@@ -97,7 +98,7 @@ function showList(data: EntityList) {
 }
 
 async function load() {
-  const version = ++loadVersion
+  const version = listLoads.begin()
   loading.value = true
   error.value = ''
   try {
@@ -107,12 +108,15 @@ async function load() {
       pageSize: String(pageSize.value)
     })
     if (entity.value.kind) query.set('kind', entity.value.kind)
+    for (const [key, value] of Object.entries(entity.value.fixedQuery ?? {})) {
+      if (value) query.set(key, value)
+    }
     if (scopedCabinetId.value) query.set('cabinetId', scopedCabinetId.value)
     for (const [key, value] of Object.entries(filters.value)) {
       if (value) query.set(key, value)
     }
     const data = await api<EntityList>(`${entity.value.endpoint}?${query}`)
-    if (version !== loadVersion) return
+    if (!listLoads.isCurrent(version)) return
     showList(data)
     const recovered = recoverPage(page.value, pageSize.value, total.value, rows.value.length)
     if (recovered !== null && recovered !== page.value) {
@@ -120,14 +124,14 @@ async function load() {
       await load()
     }
   } catch (err) {
-    if (version === loadVersion) {
+    if (listLoads.isCurrent(version)) {
       error.value = messageOf(err)
       cabinet.value = null
       rows.value = []
       total.value = 0
     }
   } finally {
-    if (version === loadVersion) loading.value = false
+    if (listLoads.isCurrent(version)) loading.value = false
   }
 }
 
@@ -164,7 +168,7 @@ async function loadOptions(fields: Field[]) {
 }
 
 async function loadFilterOptions(refresh = false) {
-  const version = ++filterVersion
+  const version = filterLoads.begin()
   const fields = entity.value.filters ?? []
   filterError.value = ''
   loadingFilters.value = fields.some(field => !!field.source)
@@ -176,9 +180,9 @@ async function loadFilterOptions(refresh = false) {
   try {
     await loadOptions(fields)
   } catch (err) {
-    if (version === filterVersion) filterError.value = `筛选选项加载失败：${messageOf(err)}`
+    if (filterLoads.isCurrent(version)) filterError.value = `筛选选项加载失败：${messageOf(err)}`
   } finally {
-    if (version === filterVersion) loadingFilters.value = false
+    if (filterLoads.isCurrent(version)) loadingFilters.value = false
   }
 }
 
@@ -190,17 +194,17 @@ function refresh() {
 async function openForm(row?: Row) {
   if (!row && scopedCabinetId.value && !cabinet.value) return
   const context = contextVersion
-  const request = ++formRequest
+  const request = formLoads.begin()
   const nextEditing = !!row
   const nextRow = row ?? (cabinet.value ? { cabinetId: cabinet.value.id } : null)
   try {
     await loadOptions(entity.value.fields)
-    if (context !== contextVersion || request !== formRequest) return
+    if (context !== contextVersion || !formLoads.isCurrent(request)) return
     editing.value = nextEditing
     initialRow.value = nextRow
     formVisible.value = true
   } catch (err) {
-    if (context === contextVersion && request === formRequest) ElMessage.error(messageOf(err))
+    if (context === contextVersion && formLoads.isCurrent(request)) ElMessage.error(messageOf(err))
   }
 }
 
@@ -313,9 +317,9 @@ async function toggleNode(row: Row) {
 
 async function openConfiguration(row: Row) {
   const context = contextVersion
-  const request = ++configurationRequest
+  const request = configurationLoads.begin()
   const data = await api<Row>(`/nodes/${row.id}/configuration`)
-  if (context !== contextVersion || request !== configurationRequest) return
+  if (context !== contextVersion || !configurationLoads.isCurrent(request)) return
   for (const key of Object.keys(configuration)) delete configuration[key]
   Object.assign(configuration, data)
   configurationNode.value = row
@@ -334,20 +338,20 @@ const actionHandlers: Record<string, (row: Row) => Promise<void>> = {
 }
 
 async function action(row: Row, key: string) {
-  const version = ++actionVersion
+  const version = actionLoads.begin()
   actionLoading.value = `${row.id}:${key}`
   try {
     await actionHandlers[key]?.(row)
   } catch (err) {
     if (err !== 'cancel' && err !== 'close') ElMessage.error(messageOf(err))
   } finally {
-    if (version === actionVersion) actionLoading.value = ''
+    if (actionLoads.isCurrent(version)) actionLoading.value = ''
   }
 }
 
 async function testCabinets() {
   const context = contextVersion
-  const version = ++actionVersion
+  const version = actionLoads.begin()
   actionLoading.value = 'batch-test'
   try {
     const data = await post<ConnectionProbeList>('/cabinets/test-connections', {
@@ -360,7 +364,7 @@ async function testCabinets() {
   } catch (err) {
     ElMessage.error(messageOf(err))
   } finally {
-    if (version === actionVersion) actionLoading.value = ''
+    if (actionLoads.isCurrent(version)) actionLoading.value = ''
   }
 }
 
@@ -403,6 +407,37 @@ function openReset(row: Row) {
   resetVisible.value = true
 }
 
+async function changeRole(row: Row, role: 'Admin' | 'Teacher') {
+  const context = contextVersion
+  const nextLabel = role === 'Admin' ? '管理员' : '教师'
+  const currentLabel = role === 'Admin' ? '教师' : '管理员'
+  try {
+    await ElMessageBox.confirm(
+      `确认将${currentLabel}“${row.name || row.userName}”改为${nextLabel}吗？账号会转到对应的管理页面。`,
+      `改为${nextLabel}`,
+      { type: 'warning', confirmButtonText: '确认调整', cancelButtonText: '取消' }
+    )
+    if (context !== contextVersion) return
+    await put(`${entity.value.endpoint}/${row.id}`, {
+      kind: 'teacher',
+      name: row.name,
+      userName: row.userName,
+      number: row.number,
+      classId: row.classId ?? null,
+      gender: row.gender ?? '',
+      phone: row.phone ?? '',
+      email: row.email ?? '',
+      role
+    })
+    if (context !== contextVersion) return
+    ElMessage.success(`已改为${nextLabel}`)
+    clearSelection()
+    await load()
+  } catch (err) {
+    if (context === contextVersion && err !== 'cancel' && err !== 'close') ElMessage.error(messageOf(err))
+  }
+}
+
 function navigateTo(key: string, params?: Row) {
   emit('navigate', key, params)
 }
@@ -432,10 +467,10 @@ function resetOverlays() {
   configurationNode.value = null
   for (const key of Object.keys(configuration)) delete configuration[key]
   accountNode.value = null
-  actionVersion++
+  actionLoads.begin()
   actionLoading.value = ''
-  formRequest++
-  configurationRequest++
+  formLoads.begin()
+  configurationLoads.begin()
 }
 
 watch(
@@ -495,6 +530,7 @@ watch(
     @web-console="webDevice = { id: $event.id, name: $event.name }"
     @action="action"
     @reset="openReset"
+    @role-change="changeRole"
     @view="showDetails"
     @edit="openForm"
     @remove="remove"

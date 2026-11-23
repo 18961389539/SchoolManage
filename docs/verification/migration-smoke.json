@@ -1,16 +1,23 @@
 {
-  "schemaVersion": 5,
-  "testedAssembly": "D:\\code\\School\\artifacts\\SchoolTraining-0.1.0-p9-win-x64\\app\\School.Training.dll",
-  "testedAssemblySha256": "91C3D9DD79513FCA3447322320384AC9E0913D1FB64699E3B075E6215E2FFE36",
+  "schemaVersion": 17,
+  "testedAssembly": "D:\\SourceCode\\SchoolManage\\artifacts\\SchoolTraining-0.1.0-win-x64\\app\\School.Training.dll",
+  "testedAssemblySha256": "68FA8D7B56B60DD203327C52C58D63B848DC99D3135AC1126AAF61CE9405D638",
   "status": "passed",
   "checks": [
-    "fresh database is created at schema version 5 with device links, import job state and audit index",
-    "v1 database upgrades to v5, preserves data, creates unique and audit indexes, import job columns and a v1 pre-migration snapshot; old backups are restore-validated but current-schema validation rejects them",
+    "fresh database is created at schema version 17 with device links, import job state and audit index",
+    "v1 database upgrades to v17, preserves data, creates unique and audit indexes, import job columns and a v1 pre-migration snapshot; old backups are restore-validated but current-schema validation rejects them",
     "v2 database adds import job columns, preserves legacy batches and maps Committed to terminal status",
     "v3 database adds the audit time index without changing business data",
     "v4 restore validation and migration preserve devices, link built-in simulated devices only, and preserve an upgrade snapshot",
+    "v9 backup and startup migration preserve school data and add classroom environment and grade storage",
+    "v10 startup migration adds exam templates, student environments and automatic grading details",
+    "v11 question-bank migration assigns existing questions to the default bank without changing paper references",
+    "v12 migration preserves virtual machine IDs and backfills unique UUIDs and simulation addresses",
+    "v13 migration preserves published course activation and adds series, exercise timestamps and camp grading storage",
+    "v14 migration adds exercise topology templates and per-project deployment and VM identity fields",
+    "v16 migration adds content version columns for optimistic concurrency",
     "duplicate class names block v1→v5 migration without advancing the schema version"
   ],
-  "completedAt": "2026-11-20T10:14:39.111Z",
-  "workspace": "D:\\code\\School\\.local\\migration-test-1795169665627"
+  "completedAt": "2026-11-23T07:01:12.191Z",
+  "workspace": "D:\\SourceCode\\SchoolManage\\.local\\migration-test-1795417220684"
 }

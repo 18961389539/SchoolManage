@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Download, Refresh, Search } from '@element-plus/icons-vue'
+import { Download, Refresh, Search, Tickets } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { api, messageOf } from '../api'
-import { downloadFile, examQuestionTypeLabel, examQuestionTypeOptions } from '../exam'
+import { api, downloadFile, messageOf } from '../api'
+import { examQuestionTypeLabel, examQuestionTypeOptions } from '../exam'
 import type { ExamAnalysisResponse } from '../types'
+import TableEmpty from './TableEmpty.vue'
 
 const props = defineProps<{ modelValue: boolean; examId: string; examName: string }>()
-const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
+const emit = defineEmits<{ 'update:modelValue': [value: boolean]; 'open-roster': [] }>()
 
 const visible = computed({
   get: () => props.modelValue,
@@ -74,6 +75,21 @@ async function exportCsv() {
   }
 }
 
+const filtering = computed(() => !!(appliedSearch.value || typeFilter.value))
+
+function analysisEmptyTitle() {
+  if (error.value) return '试题分析加载失败'
+  if (filtering.value) return '没有符合条件的试题'
+  return '暂无试题分析数据'
+}
+
+function analysisEmptyHint() {
+  if (error.value) return '请稍后刷新重试。'
+  if (filtering.value) return '试试调整关键词或题型，或重置筛选查看全部试题。'
+  if ((data.value?.finishedCount ?? 0) === 0) return '学生交卷后才会统计正确率和失分提示。'
+  return '请确认本场考试已配置试卷题目。'
+}
+
 watch(
   () => [props.modelValue, props.examId] as const,
   ([open]) => {
@@ -114,6 +130,7 @@ watch(
       </div>
       <div class="analysis-actions">
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
+        <el-button :icon="Tickets" @click="emit('open-roster')">考试名单</el-button>
         <el-button :icon="Download" :loading="exporting" @click="exportCsv">导出分析</el-button>
       </div>
     </div>
@@ -121,8 +138,19 @@ watch(
     <p class="analysis-hint">
       已统计 {{ data?.finishedCount ?? 0 }} 份已交卷记录。客观题按作答人数计算正确率，实操题按已评分人数计算满分比例。
     </p>
+    <p v-if="data?.items?.length" class="table-scroll-hint">横向滚动可查看更多列</p>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
-    <el-table v-loading="loading" :data="data?.items || []" row-key="paperQuestionId" empty-text="暂无试题分析数据">
+    <el-table v-loading="loading" :data="data?.items || []" row-key="paperQuestionId" empty-text="">
+      <template #empty>
+        <TableEmpty v-if="!loading" :title="analysisEmptyTitle()" :hint="analysisEmptyHint()">
+          <template v-if="!error" #action>
+            <el-button v-if="filtering" @click="resetFilters">重置筛选</el-button>
+            <el-button v-else-if="(data?.finishedCount ?? 0) === 0" type="primary" plain @click="emit('open-roster')">
+              打开考试名单
+            </el-button>
+          </template>
+        </TableEmpty>
+      </template>
       <el-table-column prop="number" label="题号" width="62" align="center" />
       <el-table-column label="题型" width="90">
         <template #default="{ row }">

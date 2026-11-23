@@ -66,7 +66,8 @@ public class ConcurrencyTests
                 await old.Database.EnsureCreatedAsync();
                 old.Courses.Add(new TrainingCourse { Name = "升级前课程", Description = "保留我" });
                 await old.SaveChangesAsync();
-                // Rewind to the v16 shape: no optimistic-lock columns, older schema marker.
+                // Rewind to the v16 shape: no optimistic-lock columns, no later camp publish flag, older schema marker.
+                await old.Database.ExecuteSqlRawAsync("ALTER TABLE \"JobPositions\" DROP COLUMN \"Published\";");
                 await old.Database.ExecuteSqlRawAsync("ALTER TABLE \"Courses\" DROP COLUMN \"Version\";");
                 await old.Database.ExecuteSqlRawAsync("ALTER TABLE \"CourseChapters\" DROP COLUMN \"Version\";");
                 await old.Database.ExecuteSqlRawAsync("ALTER TABLE \"CourseSections\" DROP COLUMN \"Version\";");

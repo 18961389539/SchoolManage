@@ -143,8 +143,11 @@ public static class TeachingPreviewEndpoints
                                      }).ToListAsync(ct);
         return Results.Ok(new
         {
-            resource = new { row.Id, row.Name, row.Kind, row.Topology, row.StartupNodeId,
-                topologyBlueprint = blueprint },
+            resource = new
+            {
+                row.Id, row.Name, row.Kind, row.Topology, row.StartupNodeId,
+                topologyBlueprint = blueprint
+            },
             topologyDevices = await db.Devices.AsNoTracking().Where(device => templateDevices.Contains(device.Id))
                 .Select(device => new { device.Id, device.Name }).ToListAsync(ct),
             node,

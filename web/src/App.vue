@@ -5,9 +5,8 @@ import { ElMessage } from 'element-plus'
 import { api, messageOf, post, type Row } from './api'
 import { createAuthForm } from './auth'
 import { canLeave, hasLeaveGuard } from './leaveGuard'
-import { homeRoute, navigationFor } from './navigation'
 import { cancelPageReads } from './requestScope'
-import { createRoutes } from './routes'
+import { createRoutes, homeRoute } from './routes'
 import { probeSession } from './session'
 import { appState, applyServerInfo, applySession, signOut } from './store'
 import type { SessionResponse, StatusResponse } from './types'
@@ -41,7 +40,7 @@ const authForm = reactive(createAuthForm())
 const isAdmin = computed(() => user.value?.role === 'Admin')
 const classroomsEnabled = ref(false)
 let classroomsRequest = 0
-const roleNavGroups = computed(() => navigationFor(user.value?.role))
+const roleNavGroups = computed(() => routes.navigation(user.value?.role))
 const navGroups = computed(() =>
   roleNavGroups.value
     .map(group => ({
@@ -187,11 +186,11 @@ async function boot() {
   startup.value = true
   startupError.value = ''
   try {
-    const status = await api<StatusResponse>('/status')
+    const status = await api<StatusResponse>('/status', { pageScoped: false })
     initialized.value = status.initialized
     applyServerInfo(status)
     if (!status.initialized) return
-    const outcome = await probeSession(() => api<SessionResponse>('/auth/me'))
+    const outcome = await probeSession(() => api<SessionResponse>('/auth/me', { pageScoped: false }))
     if (outcome.kind === 'authenticated') setSession(outcome.session)
     else if (outcome.kind === 'unavailable') throw new Error(outcome.message)
   } catch (error) {
@@ -259,7 +258,7 @@ async function changePassword(payload: { currentPassword: string; newPassword: s
   passwordBusy.value = true
   try {
     const result = await post<SessionResponse>('/auth/password', payload)
-    setSession(result?.user ? result : await api<SessionResponse>('/auth/me'))
+    setSession(result?.user ? result : await api<SessionResponse>('/auth/me', { pageScoped: false }))
     passwordVisible.value = false
     initialCurrentPassword.value = ''
     ElMessage.success('密码已修改')

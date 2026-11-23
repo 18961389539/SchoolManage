@@ -54,7 +54,7 @@ public sealed class ValidationTests
     [InlineData("0", "0", 1, 1)]
     [InlineData("-3", "-9", 1, 1)]
     [InlineData("2", "50", 2, 50)]
-    [InlineData("1000001", "5000", 1000000, 1000)]
+    [InlineData("1000001", "5000", 10000, 1000)]
     [InlineData("99999999999999999999", "99999999999999999999", 1, 20)]
     public void Page_ClampsToSupportedRange(string? page, string? size, int expectedPage, int expectedSize)
     {

@@ -32,6 +32,16 @@ export function loadPlaywright() {
   throw new Error('未找到 playwright-core，可在项目根目录执行：npm install --no-save playwright-core')
 }
 
+export function loadAxe() {
+  for (const candidate of [
+    path.join(root, 'node_modules/axe-core/axe.min.js'),
+    path.join(root, '.local/e2e/node_modules/axe-core/axe.min.js')
+  ]) {
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
+
 export async function findBrowser() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH
   const playwrightRoot = path.join(process.env.LOCALAPPDATA ?? '', 'ms-playwright')
@@ -93,7 +103,7 @@ export async function startServer() {
   const base = `http://127.0.0.1:${port}`
   const child = spawn(exe, ['--urls', base], {
     cwd: appDir,
-    env: { ...process.env, SCHOOL_DATA_DIR: dataDir },
+    env: { ...process.env, SCHOOL_DATA_DIR: dataDir, School__Backups__Automatic__Enabled: 'false' },
     stdio: ['ignore', 'pipe', 'pipe']
   })
   const logs = []

@@ -13,6 +13,7 @@ import type {
 } from '../analytics'
 import { recordStatusLabels } from '../teaching'
 import CaseGradeHistory from './CaseGradeHistory.vue'
+import TableEmpty from './TableEmpty.vue'
 
 const props = defineProps<{ detail: StudentStatsDetail }>()
 const attemptVisible = ref(false)
@@ -89,7 +90,7 @@ function letters(indexes: number[]) {
         </el-tag>
         <p>
           已学习 {{ detail.summary.overall.learned }} / {{ detail.summary.overall.total }}，达标
-          {{ detail.summary.overall.passed }}
+          {{ detail.summary.overall.passed }} · 达标线为资源完成度 60%
         </p>
       </article>
       <article>
@@ -118,7 +119,11 @@ function letters(indexes: number[]) {
 
     <el-tabs class="detail-tabs">
       <el-tab-pane label="成绩单">
-        <el-table :data="detail.transcript" row-key="id" empty-text="暂无课程资源" max-height="480">
+        <p v-if="detail.transcript.length" class="table-scroll-hint">横向滚动可查看更多列</p>
+        <el-table :data="detail.transcript" row-key="id" empty-text="" max-height="480">
+          <template #empty>
+            <TableEmpty title="暂无课程资源" hint="课堂课程配置资源后，成绩单会显示在这里。" />
+          </template>
           <el-table-column label="章节 / 资源" min-width="250">
             <template #default="{ row }">
               <strong class="resource-name">{{ row.name }}</strong>
@@ -146,7 +151,11 @@ function letters(indexes: number[]) {
       </el-tab-pane>
 
       <el-tab-pane label="理论练习历史">
-        <el-table :data="detail.practiceHistory" row-key="attemptId" empty-text="暂无练习提交记录" max-height="480">
+        <p v-if="detail.practiceHistory.length" class="table-scroll-hint">横向滚动可查看更多列</p>
+        <el-table :data="detail.practiceHistory" row-key="attemptId" empty-text="" max-height="480">
+          <template #empty>
+            <TableEmpty title="暂无练习提交记录" hint="完成理论练习并提交后，记录会显示在这里。" />
+          </template>
           <el-table-column label="资源" min-width="200">
             <template #default="{ row }">
               <strong class="resource-name">{{ row.resourceName }}</strong>
@@ -180,7 +189,11 @@ function letters(indexes: number[]) {
       </el-tab-pane>
 
       <el-tab-pane label="案例实操历史">
-        <el-table :data="detail.caseHistory" row-key="recordId" empty-text="暂无案例实操记录" max-height="480">
+        <p v-if="detail.caseHistory.length" class="table-scroll-hint">横向滚动可查看更多列</p>
+        <el-table :data="detail.caseHistory" row-key="recordId" empty-text="" max-height="480">
+          <template #empty>
+            <TableEmpty title="暂无案例实操记录" hint="进入案例实操并完成后，记录会显示在这里。" />
+          </template>
           <el-table-column label="资源" min-width="200">
             <template #default="{ row }">
               <strong class="resource-name">{{ row.resourceName }}</strong>

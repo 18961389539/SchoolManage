@@ -431,8 +431,11 @@ public static class ClassroomCollaborationEndpoints
                           join cabinet in db.Cabinets on device.CabinetId equals cabinet.Id
                           where grants.Contains(cabinet.Id)
                           orderby cabinet.Name, device.Name
-                          select new { device.Id, device.Name, cabinetName = cabinet.Name, isSimulated = true,
-                              connectionType = device.ConnectionType }).ToListAsync(ct);
+                          select new
+                          {
+                              device.Id, device.Name, cabinetName = cabinet.Name, isSimulated = true,
+                              connectionType = device.ConnectionType
+                          }).ToListAsync(ct);
         return Results.Ok(rows);
     }
 

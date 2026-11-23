@@ -1,9 +1,8 @@
-using System.IO.Compression;
-using System.Runtime.InteropServices;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Data.Sqlite;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Win32;
 
@@ -44,6 +43,15 @@ public static class OperationsEndpoints
             var q = db.Audits.AsNoTracking(); var search = req.Query["search"].ToString(); if (search.Length > 0) q = q.Where(x => x.UserName.Contains(search) || x.Action.Contains(search) || x.Target.Contains(search));
             var (page, size) = Validation.Page(req); return Results.Ok(new { total = await q.CountAsync(ct), items = await q.OrderByDescending(x => x.At).ThenByDescending(x => x.Id).Skip((page - 1) * size).Take(size).ToListAsync(ct) });
         });
+        api.MapGet("/audits/export", (HttpRequest req, SchoolDbContext db, HttpContext ctx) => AuditExport.CsvAsync(req, db, ctx)).RequireRateLimiting("expensive");
+        api.MapGet("/diagnostics", async (AppPaths paths, SchoolDbContext db, StorageOptions storage,
+            AutomaticBackupOptions backup, AuditRetentionOptions retention, RollingFileLoggerProvider logs, HttpContext ctx) =>
+        {
+            var snapshot = await DiagnosticsBundle.CollectAsync(paths, db, storage, backup, retention, logs, ctx.RequestAborted);
+            db.Audits.Add(new AuditEntry { UserName = ctx.User.Identity?.Name ?? "system", Action = "下载诊断包", Target = "support" });
+            await db.SaveChangesAsync(ctx.RequestAborted);
+            return await DiagnosticsBundle.CreateResultAsync(snapshot, ctx.RequestAborted);
+        }).RequireRateLimiting("expensive");
         api.MapGet("/settings", async (SchoolDbContext db, AppPaths paths, CancellationToken ct) => Results.Ok(new { schoolName = await db.Settings.Where(x => x.Id == "schoolName").Select(x => x.Value).FirstOrDefaultAsync(ct) ?? "", backupDirectory = paths.Backups, dataDirectory = paths.Data, version = BuildInfo.Version, resourceMode = "simulated", backupIncludesKeys = true }));
         api.MapPut("/settings", async (SettingsRequest input, HttpContext ctx, SchoolDbContext db) =>
         {
@@ -51,15 +59,41 @@ public static class OperationsEndpoints
             var setting = await db.Settings.FindAsync(["schoolName"], ctx.RequestAborted); if (setting == null) db.Settings.Add(new AppSetting { Id = "schoolName", Value = input.SchoolName.Trim() }); else setting.Value = input.SchoolName.Trim();
             Audit.Add(db, ctx, "修改系统设置", "schoolName"); await db.SaveChangesAsync(ctx.RequestAborted); return Results.Ok(new { message = "已保存" });
         });
-        api.MapGet("/backups", (AppPaths paths) => Results.Ok(new { items = Directory.EnumerateFiles(paths.Backups, "school-*.zip").Select(f => new FileInfo(f)).OrderByDescending(f => f.CreationTimeUtc).Select(f => new { fileName = f.Name, createdAt = f.CreationTimeUtc, size = f.Length }).ToArray() }));
-        api.MapPost("/backups", (AppPaths paths, SchoolDbContext db, StorageOptions storage, HttpContext ctx) =>
-            CreateBackupAsync(paths, db, storage, ctx, AvailableFreeBytes));
+        api.MapGet("/backups", async (AppPaths paths, SchoolDbContext db, AutomaticBackupOptions automatic, CancellationToken ct) =>
+        {
+            var state = await AutomaticBackupState.ReadAsync(db, ct);
+            var items = Directory.EnumerateFiles(paths.Backups, "school-*.zip").Select(f => new FileInfo(f)).OrderByDescending(f => f.CreationTimeUtc).Select(f => new { fileName = f.Name, createdAt = f.CreationTimeUtc, size = f.Length }).ToArray();
+            return Results.Ok(new
+            {
+                items,
+                automatic = new
+                {
+                    enabled = automatic.Enabled,
+                    timeOfDay = automatic.TimeOfDay.ToString("HH:mm", CultureInfo.InvariantCulture),
+                    lastAttemptAt = state.LastAttemptAt,
+                    lastSuccessAt = state.LastSuccessAt,
+                    lastMessage = state.LastMessage
+                }
+            });
+        });
+        api.MapPost("/backups", async (AppPaths paths, SchoolDbContext db, StorageOptions storage, BackupCoordinator coordinator, HttpContext ctx) =>
+        {
+            if (!await coordinator.TryEnterAsync(ctx.RequestAborted))
+                return Results.Conflict(new { message = "已有备份任务正在进行，请稍后重试" });
+            try
+            {
+                var result = await BackupService.CreateAsync(paths, db, storage,
+                    ctx.User.Identity?.Name ?? "system", "创建备份", BackupService.AvailableFreeBytes, ctx.RequestAborted);
+                return result.ToHttpResult();
+            }
+            finally { coordinator.Exit(); }
+        }).RequireRateLimiting("expensive");
         api.MapGet("/backups/{fileName}", async (string fileName, AppPaths paths, HttpContext ctx, SchoolDbContext db) =>
         {
             if (Path.GetFileName(fileName) != fileName || !System.Text.RegularExpressions.Regex.IsMatch(fileName, "^school-[0-9]{14}-[a-f0-9]{8}\\.zip$")) return Results.NotFound();
             var path = Path.Combine(paths.Backups, fileName); if (!File.Exists(path)) return Results.NotFound(new { message = "备份文件不存在" });
             Audit.Add(db, ctx, "下载备份", fileName); await db.SaveChangesAsync(ctx.RequestAborted); return Results.File(path, "application/zip", fileName);
-        });
+        }).RequireRateLimiting("expensive");
         api.MapGet("/licenses", async (SchoolDbContext db, LicenseQuotaPolicy policy, CancellationToken ct) =>
         {
             var records = await db.Licenses.AsNoTracking().OrderByDescending(x => x.ImportedAt).ToListAsync(ct);
@@ -132,7 +166,7 @@ public static class OperationsEndpoints
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
             return Results.Ok(new { importedCount = pending.Count });
-        });
+        }).RequireRateLimiting("expensive");
         api.MapGet("/licenses/guide", () => Results.File(Encoding.UTF8.GetBytes(LicenseGuide), "text/markdown; charset=utf-8", "license-guide.md"));
     }
     public static string MachineCode()
@@ -160,100 +194,4 @@ public static class OperationsEndpoints
         该类的授权全部过期时暂停新增，已有配置和资源仍可管理及释放。节点自身配额也继续生效。
         其他资源授权码仅用于记录。早期版本存入的旧记录可重新上传原签名文件以启用额度。
         """;
-    internal static async Task<IResult> CreateBackupAsync(AppPaths paths, SchoolDbContext db, StorageOptions storage,
-        HttpContext ctx, Func<string, long?> readFreeBytes)
-    {
-        var ct = ctx.RequestAborted;
-        var free = readFreeBytes(paths.Backups);
-        if (free is null) return InsufficientStorage("无法读取备份目录所在磁盘的剩余空间，请人工检查磁盘后再试");
-        if (free < storage.BackupMinimumFreeBytes)
-        {
-            FileRetention.Apply(paths.Backups, "school-*.zip", storage.BackupRetentionCount, long.MaxValue);
-            var afterRetention = readFreeBytes(paths.Backups);
-            if (afterRetention is null) return InsufficientStorage("无法读取备份目录所在磁盘的剩余空间，请人工检查磁盘后再试");
-            if (afterRetention < storage.BackupMinimumFreeBytes)
-                return InsufficientStorage("备份目录所在磁盘剩余空间不足，请清理后重试");
-        }
-
-        var suffix = DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "-" + Guid.NewGuid().ToString("N")[..8];
-        var dbPath = Path.Combine(paths.Backups, "pending-" + suffix + ".db");
-        var finalPath = Path.Combine(paths.Backups, "school-" + suffix + ".zip");
-        var pendingPath = finalPath + ".pending";
-        try
-        {
-            Audit.Add(db, ctx, "创建备份", Path.GetFileName(finalPath));
-            await db.SaveChangesAsync(ct);
-            await using (var source = new SqliteConnection(db.Database.GetConnectionString()))
-            await using (var destination = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = dbPath, Pooling = false }.ToString()))
-            {
-                await source.OpenAsync(ct);
-                await destination.OpenAsync(ct);
-                source.BackupDatabase(destination);
-            }
-            using (var zip = ZipFile.Open(pendingPath, ZipArchiveMode.Create))
-            {
-                zip.CreateEntryFromFile(dbPath, "school.db", CompressionLevel.Optimal);
-                zip.CreateEntryFromFile(Path.Combine(paths.Data, ".schooltraining-data.json"), ".schooltraining-data.json", CompressionLevel.Optimal);
-                foreach (var key in Directory.EnumerateFiles(paths.Keys, "*.xml")) zip.CreateEntryFromFile(key, "keys/" + Path.GetFileName(key), CompressionLevel.Optimal);
-                var entry = zip.CreateEntry("manifest.json");
-                await using var stream = entry.Open();
-                await JsonSerializer.SerializeAsync(stream, new { product = "SchoolTraining", schemaVersion = 1, databaseSchemaVersion = DatabaseSafety.SchemaVersion, version = BuildInfo.Version, createdAt = DateTime.UtcNow }, JsonOptions, ct);
-            }
-            File.Move(pendingPath, finalPath);
-            FileRetention.Apply(paths.Backups, "school-*.zip", storage.BackupRetentionCount, storage.BackupMaxTotalBytes, protectedFile: finalPath);
-            var info = new FileInfo(finalPath);
-            return Results.Ok(new { fileName = info.Name, createdAt = info.CreationTimeUtc, size = info.Length });
-        }
-        catch (Exception error) when (IsDiskFull(error))
-        {
-            return InsufficientStorage("创建备份时磁盘空间耗尽，请清理后重试");
-        }
-        finally
-        {
-            foreach (var path in new[] { pendingPath, dbPath, dbPath + "-journal", dbPath + "-wal", dbPath + "-shm" })
-            {
-                try { File.Delete(path); }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
-            }
-        }
-    }
-
-    static IResult InsufficientStorage(string message) => Results.Json(new { message }, statusCode: 507);
-
-    internal static bool IsDiskFull(Exception error) => error switch
-    {
-        IOException { HResult: unchecked((int)0x80070070) or unchecked((int)0x80070027) } => true,
-        SqliteException { SqliteErrorCode: SQLitePCL.raw.SQLITE_FULL } => true,
-        DbUpdateException { InnerException: SqliteException { SqliteErrorCode: SQLitePCL.raw.SQLITE_FULL } } => true,
-        _ => false
-    };
-
-    /// <summary>
-    /// Returns null when free space cannot be determined. Backup callers must treat
-    /// "unknown" as insufficient rather than proceeding with a write that may fill the disk.
-    /// </summary>
-    internal static long? AvailableFreeBytes(string path)
-    {
-        try
-        {
-            var directory = Path.GetFullPath(path);
-            if (!Directory.Exists(directory)) return null;
-            if (OperatingSystem.IsWindows())
-            {
-                // Query the actual directory to account for mounted volumes and the service account's quota.
-                if (!Path.EndsInDirectorySeparator(directory)) directory += Path.DirectorySeparatorChar;
-                return GetDiskFreeSpaceEx(directory, out var available, out _, out _) ? (long)Math.Min(available, long.MaxValue) : null;
-            }
-            var root = Path.GetPathRoot(directory);
-            return string.IsNullOrEmpty(root) ? null : new DriveInfo(root).AvailableFreeSpace;
-        }
-        catch (IOException) { return null; }
-        catch (UnauthorizedAccessException) { return null; }
-        catch (ArgumentException) { return null; }
-    }
-
-    [DllImport("kernel32.dll", EntryPoint = "GetDiskFreeSpaceExW", CharSet = CharSet.Unicode, ExactSpelling = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    static extern bool GetDiskFreeSpaceEx(string directory, out ulong available, out ulong total, out ulong free);
 }

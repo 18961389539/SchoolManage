@@ -1,10 +1,20 @@
+using System.Threading.Channels;
+
 namespace School.Training;
 
 public sealed class RollingFileLoggerProvider : ILoggerProvider
 {
+    sealed record Entry(DateTime Now, string Message, int Bytes);
     readonly string logDirectory;
     readonly StorageOptions options;
     readonly object gate = new();
+    readonly Channel<Entry> channel = Channel.CreateBounded<Entry>(new BoundedChannelOptions(10_000)
+    {
+        SingleReader = true,
+        SingleWriter = false,
+        FullMode = BoundedChannelFullMode.DropWrite
+    });
+    readonly Task writerTask;
     string? currentFile;
     DateTime currentDate;
     long writeFailures;
@@ -15,11 +25,51 @@ public sealed class RollingFileLoggerProvider : ILoggerProvider
         this.options = options;
         Directory.CreateDirectory(logDirectory);
         lock (gate) Cleanup(DateTime.UtcNow);
+        writerTask = Task.Run(WriteLoop);
     }
 
     public long WriteFailures => Interlocked.Read(ref writeFailures);
     public ILogger CreateLogger(string categoryName) => new FileLogger(this, categoryName);
-    public void Dispose() { }
+
+    public void Dispose()
+    {
+        channel.Writer.TryComplete();
+        try { writerTask.Wait(TimeSpan.FromSeconds(5)); }
+        catch (AggregateException) { }
+    }
+
+    async Task WriteLoop()
+    {
+        var batch = new List<Entry>(64);
+        try
+        {
+            while (await channel.Reader.WaitToReadAsync())
+            {
+                while (batch.Count < 64 && channel.Reader.TryRead(out var entry)) batch.Add(entry);
+                if (batch.Count == 0) continue;
+                lock (gate)
+                {
+                    foreach (var entry in batch) Write(entry);
+                }
+                batch.Clear();
+            }
+        }
+        catch (Exception exception)
+        {
+            try { Console.Error.WriteLine($"{DateTime.UtcNow:O} [LoggerFailure] writer stopped: {exception.Message}"); } catch { }
+        }
+    }
+
+    void Write(Entry entry)
+    {
+        var target = SelectFile(entry.Now, entry.Bytes);
+        try { File.AppendAllText(target, entry.Message); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Interlocked.Increment(ref writeFailures);
+            try { Console.Error.WriteLine($"{entry.Now:O} [LoggerFailure] {exception.Message}"); } catch { }
+        }
+    }
 
     void Cleanup(DateTime now)
     {
@@ -56,8 +106,8 @@ public sealed class RollingFileLoggerProvider : ILoggerProvider
     sealed class FileLogger(RollingFileLoggerProvider owner, string category) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        // The level comes from School:Logs:MinimumLevel so an operator can reduce synchronous
-        // file writes without rebuilding the service.
+        // The level comes from School:Logs:MinimumLevel so an operator can reduce log volume
+        // without rebuilding the service.
         public bool IsEnabled(LogLevel level) => level >= owner.options.LogMinimumLevel && level != LogLevel.None;
         public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
@@ -66,16 +116,8 @@ public sealed class RollingFileLoggerProvider : ILoggerProvider
             var message = $"{now:O} [{level}] {category}: {formatter(state, exception)}{Environment.NewLine}";
             if (exception != null) message += exception + Environment.NewLine;
             var bytes = System.Text.Encoding.UTF8.GetByteCount(message);
-            lock (owner.gate)
-            {
-                var target = owner.SelectFile(now, bytes);
-                try { File.AppendAllText(target, message); }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    Interlocked.Increment(ref owner.writeFailures);
-                    try { Console.Error.WriteLine($"{now:O} [LoggerFailure] {ex.Message}"); } catch { }
-                }
-            }
+            if (!owner.channel.Writer.TryWrite(new Entry(now, message, bytes)))
+                Interlocked.Increment(ref owner.writeFailures);
         }
     }
 }

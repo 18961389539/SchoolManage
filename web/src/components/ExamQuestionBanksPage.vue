@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { Delete, EditPen, Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
@@ -9,8 +9,12 @@ import { examQuestionBankLabels } from '../questionBanks'
 import { focusFirstField } from '../focusField'
 import type { ExamQuestionBank, ExamQuestionBankType, Paged } from '../types'
 import { useDiscardGuard } from '../discardGuard'
+import TableEmpty from './TableEmpty.vue'
 
 const QuestionBankPage = defineAsyncComponent(() => import('./QuestionBankPage.vue'))
+const props = defineProps<{ readOnly?: boolean }>()
+const canWrite = computed(() => !props.readOnly)
+const filtering = computed(() => !!search.value.trim() || !!type.value)
 const banks = ref<ExamQuestionBank[]>([])
 const total = ref(0)
 const listKey = 'exam-question-banks'
@@ -75,6 +79,12 @@ useListPersist(listKey, () => ({
   page: page.value,
   pageSize: size.value
 }))
+
+function resetBankFilters() {
+  search.value = ''
+  type.value = ''
+  filter()
+}
 
 function filter() {
   page.value = 1
@@ -151,16 +161,17 @@ onMounted(load)
 </script>
 
 <template>
-  <QuestionBankPage v-if="activeBank" :key="activeBank.id" :bank="activeBank" @back="back" />
+  <QuestionBankPage v-if="activeBank" :key="activeBank.id" :bank="activeBank" :read-only="!canWrite" @back="back" />
   <template v-else>
     <section class="page-heading">
       <div>
-        <h1>题库管理</h1>
-        <p>按题库维护题目，并在组卷时查找来源。</p>
+        <h1>{{ canWrite ? '题库管理' : '题库' }}</h1>
+        <p v-if="canWrite">按题库维护题目，并在组卷时查找来源。</p>
+        <p v-else>只读查看管理员已配置的题库和题目，不能改题或删除。</p>
       </div>
       <div class="heading-actions">
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-        <el-button type="primary" :icon="Plus" @click="edit()">新建题库</el-button>
+        <el-button v-if="canWrite" type="primary" :icon="Plus" @click="edit()">新建题库</el-button>
       </div>
     </section>
     <section class="surface">
@@ -186,11 +197,31 @@ onMounted(load)
             <el-option v-for="(label, key) in examQuestionBankLabels" :key="key" :label="label" :value="key" />
           </el-select>
           <el-button type="primary" :icon="Search" @click="filter">查询</el-button>
+          <el-button @click="resetBankFilters">重置</el-button>
         </div>
         <span class="record-count">共 {{ total }} 个题库</span>
       </div>
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="table-error" />
-      <el-table v-loading="loading" :data="banks" row-key="id" empty-text="未找到题库">
+      <el-table v-loading="loading" :data="banks" row-key="id" empty-text="">
+        <template #empty>
+          <TableEmpty
+            v-if="!loading"
+            :title="error ? '题库加载失败' : filtering ? '没有符合条件的题库' : '暂无题库'"
+            :hint="
+              error
+                ? '请检查服务状态后刷新重试'
+                : filtering
+                  ? '试试调整名称或类型筛选，也可清除后查看全部题库。'
+                  : canWrite
+                    ? '点击右上角「新建题库」开始维护题目。'
+                    : '暂无题库。请联系管理员维护题库后再查看。'
+            "
+          >
+            <template v-if="!error && filtering" #action>
+              <el-button type="primary" plain @click="resetBankFilters">清除筛选</el-button>
+            </template>
+          </TableEmpty>
+        </template>
         <el-table-column label="题库名称" min-width="190">
           <template #default="{ row }">
             <strong>{{ row.name }}</strong>
@@ -209,8 +240,12 @@ onMounted(load)
             <el-button type="primary" link :icon="View" @click="activeBank = row as ExamQuestionBank"
               >查看题目</el-button
             >
-            <el-button link :icon="EditPen" @click="edit(row as ExamQuestionBank)">编辑</el-button>
-            <el-tooltip v-if="!row.isDefault" :disabled="row.questionCount === 0" content="请先清空题库或移出题目">
+            <el-button v-if="canWrite" link :icon="EditPen" @click="edit(row as ExamQuestionBank)">编辑</el-button>
+            <el-tooltip
+              v-if="canWrite && !row.isDefault"
+              :disabled="row.questionCount === 0"
+              content="请先清空题库或移出题目"
+            >
               <span>
                 <el-button
                   type="danger"

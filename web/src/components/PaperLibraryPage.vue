@@ -5,11 +5,16 @@ import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
 import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
+import { useRequestGeneration } from '../requestGeneration'
 import { examQuestionTypeLabel, examQuestionTypeOptions, optionLetters, selectedText, typeCountText } from '../exam'
 import type { ExamPaperDetail, ExamPaperQuestion, ExamPaperSummary, ExamQuestionSummary, Paged } from '../types'
 import QuestionBankSelect from './QuestionBankSelect.vue'
 import { focusFirstField } from '../focusField'
 import { useDiscardGuard } from '../discardGuard'
+import TableEmpty from './TableEmpty.vue'
+
+const props = defineProps<{ readOnly?: boolean }>()
+const canWrite = computed(() => !props.readOnly)
 
 const items = ref<ExamPaperSummary[]>([])
 const total = ref(0)
@@ -20,6 +25,7 @@ const pageSize = ref(savedList.pageSize)
 const loading = ref(false)
 const error = ref('')
 const search = ref(savedList.search)
+const listRequests = useRequestGeneration()
 
 const dialogVisible = ref(false)
 const paperNameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
@@ -83,12 +89,14 @@ let pickerRequest = 0
 const existingQuestionIds = computed(() => new Set((paper.value?.questions || []).map(item => item.questionId)))
 
 async function load() {
+  const token = listRequests.begin()
   loading.value = true
   error.value = ''
   try {
     const params = new URLSearchParams({ page: String(page.value), pageSize: String(pageSize.value) })
     if (search.value.trim()) params.set('search', search.value.trim())
     const data = await api<Paged<ExamPaperSummary>>(`/exam-papers?${params.toString()}`)
+    if (!listRequests.isCurrent(token)) return
     items.value = data.items
     total.value = data.total
     const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
@@ -97,9 +105,9 @@ async function load() {
       return load()
     }
   } catch (failure) {
-    error.value = messageOf(failure)
+    if (listRequests.isCurrent(token)) error.value = messageOf(failure)
   } finally {
-    loading.value = false
+    if (listRequests.isCurrent(token)) loading.value = false
   }
 }
 
@@ -109,6 +117,8 @@ useListPersist(listKey, () => ({
   page: page.value,
   pageSize: pageSize.value
 }))
+
+const filtering = computed(() => !!search.value.trim())
 
 function applyFilters() {
   page.value = 1
@@ -328,12 +338,13 @@ onMounted(load)
 <template>
   <section class="page-heading">
     <div>
-      <h1>试卷管理</h1>
-      <p>从题库挑选题目组成试卷并调整分值；重命名不影响已引用试卷的考试。</p>
+      <h1>{{ canWrite ? '试卷管理' : '试卷库' }}</h1>
+      <p v-if="canWrite">从题库挑选题目组成试卷并调整分值；重命名不影响已引用试卷的考试。</p>
+      <p v-else>只读查看管理员已配置的试卷，不能改题、组卷或删除。</p>
     </div>
     <div class="heading-actions">
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      <el-button type="primary" :icon="Plus" @click="openCreate">新建试卷</el-button>
+      <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建试卷</el-button>
     </div>
   </section>
 
@@ -352,7 +363,7 @@ onMounted(load)
         <el-button type="primary" :icon="Search" @click="applyFilters">查询</el-button>
         <el-button @click="resetFilters">重置</el-button>
       </div>
-      <el-button type="danger" plain :disabled="!papersSelected.length" @click="removeSelectedPapers"
+      <el-button v-if="canWrite" type="danger" plain :disabled="!papersSelected.length" @click="removeSelectedPapers"
         >删除所选试卷</el-button
       >
       <span class="record-count">共 {{ total }} 份试卷</span>
@@ -363,10 +374,29 @@ onMounted(load)
       v-loading="loading"
       :data="items"
       row-key="id"
-      empty-text="暂无试卷"
+      empty-text=""
       @selection-change="rows => (papersSelected = rows)"
     >
-      <el-table-column type="selection" width="45" />
+      <template #empty>
+        <TableEmpty
+          v-if="!loading"
+          :title="error ? '试卷加载失败' : filtering ? '没有符合条件的试卷' : '暂无试卷'"
+          :hint="
+            error
+              ? '请检查服务状态后刷新重试'
+              : filtering
+                ? '试试调整关键词，也可清除后查看全部试卷。'
+                : canWrite
+                  ? '点击右上角「新建试卷」，从题库选题并调整分值。'
+                  : '暂无试卷。请联系管理员在试卷库中组卷。'
+          "
+        >
+          <template v-if="!error && filtering" #action>
+            <el-button type="primary" plain @click="resetFilters">清除筛选</el-button>
+          </template>
+        </TableEmpty>
+      </template>
+      <el-table-column v-if="canWrite" type="selection" width="45" />
       <el-table-column prop="name" label="试卷" min-width="220">
         <template #default="{ row }">
           <div class="table-name">
@@ -391,9 +421,13 @@ onMounted(load)
       </el-table-column>
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" :icon="View" @click="openEditor(row as ExamPaperSummary)">组卷</el-button>
-          <el-button link :icon="EditPen" @click="openEdit(row as ExamPaperSummary)">编辑</el-button>
-          <el-button link type="danger" :icon="Delete" @click="removePaper(row as ExamPaperSummary)">删除</el-button>
+          <el-button link type="primary" :icon="View" @click="openEditor(row as ExamPaperSummary)">{{
+            canWrite ? '组卷' : '查看试卷'
+          }}</el-button>
+          <el-button v-if="canWrite" link :icon="EditPen" @click="openEdit(row as ExamPaperSummary)">编辑</el-button>
+          <el-button v-if="canWrite" link type="danger" :icon="Delete" @click="removePaper(row as ExamPaperSummary)"
+            >删除</el-button
+          >
         </template>
       </el-table-column>
     </el-table>
@@ -444,7 +478,7 @@ onMounted(load)
     </el-form>
     <template #footer>
       <el-button @click="guard.cancel">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="savePaper">
+      <el-button v-if="canWrite" type="primary" :loading="saving" @click="savePaper">
         {{ editing ? '保存修改' : '创建试卷' }}
       </el-button>
     </template>
@@ -452,7 +486,7 @@ onMounted(load)
 
   <el-drawer
     v-model="editorVisible"
-    :title="paper ? `组卷 · ${paper.name}` : '试卷配置'"
+    :title="paper ? `${canWrite ? '组卷' : '查看试卷'} · ${paper.name}` : '试卷配置'"
     size="min(1040px, 96vw)"
     @closed="paper = null"
   >
@@ -470,7 +504,13 @@ onMounted(load)
           <div class="paper-type-counts">{{ typeCountText(paper.typeCounts) }}</div>
           <el-tooltip :disabled="!addPaperQuestionReason()" :content="addPaperQuestionReason()" placement="bottom">
             <span class="disabled-action-wrap">
-              <el-button type="primary" :icon="Plus" :disabled="!paper.questionEditable" @click="openPicker">
+              <el-button
+                v-if="canWrite"
+                type="primary"
+                :icon="Plus"
+                :disabled="!paper.questionEditable"
+                @click="openPicker"
+              >
                 添加题目
               </el-button>
             </span>
@@ -500,7 +540,7 @@ onMounted(load)
             />
           </el-select>
           <el-button
-            v-if="paper.questionEditable"
+            v-if="canWrite && paper.questionEditable"
             type="danger"
             plain
             :disabled="!paperSelection.length || !!removingId"
@@ -515,7 +555,7 @@ onMounted(load)
           empty-text="没有符合条件的题目"
           @selection-change="rows => (paperSelection = rows)"
         >
-          <el-table-column v-if="paper.questionEditable" type="selection" width="45" />
+          <el-table-column v-if="canWrite && paper.questionEditable" type="selection" width="45" />
           <el-table-column label="#" width="54">
             <template #default="{ row }">{{ paperNumbers.get(row.id) }}</template>
           </el-table-column>
@@ -544,12 +584,12 @@ onMounted(load)
                 :min="1"
                 :max="100"
                 size="small"
-                :disabled="!paper.questionEditable || scoreBusy === row.id"
+                :disabled="!canWrite || !paper.questionEditable || scoreBusy === row.id"
                 @change="updateScore(row as ExamPaperQuestion)"
               />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="90">
+          <el-table-column v-if="canWrite" label="操作" width="90">
             <template #default="{ row }">
               <el-tooltip
                 :disabled="!removePaperQuestionReason()"

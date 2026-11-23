@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
 import type { ClassroomGroup, ClassroomGroupListResponse, ClassroomStudent } from '../types'
 import { focusFirstField } from '../focusField'
+import TableEmpty from './TableEmpty.vue'
 
 const props = defineProps<{ visible: boolean; classroomId: string; classroomName: string }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -27,6 +28,25 @@ function focusGroupName() {
   const root = groupNameInput.value?.$el
   if (root) focusFirstField(root)
   else groupNameInput.value?.focus?.()
+}
+
+const searching = () => search.value.trim().length > 0
+
+function clearGroupSearch() {
+  search.value = ''
+  void load()
+}
+
+function groupsEmptyTitle() {
+  if (error.value) return '小组列表加载失败'
+  if (searching()) return '没有符合条件的小组'
+  return '暂无课堂小组'
+}
+
+function groupsEmptyHint() {
+  if (error.value) return '请稍后刷新重试。'
+  if (searching()) return '试试调整关键词，或清除搜索查看全部小组。'
+  return '点击“新建小组”，将课堂学生分成协作小组。'
 }
 
 async function load() {
@@ -147,7 +167,15 @@ watch(
       <span class="record-count">共 {{ total }} 个小组</span>
     </div>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
-    <el-table v-loading="loading" :data="groups" row-key="id" empty-text="暂无小组，请先创建">
+    <el-table v-loading="loading" :data="groups" row-key="id" empty-text="">
+      <template #empty>
+        <TableEmpty v-if="!loading" :title="groupsEmptyTitle()" :hint="groupsEmptyHint()">
+          <template #action>
+            <el-button v-if="searching() && !error" @click="clearGroupSearch">清除搜索</el-button>
+            <el-button v-else-if="!error" type="primary" plain @click="openCreate">新建小组</el-button>
+          </template>
+        </TableEmpty>
+      </template>
       <el-table-column type="expand">
         <template #default="{ row }">
           <div class="member-panel">

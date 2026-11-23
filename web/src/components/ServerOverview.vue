@@ -56,7 +56,9 @@ const visibleNetworks = computed(() => {
 <template>
   <div v-if="!data" class="surface server-empty">
     <el-skeleton v-if="loading" :rows="5" animated />
-    <el-empty v-else description="暂未获取服务器信息" />
+    <el-empty v-else description="暂未获取服务器信息">
+      <p class="server-empty-hint">请稍后刷新本页重试。采集不到的字段会标记为不可获取。</p>
+    </el-empty>
   </div>
   <template v-else>
     <el-alert
@@ -232,6 +234,14 @@ const visibleNetworks = computed(() => {
 .server-empty {
   padding: 36px 24px;
   text-align: center;
+}
+
+.server-empty-hint {
+  max-width: 36ch;
+  margin: 8px auto 0;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .server-summary {

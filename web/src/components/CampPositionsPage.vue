@@ -387,7 +387,7 @@ async function save() {
   try {
     if (editingId.value) await put(`/camp/positions/${editingId.value}`, payload())
     else await post('/camp/positions', payload())
-    ElMessage.success(editingId.value ? '岗位已更新' : '岗位已创建')
+    ElMessage.success(editingId.value ? '岗位已更新' : '岗位已创建，发布后学生才能在岗位训练营中看到')
     dialogVisible.value = false
     await load()
   } catch (failure) {
@@ -412,6 +412,29 @@ async function remove(position: CampPositionAdminSummary) {
   }
 }
 
+async function setPublished(position: CampPositionAdminSummary, published: boolean) {
+  try {
+    if (published) {
+      await ElMessageBox.confirm(
+        `发布后，学生可在「岗位训练营」中看到岗位“${position.name}”并开始测评（需已配置题目）。确认发布？`,
+        '发布岗位',
+        { type: 'warning', confirmButtonText: '确认发布', cancelButtonText: '取消' }
+      )
+    } else {
+      await ElMessageBox.confirm(
+        `取消发布后，尚未开始的学生将不再看到岗位“${position.name}”。进行中的测评仍可继续。确认取消发布？`,
+        '取消发布岗位',
+        { type: 'warning', confirmButtonText: '确认取消发布', cancelButtonText: '取消' }
+      )
+    }
+    await post(`/camp/positions/${position.id}/publish`, { published })
+    ElMessage.success(published ? '岗位已发布，学生可在岗位训练营中看到' : '已取消发布，尚未开始的学生将不再看到该岗位')
+    await load()
+  } catch (failure) {
+    if (failure !== 'cancel' && failure !== 'close') ElMessage.error(messageOf(failure))
+  }
+}
+
 onMounted(() => {
   void load()
   void loadNodes()
@@ -422,7 +445,7 @@ onMounted(() => {
   <section class="page-heading">
     <div>
       <h1>岗位训练营</h1>
-      <p>配置岗位技能、测评题库与实操评分项，学员完成后自动生成岗位能力报告。</p>
+      <p>配置岗位技能、测评题库与实操评分项。新建后默认不发布，发布后学生才能在岗位训练营中看到。</p>
     </div>
     <div class="heading-actions">
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
@@ -441,7 +464,9 @@ onMounted(() => {
         <TableEmpty
           v-if="!loading"
           :title="error ? '岗位加载失败' : '暂无岗位'"
-          :hint="error ? '请检查服务状态后刷新重试' : '点击「新建岗位」配置技能、测评题与评分项。'"
+          :hint="
+            error ? '请检查服务状态后刷新重试' : '点击「新建岗位」配置技能与测评题，发布后学生才能在岗位训练营中看到。'
+          "
         />
       </template>
       <el-table-column prop="name" label="岗位" min-width="200">
@@ -468,11 +493,21 @@ onMounted(() => {
       <el-table-column label="测评人数" width="90">
         <template #default="{ row }">{{ row.attemptCount }}</template>
       </el-table-column>
+      <el-table-column label="发布状态" width="100">
+        <template #default="{ row }">
+          <el-tag :type="row.published ? 'success' : 'info'" size="small" effect="plain">
+            {{ row.published ? '已发布' : '未发布' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="更新时间" width="170">
         <template #default="{ row }">{{ dateTime(row.updatedAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
+          <el-button link type="primary" @click="setPublished(row as CampPositionAdminSummary, !row.published)">
+            {{ row.published ? '取消发布' : '发布' }}
+          </el-button>
           <el-button link type="primary" :icon="EditPen" @click="openEdit(row as CampPositionAdminSummary)"
             >编辑</el-button
           >

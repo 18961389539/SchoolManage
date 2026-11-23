@@ -191,7 +191,7 @@ const releaseLeaveGuard = registerLeaveGuard(async () => {
     await ElMessageBox.confirm(
       unsaved
         ? '答案没有保存成功，离开后这些修改可能丢失。仍要离开吗？'
-        : '测评仍在进行，离开后倒计时不会暂停。已作答内容会保留，可从「我的岗位」继续。',
+        : '测评仍在进行，离开后倒计时不会暂停。已作答内容会保留，可从「岗位训练营」继续。',
       '离开岗位测评',
       {
         type: 'warning',

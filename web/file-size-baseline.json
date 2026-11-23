@@ -1,0 +1,14 @@
+{
+  "src/components/AttemptReviewDrawer.vue": 825,
+  "src/components/CampPositionsPage.vue": 966,
+  "src/components/CampTakingPage.vue": 1101,
+  "src/components/ClassroomCenterPage.vue": 832,
+  "src/components/ClassroomContentPage.vue": 1779,
+  "src/components/ClassroomStatisticsDrawer.vue": 1096,
+  "src/components/DashboardPage.vue": 926,
+  "src/components/ExamTakingPage.vue": 1711,
+  "src/components/QuestionBankPage.vue": 1039,
+  "src/components/SkillGraphPage.vue": 1571,
+  "src/styles.css": 2647,
+  "src/types.ts": 1525
+}

@@ -117,7 +117,11 @@ onUnmounted(() => {
     </div>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
     <el-skeleton v-if="loading && !loaded" :rows="3" animated />
-    <el-empty v-else-if="loaded && !projects.length" description="暂无模拟实操项目" :image-size="64" />
+    <el-empty v-else-if="loaded && !projects.length" description="暂无模拟实操项目" :image-size="64">
+      <p class="deployment-empty-hint">
+        试卷中的实操题会作为测评项目出现在这里。如需部署环境，请先确认试卷已包含实操题。
+      </p>
+    </el-empty>
 
     <ul v-if="projects.length" v-loading="loading" class="project-list" aria-label="测评项目">
       <li
@@ -299,5 +303,14 @@ onUnmounted(() => {
   .project-detail {
     padding: 12px;
   }
+}
+
+.deployment-empty-hint {
+  max-width: 40ch;
+  margin: 8px auto 0;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 </style>

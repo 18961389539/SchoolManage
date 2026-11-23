@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace School.Training;
@@ -27,9 +28,9 @@ public static class ExamManagementEndpoints
         staff.MapPost("/exams/{id}/attempts/{attemptId}/grade", GradeAttempt);
         staff.MapGet("/exams/{id}/monitor", GetMonitor);
         staff.MapGet("/exams/{id}/statistics", GetStatistics);
-        staff.MapGet("/exams/{id}/statistics/export", ExportStatistics);
+        staff.MapGet("/exams/{id}/statistics/export", ExportStatistics).RequireRateLimiting("expensive");
         staff.MapGet("/exams/{id}/question-analysis", GetQuestionAnalysis);
-        staff.MapGet("/exams/{id}/question-analysis/export", ExportQuestionAnalysis);
+        staff.MapGet("/exams/{id}/question-analysis/export", ExportQuestionAnalysis).RequireRateLimiting("expensive");
     }
 
     internal static IQueryable<TrainingExam> Scoped(SchoolDbContext db, HttpContext ctx)
@@ -355,24 +356,34 @@ public static class ExamManagementEndpoints
         if (exam == null) return NotFound("考试不存在");
         var search = request.Query["search"].ToString().Trim();
         var statusFilter = request.Query["status"].ToString();
-        var rows = await (from enrollment in db.ExamStudents.AsNoTracking()
-                          join person in db.People.AsNoTracking() on enrollment.StudentPersonId equals person.Id
-                          join user in db.Users.AsNoTracking() on enrollment.StudentUserId equals user.Id
-                          where enrollment.ExamId == id
-                          select new ScoreSource
-                          {
-                              StudentUserId = enrollment.StudentUserId, Name = person.Name, UserName = user.UserName,
-                              Number = person.Number, ClassName = enrollment.ClassName
-                          }).ToListAsync(ct);
-        var attempts = await db.ExamAttempts.AsNoTracking().Where(item => item.ExamId == id).ToListAsync(ct);
-        var byUser = attempts.ToDictionary(item => item.UserId, StringComparer.Ordinal);
-        foreach (var row in rows) row.Attempt = byUser.GetValueOrDefault(row.StudentUserId);
-        var filtered = rows.Where(row =>
-                (search.Length == 0 || row.Name.Contains(search) || row.Number.Contains(search) || row.UserName.Contains(search))
-                && (statusFilter.Length == 0 || statusFilter == "all" || row.Status == statusFilter))
-            .OrderBy(row => row.Number).ToList();
+        var query = from enrollment in db.ExamStudents.AsNoTracking()
+                    join person in db.People.AsNoTracking() on enrollment.StudentPersonId equals person.Id
+                    join user in db.Users.AsNoTracking() on enrollment.StudentUserId equals user.Id
+                    join attempt in db.ExamAttempts.AsNoTracking().Where(item => item.ExamId == id)
+                        on enrollment.StudentUserId equals attempt.UserId into attempts
+                    from attempt in attempts.DefaultIfEmpty()
+                    where enrollment.ExamId == id
+                    select new
+                    {
+                        enrollment.StudentUserId, person.Name, UserName = user.UserName,
+                        person.Number, enrollment.ClassName,
+                        Attempt = attempt
+                    };
+        if (search.Length > 0)
+            query = query.Where(row => row.Name.Contains(search) || row.Number.Contains(search) || row.UserName.Contains(search));
+        if (statusFilter.Length > 0 && statusFilter != "all")
+        {
+            if (statusFilter == "notStarted") query = query.Where(row => row.Attempt == null);
+            else query = query.Where(row => row.Attempt != null && row.Attempt.Status == statusFilter);
+        }
         var (page, size) = Validation.Page(request);
-        var pageRows = filtered.Skip((page - 1) * size).Take(size).ToList();
+        var total = await query.CountAsync(ct);
+        var pageRows = await query.OrderBy(row => row.Number).Skip((page - 1) * size).Take(size)
+            .Select(row => new ScoreSource
+            {
+                StudentUserId = row.StudentUserId, Name = row.Name, UserName = row.UserName,
+                Number = row.Number, ClassName = row.ClassName, Attempt = row.Attempt
+            }).ToListAsync(ct);
         var attemptIds = pageRows.Where(row => row.Attempt != null).Select(row => row.Attempt!.Id).ToArray();
         var questions = await db.ExamPaperQuestions.AsNoTracking().Where(item => item.PaperId == exam.PaperId)
             .Select(item => new { item.Id, item.Type, item.Score }).ToListAsync(ct);
@@ -409,7 +420,7 @@ public static class ExamManagementEndpoints
                 typeScores
             };
         }).ToList();
-        return Results.Ok(new { items, total = filtered.Count, page, pageSize = size });
+        return Results.Ok(new { items, total, page, pageSize = size });
     }
 
     static async Task<IResult> GetAttemptReview(string id, string attemptId, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
@@ -482,7 +493,19 @@ public static class ExamManagementEndpoints
         var attempts = await db.ExamAttempts.AsNoTracking().Where(item => item.ExamId == id)
             .ToDictionaryAsync(item => item.UserId, StringComparer.Ordinal, ct);
         var attemptIds = attempts.Values.Select(item => item.Id).ToArray();
-        var answers = await db.ExamAnswers.AsNoTracking().Where(item => attemptIds.Contains(item.AttemptId)).ToListAsync(ct);
+        var answerStats = await db.ExamAnswers.AsNoTracking()
+            .Where(item => attemptIds.Contains(item.AttemptId))
+            .GroupBy(item => item.AttemptId)
+            .Select(group => new
+            {
+                AttemptId = group.Key,
+                Answered = group.Count(item =>
+                    item.TextAnswer.Trim() != ""
+                    || item.SelectedJson != "[]"
+                    || (item.PracticalDetailsJson != "[]" && item.AnsweredAt != null)),
+                LastAnsweredAt = group.Max(item => item.AnsweredAt)
+            })
+            .ToDictionaryAsync(row => row.AttemptId, StringComparer.Ordinal, ct);
         var activePracticalCounts = await (from work in db.ExamPracticalEnvironments.AsNoTracking()
                                            join enrollment in db.ExamStudents.AsNoTracking() on work.EnrollmentId equals enrollment.Id
                                            where enrollment.ExamId == id && work.HasWork
@@ -494,8 +517,8 @@ public static class ExamManagementEndpoints
             .OrderBy(row => row.Number).Select(row =>
             {
                 var attempt = attempts.GetValueOrDefault(row.StudentUserId);
-                var own = attempt == null ? [] : answers.Where(item => item.AttemptId == attempt.Id).ToArray();
-                var answered = own.Count(ExamLogic.HasAnswer);
+                var stats = attempt == null ? null : answerStats.GetValueOrDefault(attempt.Id);
+                var answered = stats?.Answered ?? 0;
                 if (attempt?.Status == "inProgress") answered += activePracticalCounts.GetValueOrDefault(row.StudentUserId);
                 return new
                 {
@@ -510,7 +533,7 @@ public static class ExamManagementEndpoints
                     startedAt = attempt?.StartedAt,
                     submittedAt = attempt?.SubmittedAt,
                     autoSubmitted = attempt?.AutoSubmitted ?? false,
-                    lastAnsweredAt = own.Length == 0 ? null : own.Max(item => item.AnsweredAt),
+                    lastAnsweredAt = stats?.LastAnsweredAt,
                     totalScore = attempt?.TotalScore,
                     maxScore = attempt?.MaxScore
                 };

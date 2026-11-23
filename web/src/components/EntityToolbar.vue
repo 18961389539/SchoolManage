@@ -14,7 +14,7 @@ const emit = defineEmits<{ import: []; create: []; cabinets: [] }>()
       <p v-else>{{ entity.subtitle }}</p>
     </div>
     <div class="heading-actions">
-      <el-button v-if="isPeople" :icon="Upload" @click="emit('import')">批量导入</el-button>
+      <el-button v-if="isPeople && entityKey !== 'admins'" :icon="Upload" @click="emit('import')">批量导入</el-button>
       <el-button v-if="cabinetScoped" @click="emit('cabinets')">返回机柜管理</el-button>
       <el-tooltip
         :disabled="!(cabinetScoped && !cabinetName)"

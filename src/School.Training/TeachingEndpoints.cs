@@ -84,8 +84,11 @@ public static class TeachingEndpoints
         var total = await q.CountAsync(ct);
         var rows = await q.OrderByDescending(course => course.CreatedAt).ThenBy(course => course.Name)
             .Skip((page - 1) * size).Take(size)
-            .Select(course => new { course.Id, course.Name, course.Description, course.Type, course.Status, course.Remark, course.CreatedAt,
-                course.PublishedAt, course.IsActive, course.SeriesId, course.Version })
+            .Select(course => new
+            {
+                course.Id, course.Name, course.Description, course.Type, course.Status, course.Remark, course.CreatedAt,
+                course.PublishedAt, course.IsActive, course.SeriesId, course.Version
+            })
             .ToListAsync(ct);
         var ids = rows.Select(row => row.Id).ToArray();
         var chapterCounts = await db.CourseChapters.AsNoTracking().Where(chapter => ids.Contains(chapter.CourseId))
@@ -385,6 +388,7 @@ public static class TeachingEndpoints
                                  join section in db.CourseSections.AsNoTracking() on resource.SectionId equals section.Id
                                  where section.ChapterId == id
                                  select resource.Id).ToListAsync(ct);
+        if (await HasLearningHistory(db, resourceIds, ct)) return Conflict("该大章下的资源已有学习记录或实操会话，不能删除。");
         var stored = await CourseFileStore.ListAsync(db, resourceIds, ct);
         db.CourseChapters.Remove(entity);
         Audit.Add(db, ctx, "删除大章", entity.Name);
@@ -427,6 +431,7 @@ public static class TeachingEndpoints
         var entity = await db.CourseSections.FindAsync([id], ct);
         if (entity == null) return NotFound("小节不存在");
         var resourceIds = await db.CourseResources.AsNoTracking().Where(item => item.SectionId == id).Select(item => item.Id).ToListAsync(ct);
+        if (await HasLearningHistory(db, resourceIds, ct)) return Conflict("该小节下的资源已有学习记录或实操会话，不能删除。");
         var stored = await CourseFileStore.ListAsync(db, resourceIds, ct);
         db.CourseSections.Remove(entity);
         Audit.Add(db, ctx, "删除小节", entity.Name);
@@ -508,6 +513,7 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseResources.FindAsync([id], ct);
         if (entity == null) return NotFound("资源不存在");
+        if (await HasLearningHistory(db, [id], ct)) return Conflict("该资源已有学习记录或实操会话，不能删除。");
         var stored = await CourseFileStore.ListAsync(db, [id], ct);
         db.CourseResources.Remove(entity);
         Audit.Add(db, ctx, "删除课程资源", entity.Name);
@@ -760,7 +766,10 @@ public static class TeachingEndpoints
                                where chapter.CourseId == classroom.CourseId
                                orderby chapter.SortOrder, section.SortOrder, resource.SortOrder
                                select new { resource.Id, resource.Name, resource.Kind }).ToListAsync(ct);
-        var records = await db.LearningRecords.AsNoTracking().Where(item => item.ClassroomId == id).ToListAsync(ct);
+        var records = await db.LearningRecords.AsNoTracking()
+            .Where(item => item.ClassroomId == id)
+            .Select(item => new { item.UserId, item.ResourceId, item.Status, item.AttemptCount, item.BestScore, item.CompletedAt, item.StartedAt })
+            .ToListAsync(ct);
         var byUser = records.GroupBy(item => item.UserId).ToDictionary(group => group.Key, group => group.ToList());
         var completedRecords = records.Count(item => item.Status == "completed");
         var items = students.Select(student =>
@@ -1051,13 +1060,19 @@ public static class TeachingEndpoints
         var record = await db.LearningRecords.FirstOrDefaultAsync(item =>
             item.ClassroomId == classroomId && item.UserId == userId && item.ResourceId == resourceId, ct);
         if (record != null) return record;
-        record = new LearningRecord
-        {
-            ClassroomId = classroomId, UserId = userId, ResourceId = resourceId,
-            Status = "inProgress", StartedAt = DateTime.UtcNow
-        };
-        db.LearningRecords.Add(record);
-        return record;
+        // A double click or a second tab can both miss the read above. The unique index turns
+        // the loser's insert into a no-op, so both requests continue with the winning row
+        // instead of one failing with a duplicate-data conflict.
+        var id = Guid.NewGuid().ToString("N");
+        var startedAt = DateTime.UtcNow;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "LearningRecords" ("Id", "ClassroomId", "UserId", "ResourceId", "Status", "BestScore", "AttemptCount", "StartedAt")
+            VALUES ({id}, {classroomId}, {userId}, {resourceId}, 'notStarted', 0, 0, {startedAt})
+            ON CONFLICT ("ClassroomId", "UserId", "ResourceId") DO NOTHING
+            """, ct);
+        return await db.LearningRecords.FirstOrDefaultAsync(item =>
+            item.ClassroomId == classroomId && item.UserId == userId && item.ResourceId == resourceId, ct)
+            ?? throw new InvalidOperationException("学习记录创建后未能读取");
     }
 
     static async Task<List<ClassroomStudentView>> LoadClassroomStudents(SchoolDbContext db, string classroomId, CancellationToken ct)
@@ -1079,6 +1094,11 @@ public static class TeachingEndpoints
 
     static async Task<bool> StartupNodeExists(SchoolDbContext db, string? nodeId, CancellationToken ct)
         => string.IsNullOrWhiteSpace(nodeId) || await db.Nodes.AnyAsync(item => item.Id == nodeId, ct);
+
+    static async Task<bool> HasLearningHistory(SchoolDbContext db, List<string> resourceIds, CancellationToken ct)
+        => resourceIds.Count > 0
+            && (await db.LearningRecords.AnyAsync(item => resourceIds.Contains(item.ResourceId), ct)
+                || await db.ClassroomCaseSessions.AnyAsync(item => resourceIds.Contains(item.ResourceId), ct));
 
     static CourseResource BuildResource(string sectionId, CourseResourceInput input, int sortOrder) => new()
     {

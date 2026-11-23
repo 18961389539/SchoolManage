@@ -6,10 +6,20 @@ import { flattenSkills, resourceProgressText, skillStateLabels, skillStateType }
 import type {
   SkillGraphResource,
   SkillGraphResponse,
-  SkillGraphSkill,
   SkillGraphStudentOption,
   SkillGraphStudentsResponse
 } from '../analytics'
+import {
+  RADAR_CENTER,
+  SKILL_MAP_WIDTH,
+  buildRadarAxes,
+  createRadarGeometry,
+  layoutSkillGraph,
+  layoutSkillMap,
+  shorten,
+  type GraphNode,
+  type MapNode
+} from '../skillGraphLayout'
 
 const props = defineProps<{ role?: string; initialStudentId?: string }>()
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>] }>()
@@ -82,140 +92,7 @@ const scoreRing = computed(() => {
   return { background: `conic-gradient(#0f7375 ${score * 3.6}deg, #e3f3ee 0deg)` }
 })
 
-function shorten(value: string, max: number) {
-  return value.length > max ? `${value.slice(0, max)}…` : value
-}
-
-interface MapNode {
-  id: string
-  kind: 'category' | 'chapter' | 'skill'
-  label: string
-  x: number
-  y: number
-  w: number
-  h: number
-  color: string
-  categoryId: string
-  chapterId?: string
-  skill?: SkillGraphSkill
-  score?: number
-  skillCount?: number
-  masteredCount?: number
-}
-
-interface MapLink {
-  id: string
-  d: string
-  color: string
-}
-
-const MAP_WIDTH = 800
-
-const mapLayout = computed(() => {
-  const categories = filteredCategories.value
-  const nodes: MapNode[] = []
-  const links: MapLink[] = []
-  const bands: { id: string; y: number; height: number; color: string }[] = []
-  let cursor = 22
-  categories.forEach(category => {
-    const color = colorOf(category.id)
-    const start = cursor
-    let chapterCursor = start + 14
-    const placements = category.chapters.map(chapter => {
-      const height = Math.max(52, chapter.skills.length * 42)
-      const placement = { chapter, top: chapterCursor, height, center: chapterCursor + height / 2 }
-      chapterCursor += height + 12
-      return placement
-    })
-    const bandHeight = Math.max(88, chapterCursor - start)
-    const categoryCenter = start + bandHeight / 2
-    nodes.push({
-      id: `category-${category.id}`,
-      kind: 'category',
-      label: category.name,
-      x: 12,
-      y: categoryCenter - 27,
-      w: 176,
-      h: 54,
-      color,
-      categoryId: category.id,
-      score: category.score,
-      skillCount: category.skillCount,
-      masteredCount: category.masteredCount
-    })
-    placements.forEach(placement => {
-      const chapter = placement.chapter
-      nodes.push({
-        id: `chapter-${chapter.id}`,
-        kind: 'chapter',
-        label: chapter.name,
-        x: 238,
-        y: placement.center - 21,
-        w: 188,
-        h: 42,
-        color,
-        categoryId: category.id,
-        chapterId: chapter.id,
-        skillCount: chapter.skills.length
-      })
-      links.push({
-        id: `link-c-${chapter.id}`,
-        d: `M188 ${categoryCenter} C210 ${categoryCenter}, 216 ${placement.center}, 238 ${placement.center}`,
-        color
-      })
-      chapter.skills.forEach((skill, index) => {
-        const center = placement.top + 21 + index * 42
-        nodes.push({
-          id: `skill-${skill.id}`,
-          kind: 'skill',
-          label: skill.name,
-          x: 476,
-          y: center - 19,
-          w: 306,
-          h: 38,
-          color,
-          categoryId: category.id,
-          chapterId: chapter.id,
-          skill,
-          score: skill.score
-        })
-        links.push({
-          id: `link-s-${skill.id}`,
-          d: `M426 ${placement.center} C450 ${placement.center}, 454 ${center}, 476 ${center}`,
-          color
-        })
-      })
-    })
-    bands.push({ id: category.id, y: start, height: bandHeight, color })
-    cursor = start + bandHeight + 20
-  })
-  return { nodes, links, bands, height: Math.max(400, cursor) }
-})
-
-interface GraphNode {
-  id: string
-  kind: 'root' | 'category' | 'chapter' | 'skill'
-  label: string
-  subtitle: string
-  x: number
-  y: number
-  r: number
-  color: string
-  categoryId: string
-  chapterId?: string
-  skillId?: string
-}
-
-interface GraphLink {
-  id: string
-  x1: number
-  y1: number
-  x2: number
-  y2: number
-  color: string
-}
-
-const GRAPH_CENTER = { x: 450, y: 288 }
+const mapLayout = computed(() => layoutSkillMap(filteredCategories.value, colorOf))
 
 const graphChapterId = ref('')
 const graphChapter = computed(() =>
@@ -224,122 +101,17 @@ const graphChapter = computed(() =>
     ?.chapters.find(chapter => chapter.id === graphChapterId.value)
 )
 
-const graphLayout = computed(() => {
-  const category = filteredCategories.value.find(item => item.id === categoryFilter.value)
-  const chapter = graphChapter.value
-  const center: GraphNode = {
-    id: 'graph-root',
-    kind: 'root',
-    label: shorten(chapter?.name || category?.name || '全部课程', 10),
-    subtitle: chapter ? `${chapter.skills.length} 项技能` : category ? `${category.chapters.length} 章` : '',
-    ...GRAPH_CENTER,
-    r: 56,
-    color: category ? colorOf(category.id) : '#327fb2',
-    categoryId: category?.id || ''
-  }
-  const topics =
-    chapter && category
-      ? chapter.skills.map(skill => ({
-          id: skill.id,
-          kind: 'skill' as const,
-          label: skill.name,
-          subtitle: `${skill.score} 分`,
-          color: skill.state === 'mastered' ? '#2f9d7a' : skill.state === 'learning' ? '#be882f' : '#8296a8',
-          categoryId: category.id,
-          skillId: skill.id
-        }))
-      : category
-        ? category.chapters.map(item => ({
-            id: item.id,
-            kind: 'chapter' as const,
-            label: item.name,
-            subtitle: `${item.skills.length} 项技能`,
-            color: colorOf(category.id),
-            categoryId: category.id,
-            chapterId: item.id
-          }))
-        : filteredCategories.value.map(item => ({
-            id: item.id,
-            kind: 'category' as const,
-            label: item.name,
-            subtitle: `${item.score} 分`,
-            color: colorOf(item.id),
-            categoryId: item.id
-          }))
-  const nodes = topics.map((item, index): GraphNode => {
-    const angle = -Math.PI / 2 + (index * Math.PI * 2) / topics.length
-    return {
-      ...item,
-      x: GRAPH_CENTER.x + Math.cos(angle) * 335,
-      y: GRAPH_CENTER.y + Math.sin(angle) * 216,
-      r: topics.length > 14 ? 28 : 40
-    }
-  })
-  const links: GraphLink[] = nodes.map(node => ({
-    id: node.id,
-    x1: center.x,
-    y1: center.y,
-    x2: node.x,
-    y2: node.y,
-    color: node.color
-  }))
-  return { nodes: [center, ...nodes], links }
-})
+const graphLayout = computed(() =>
+  layoutSkillGraph(filteredCategories.value, categoryFilter.value, graphChapterId.value, colorOf)
+)
 
-const radarAxes = computed(() => {
-  const categories = data.value?.categories || []
-  const rows = categories.flatMap(category =>
-    category.chapters.map(chapter => ({
-      key: `${category.id}-${chapter.id}`,
-      label: chapter.name,
-      caption: category.name,
-      score: chapter.skills.length
-        ? Math.round(chapter.skills.reduce((sum, skill) => sum + skill.score, 0) / chapter.skills.length)
-        : 0
-    }))
-  )
-  return rows.sort((a, b) => b.score - a.score).slice(0, 8)
-})
-
+const radarAxes = computed(() => buildRadarAxes(data.value?.categories || []))
 const radarReady = computed(() => radarAxes.value.length >= 3)
-const radarCenter = { x: 280, y: 280 }
-const radarRadius = 188
-
-function radarAngle(index: number) {
-  return -Math.PI / 2 + (index * Math.PI * 2) / radarAxes.value.length
-}
-
-function radarPoint(index: number, ratio: number) {
-  const angle = radarAngle(index)
-  return {
-    x: radarCenter.x + Math.cos(angle) * radarRadius * ratio,
-    y: radarCenter.y + Math.sin(angle) * radarRadius * ratio
-  }
-}
-
-function radarPolygon(ratio: number) {
-  return radarAxes.value
-    .map((_, index) => {
-      const point = radarPoint(index, ratio)
-      return `${point.x.toFixed(1)},${point.y.toFixed(1)}`
-    })
-    .join(' ')
-}
-
-function radarLabelAnchor(index: number) {
-  const x = Math.cos(radarAngle(index))
-  if (x > 0.3) return 'start'
-  if (x < -0.3) return 'end'
-  return 'middle'
-}
-
-function radarLabelPoint(index: number) {
-  const angle = radarAngle(index)
-  return {
-    x: radarCenter.x + Math.cos(angle) * (radarRadius + 22),
-    y: radarCenter.y + Math.sin(angle) * (radarRadius + 22)
-  }
-}
+const radar = computed(() => createRadarGeometry(radarAxes.value.length))
+const radarPoint = (index: number, ratio: number) => radar.value.point(index, ratio)
+const radarPolygon = (ratio: number) => radar.value.polygon(ratio)
+const radarLabelAnchor = (index: number) => radar.value.labelAnchor(index)
+const radarLabelPoint = (index: number) => radar.value.labelPoint(index)
 
 const radarInsights = computed(() => {
   const axes = radarAxes.value
@@ -683,9 +455,9 @@ onMounted(() => {
         <div v-else class="map-viewport">
           <svg
             class="map-svg"
-            :width="MAP_WIDTH"
+            :width="SKILL_MAP_WIDTH"
             :height="mapLayout.height"
-            :viewBox="`0 0 ${MAP_WIDTH} ${mapLayout.height}`"
+            :viewBox="`0 0 ${SKILL_MAP_WIDTH} ${mapLayout.height}`"
             @wheel.prevent="onWheel"
             @pointerdown="startPan"
             @pointermove="movePan"
@@ -699,7 +471,7 @@ onMounted(() => {
                 :key="`band-${band.id}`"
                 x="0"
                 :y="band.y - 8"
-                :width="MAP_WIDTH"
+                :width="SKILL_MAP_WIDTH"
                 :height="band.height + 4"
                 rx="14"
                 fill="#f6faf8"
@@ -799,8 +571,8 @@ onMounted(() => {
               <line
                 v-for="(axis, index) in radarAxes"
                 :key="`radar-axis-${axis.key}`"
-                :x1="radarCenter.x"
-                :y1="radarCenter.y"
+                :x1="RADAR_CENTER.x"
+                :y1="RADAR_CENTER.y"
                 :x2="radarPoint(index, 1).x"
                 :y2="radarPoint(index, 1).y"
                 stroke="#e3f3ee"
@@ -871,7 +643,18 @@ onMounted(() => {
             </div>
             <el-progress :percentage="axis.score" :stroke-width="8" />
           </div>
-          <el-empty v-if="!radarAxes.length" description="暂无章节技能数据" :image-size="80" />
+          <el-empty v-if="!radarAxes.length" description="暂无章节技能数据" :image-size="80">
+            <p class="empty-hint">
+              {{
+                isStaff
+                  ? '该学生完成课堂资源学习后，将按章节生成能力对比。'
+                  : '加入课堂并开始学习资源后，将按章节生成能力对比。'
+              }}
+            </p>
+            <el-button v-if="!isStaff" type="primary" plain @click="emit('navigate', 'my-classrooms')"
+              >去我的课堂</el-button
+            >
+          </el-empty>
           <p v-if="radarAxes.length" class="fallback-hint">章节数量不足 3 个，暂以进度条展示章节能力。</p>
         </div>
       </div>
@@ -889,7 +672,18 @@ onMounted(() => {
           />
           <strong>{{ skill.score }} / {{ data.summary.fullScore }} 分</strong>
         </div>
-        <el-empty v-if="!allSkills.length" description="暂无技能数据" :image-size="80" />
+        <el-empty v-if="!allSkills.length" description="暂无技能数据" :image-size="80">
+          <p class="empty-hint">
+            {{
+              isStaff
+                ? '该学生尚未加入课堂或学习资源，暂无技能对比数据。'
+                : '加入课堂并开始学习资源后，这里会按技能展示掌握程度。'
+            }}
+          </p>
+          <el-button v-if="!isStaff" type="primary" plain @click="emit('navigate', 'my-classrooms')"
+            >去我的课堂</el-button
+          >
+        </el-empty>
       </div>
 
       <div v-else class="graph-wrap">
@@ -1003,7 +797,9 @@ onMounted(() => {
             <p>{{ resource.classroomName }} · {{ resourceProgressText(resource.bestScore, resource.maxScore) }}</p>
             <el-progress :percentage="resource.progress" :stroke-width="4" :show-text="false" />
           </button>
-          <el-empty v-if="!selectedSkill.resources.length" description="暂无关联资源" :image-size="60" />
+          <el-empty v-if="!selectedSkill.resources.length" description="暂无关联资源" :image-size="60">
+            <p class="empty-hint">该技能尚未关联课程资源，完成对应学习后会显示在这里。</p>
+          </el-empty>
         </div>
         <p class="detail-tip">点击资源可进入课堂学习；未达标技能按资源学习与练习成绩综合计算。</p>
       </template>
@@ -1013,7 +809,14 @@ onMounted(() => {
 
   <div v-else-if="!error && !loading" class="skill-empty">
     <el-empty description="暂无可展示的技能图谱">
-      <p class="empty-hint">技能图谱来自课堂课程与学习记录，请先加入课堂并开始学习。</p>
+      <p class="empty-hint">
+        {{
+          isStaff
+            ? '该学生尚未加入课堂或学习资源，技能图谱暂未生成。'
+            : '技能图谱来自课堂课程与学习记录，请先加入课堂并开始学习。'
+        }}
+      </p>
+      <el-button v-if="!isStaff" type="primary" plain @click="emit('navigate', 'my-classrooms')">去我的课堂</el-button>
     </el-empty>
   </div>
 </template>

@@ -15,8 +15,7 @@ import {
   Refresh
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { api, dateTime, messageOf, post } from '../api'
-import { downloadFile } from '../exam'
+import { api, dateTime, downloadFile, messageOf, post } from '../api'
 import {
   classroomStatusOptions,
   classroomStatusType,

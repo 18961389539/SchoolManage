@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { CircleClose, EditPen, MoreFilled, Plus, Refresh, Search, Tickets, VideoPlay } from '@element-plus/icons-vue'
+import {
+  CircleClose,
+  Document,
+  EditPen,
+  MoreFilled,
+  Plus,
+  Refresh,
+  Search,
+  Tickets,
+  VideoPlay
+} from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, del, messageOf, post, put } from '../api'
 import { readListState, useListPersist } from '../listState'
@@ -20,6 +30,13 @@ import { focusFirstField } from '../focusField'
 import { useDiscardGuard } from '../discardGuard'
 
 const props = defineProps<{ admin: boolean }>()
+const emit = defineEmits<{ navigate: [key: string] }>()
+const paperEntryLabel = computed(() => (props.admin ? '试卷管理' : '试卷库'))
+const noPaperHint = computed(() =>
+  props.admin
+    ? '请先在试卷管理中创建含题目的试卷，再来新建考试。'
+    : '暂无可用试卷。请联系管理员在试卷库中组卷后再新建考试。'
+)
 
 const items = ref<TrainingExamSummary[]>([])
 const total = ref(0)
@@ -150,7 +167,7 @@ function defaultWindow() {
 
 function openCreate() {
   if (!papers.value.length) {
-    ElMessage.warning('请先在试卷管理中创建含题目的试卷')
+    ElMessage.warning(noPaperHint.value)
     return
   }
   const window = defaultWindow()
@@ -294,6 +311,10 @@ function openRoster(item: TrainingExamSummary) {
   rosterVisible.value = true
 }
 
+function openRosterFromDrawer() {
+  rosterVisible.value = true
+}
+
 function openScores(item: TrainingExamSummary) {
   activeExam.value = item
   scoresVisible.value = true
@@ -338,7 +359,8 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     </div>
     <div class="heading-actions">
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      <el-tooltip :disabled="papers.length > 0" content="请先在试卷管理中创建含题目的试卷" placement="bottom">
+      <el-button :icon="Document" @click="emit('navigate', 'exam-papers')">{{ paperEntryLabel }}</el-button>
+      <el-tooltip :disabled="papers.length > 0" :content="noPaperHint" placement="bottom">
         <span class="disabled-action-wrap">
           <el-button type="primary" :icon="Plus" :disabled="!papers.length" @click="openCreate">新建考试</el-button>
         </span>
@@ -346,14 +368,12 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     </div>
   </section>
 
-  <el-alert
-    v-if="!papers.length && !loading"
-    title="尚无可用试卷，请先在试卷管理中创建含题目的试卷后再新建考试。"
-    type="info"
-    show-icon
-    :closable="false"
-    class="section-notice"
-  />
+  <el-alert v-if="!papers.length && !loading" type="info" show-icon :closable="false" class="section-notice">
+    <template #title>
+      {{ noPaperHint }}
+      <el-button text type="primary" @click="emit('navigate', 'exam-papers')">前往{{ paperEntryLabel }}</el-button>
+    </template>
+  </el-alert>
 
   <section class="surface management-table">
     <div class="table-toolbar">
@@ -402,7 +422,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
                 ? '试试调整关键词或状态筛选，也可清除后查看全部考试。'
                 : papers.length
                   ? '点击右上角「新建考试」，从试卷创建并分配学生。'
-                  : '请先在试卷管理中创建含题目的试卷，再来新建考试。'
+                  : noPaperHint
           "
         >
           <template v-if="!error && filtering" #action>
@@ -629,9 +649,24 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     :exam-name="activeExam?.name || ''"
     @changed="onChanged"
   />
-  <ExamMonitorDrawer v-model="monitorVisible" :exam-id="activeExam?.id || ''" :exam-name="activeExam?.name || ''" />
-  <ExamStatisticsDrawer v-model="statsVisible" :exam-id="activeExam?.id || ''" :exam-name="activeExam?.name || ''" />
-  <ExamAnalysisDrawer v-model="analysisVisible" :exam-id="activeExam?.id || ''" :exam-name="activeExam?.name || ''" />
+  <ExamMonitorDrawer
+    v-model="monitorVisible"
+    :exam-id="activeExam?.id || ''"
+    :exam-name="activeExam?.name || ''"
+    @open-roster="openRosterFromDrawer"
+  />
+  <ExamStatisticsDrawer
+    v-model="statsVisible"
+    :exam-id="activeExam?.id || ''"
+    :exam-name="activeExam?.name || ''"
+    @open-roster="openRosterFromDrawer"
+  />
+  <ExamAnalysisDrawer
+    v-model="analysisVisible"
+    :exam-id="activeExam?.id || ''"
+    :exam-name="activeExam?.name || ''"
+    @open-roster="openRosterFromDrawer"
+  />
 </template>
 
 <style scoped>

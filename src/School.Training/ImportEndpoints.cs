@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Text.Json;
 using System.IO.Compression;
 using ClosedXML.Excel;
@@ -67,8 +68,9 @@ public static class ImportEndpoints
                 .ExecuteDeleteAsync(ctx.RequestAborted);
             var batch = new ImportBatch { Kind = kind, UserId = owner, RowsJson = JsonSerializer.Serialize(rows, JsonOptions) }; db.ImportBatches.Add(batch);
             Audit.Add(db, ctx, "预览导入", kind, $"共{rows.Count}行"); await db.SaveChangesAsync(ctx.RequestAborted);
-            return Results.Ok(new { batchId = batch.Id, rows, validCount = rows.Count(r => r.Errors.Count == 0), errorCount = rows.Count(r => r.Errors.Count > 0) });
-        });
+            return Results.Ok(new ImportPreviewResponse(
+                batch.Id, rows, rows.Count(r => r.Errors.Count == 0), rows.Count(r => r.Errors.Count > 0)));
+        }).RequireRateLimiting("expensive");
         api.MapPost("/{id}/commit", async (string id, CommitImportRequest input, HttpContext ctx, SchoolDbContext db, ImportJobQueue jobs) =>
         {
             var error = Validation.Password(input.InitialPassword); if (error != null) return Results.BadRequest(new { message = error });
@@ -116,7 +118,7 @@ public static class ImportEndpoints
             batch.ProcessedCount = 0;
             batch.RemovedCount = removedCount;
             return Results.Accepted($"/api/imports/{id}", StatusResponse(batch));
-        });
+        }).RequireRateLimiting("expensive");
         api.MapGet("/{id}", async (string id, HttpContext ctx, SchoolDbContext db) =>
         {
             var owner = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -143,20 +145,19 @@ public static class ImportEndpoints
         });
     }
 
-    internal static object StatusResponse(ImportBatch batch) => new
-    {
-        batchId = batch.Id,
-        status = batch.Status.ToLowerInvariant(),
-        processedCount = batch.ProcessedCount,
-        totalCount = batch.TotalCount,
-        importedCount = batch.ImportedCount,
-        removedCount = batch.RemovedCount,
-        failureMessage = batch.FailureMessage,
-        createdAt = batch.CreatedAt,
-        queuedAt = batch.QueuedAt,
-        startedAt = batch.StartedAt,
-        completedAt = batch.CompletedAt,
-        message = batch.Status switch
+    internal static ImportStatusResponse StatusResponse(ImportBatch batch) => new(
+        batch.Id,
+        batch.Status.ToLowerInvariant(),
+        batch.ProcessedCount,
+        batch.TotalCount,
+        batch.ImportedCount,
+        batch.RemovedCount,
+        batch.FailureMessage,
+        batch.CreatedAt,
+        batch.QueuedAt,
+        batch.StartedAt,
+        batch.CompletedAt,
+        batch.Status switch
         {
             ImportBatchStatus.Completed => $"已导入{batch.ImportedCount}条记录",
             ImportBatchStatus.Failed => batch.FailureMessage,
@@ -165,8 +166,7 @@ public static class ImportEndpoints
             ImportBatchStatus.Running => "正在创建账号",
             ImportBatchStatus.Cancelling => "正在取消导入任务",
             _ => "导入预览待提交"
-        }
-    };
+        });
 
     static string StatusMessage(string status) => status switch
     {

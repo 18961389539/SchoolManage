@@ -28,15 +28,19 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(o => o.ServiceName = "SchoolTraining");
 var data = Environment.GetEnvironmentVariable("SCHOOL_DATA_DIR") ?? builder.Configuration["School:DataDirectory"]
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SchoolTraining");
-var paths = new AppPaths(data);
-builder.Configuration.AddJsonFile(Path.Combine(paths.Data, "server.json"), optional: true, reloadOnChange: false);
+var dataDirectory = Path.GetFullPath(data);
+builder.Configuration.AddJsonFile(Path.Combine(dataDirectory, "server.json"), optional: true, reloadOnChange: false);
 builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
+var paths = new AppPaths(dataDirectory, builder.Configuration["School:Backups:Directory"]);
 if (string.IsNullOrEmpty(builder.Configuration["urls"])) builder.WebHost.UseUrls("http://127.0.0.1:5080");
 var storage = StorageOptions.Load(builder.Configuration);
 var fileLogger = new RollingFileLoggerProvider(paths.Logs, storage);
 builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton(storage);
+builder.Services.AddSingleton(AutomaticBackupOptions.Load(builder.Configuration));
+builder.Services.AddSingleton(AuditRetentionOptions.Load(builder.Configuration));
+builder.Services.AddSingleton<BackupCoordinator>();
 builder.Services.AddSingleton(fileLogger);
 builder.Logging.AddProvider(fileLogger);
 builder.Services.ConfigureHttpJsonOptions(o => { o.SerializerOptions.RespectNullableAnnotations = true; o.SerializerOptions.RespectRequiredConstructorParameters = true; o.SerializerOptions.Converters.Add(new UtcDateTimeConverter()); });
@@ -45,7 +49,8 @@ if (OperatingSystem.IsWindows()) dataProtection.ProtectKeysWithDpapi(protectToLo
 var busyTimeoutSeconds = Math.Clamp(builder.Configuration.GetValue<int?>("School:Database:BusyTimeoutSeconds") ?? 15, 1, 120);
 builder.Services.AddDbContext<SchoolDbContext>(o => o.UseSqlite(new SqliteConnectionStringBuilder
 { DataSource = paths.Database, ForeignKeys = true, DefaultTimeout = busyTimeoutSeconds }.ToString()));
-builder.Services.AddSingleton<IPasswordHasher<AppUser>>(new PasswordHasher<AppUser>(Microsoft.Extensions.Options.Options.Create(new PasswordHasherOptions { IterationCount = 310000 })));
+builder.Services.AddSingleton<IPasswordHasher<AppUser>>(new PasswordHasher<AppUser>(Microsoft.Extensions.Options.Options.Create(new PasswordHasherOptions { IterationCount = 600000 })));
+var absoluteSessionHours = Math.Clamp(builder.Configuration.GetValue<int?>("School:Session:AbsoluteHours") ?? 24, 1, 168);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o =>
 {
     o.Cookie.Name = "SchoolTraining.Session"; o.Cookie.HttpOnly = true; o.Cookie.SameSite = SameSiteMode.Strict;
@@ -60,7 +65,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         if (!ctx.HttpContext.Request.Path.StartsWithSegments("/api")) return;
         var db = ctx.HttpContext.RequestServices.GetRequiredService<SchoolDbContext>();
         var id = ctx.Principal?.FindFirstValue(ClaimTypes.NameIdentifier); var stamp = ctx.Principal?.FindFirstValue("stamp");
-        if (id == null || !await db.Users.AnyAsync(x => x.Id == id && x.SecurityStamp == stamp, ctx.HttpContext.RequestAborted))
+        if (id == null || !await db.Users.AnyAsync(x => x.Id == id && x.SecurityStamp == stamp, ctx.HttpContext.RequestAborted)
+            || SessionPolicy.IsExpired(ctx.Principal?.FindFirstValue(SessionPolicy.StartedClaim), DateTimeOffset.UtcNow, absoluteSessionHours))
         { ctx.RejectPrincipal(); await ctx.HttpContext.SignOutAsync(); }
     };
 });
@@ -71,6 +77,9 @@ builder.Services.AddRateLimiter(o =>
     o.RejectionStatusCode = 429;
     o.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
+    o.AddPolicy("expensive", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.User.Identity?.Name ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
 });
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MultipartBodyLengthLimit = Limits.MaxUploadBytes);
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = Limits.MaxUploadBytes);
@@ -79,6 +88,8 @@ builder.Services.AddSingleton<LicenseQuotaPolicy>();
 builder.Services.AddSingleton<ImportJobQueue>();
 builder.Services.AddHostedService<ImportJobWorker>();
 builder.Services.AddHostedService<ExamDeadlineWorker>();
+builder.Services.AddHostedService<AutomaticBackupWorker>();
+builder.Services.AddHostedService<AuditRetentionWorker>();
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
@@ -184,6 +195,18 @@ app.MapGet("/api/status", async (SchoolDbContext db, RollingFileLoggerProvider l
     maxUploadBytes = Limits.MaxUploadBytes,
     schoolName = await db.Settings.Where(x => x.Id == "schoolName").Select(x => x.Value).FirstOrDefaultAsync(ct)
 }));
+app.MapGet("/healthz", async (SchoolDbContext db, AppPaths paths, StorageOptions storage, CancellationToken ct) =>
+{
+    var database = false;
+    try { database = await db.Database.CanConnectAsync(ct); } catch { }
+    var dataFree = BackupService.AvailableFreeBytes(paths.Data);
+    var backupFree = BackupService.AvailableFreeBytes(paths.Backups);
+    var disk = dataFree is null || backupFree is null ? "unavailable"
+        : dataFree < storage.BackupMinimumFreeBytes || backupFree < storage.BackupMinimumFreeBytes ? "low" : "ok";
+    var healthy = database && disk == "ok";
+    return Results.Json(new { status = healthy ? "healthy" : "unhealthy", checks = new { database = database ? "ok" : "failed", disk } },
+        statusCode: healthy ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
+});
 app.MapPost("/api/setup", async (SetupRequest body, HttpContext ctx, SchoolDbContext db, IPasswordHasher<AppUser> hasher, IAntiforgery antiforgery) =>
 {
     if (!SetupAccess.IsLocalEndpoint(ctx.Connection.RemoteIpAddress, ctx.Connection.LocalIpAddress)) return Results.Json(new { message = "请在服务器本机浏览器完成首次初始化" }, statusCode: 403);
@@ -198,8 +221,11 @@ app.MapPost("/api/setup", async (SetupRequest body, HttpContext ctx, SchoolDbCon
 app.MapPost("/api/auth/login", async (LoginRequest body, HttpContext ctx, SchoolDbContext db, IPasswordHasher<AppUser> hasher, IAntiforgery antiforgery) =>
 {
     var user = await db.Users.SingleOrDefaultAsync(x => x.UserName == body.UserName.Trim().ToLowerInvariant(), ctx.RequestAborted);
-    if (!CredentialVerification.TryVerify(hasher, user, body.Password, out var authenticated))
-    { Audit.Add(db, ctx, "登录失败", body.UserName.Length > 64 ? body.UserName[..64] : body.UserName); await db.SaveChangesAsync(ctx.RequestAborted); return Results.Json(new { message = "账号或密码不正确" }, statusCode: 401); }
+    if (!CredentialVerification.TryVerify(hasher, user, body.Password, out var authenticated, out var needsRehash))
+    { Audit.Add(db, ctx, "登录失败", CredentialVerification.MaskAccount(body.UserName)); await db.SaveChangesAsync(ctx.RequestAborted); return Results.Json(new { message = "账号或密码不正确" }, statusCode: 401); }
+    // A hash written with an older iteration count is upgraded in place after a successful
+    // login, so raising IterationCount never requires a mass password reset.
+    if (needsRehash) authenticated.PasswordHash = hasher.HashPassword(authenticated, body.Password);
     await Session.SignIn(ctx, authenticated); db.Audits.Add(new AuditEntry { UserName = authenticated.UserName, Action = "登录", Target = authenticated.UserName }); await db.SaveChangesAsync(ctx.RequestAborted);
     return Results.Ok(Session.Response(ctx, authenticated, antiforgery));
 }).RequireRateLimiting("login");
@@ -239,9 +265,12 @@ namespace School.Training
     {
         public static async Task SignIn(HttpContext ctx, AppUser user)
         {
-            var claims = new[] { new Claim(ClaimTypes.NameIdentifier, user.Id), new Claim(ClaimTypes.Name, user.UserName), new Claim(ClaimTypes.Role, user.Role), new Claim("stamp", user.SecurityStamp), new Claim("mustChangePassword", user.MustChangePassword ? "true" : "false") };
+            var claims = new[] { new Claim(ClaimTypes.NameIdentifier, user.Id), new Claim(ClaimTypes.Name, user.UserName), new Claim(ClaimTypes.Role, user.Role), new Claim("stamp", user.SecurityStamp), new Claim("mustChangePassword", user.MustChangePassword ? "true" : "false"), new Claim(SessionPolicy.StartedClaim, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()) };
             ctx.User = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)); await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ctx.User);
         }
         public static object Response(HttpContext ctx, AppUser user, IAntiforgery antiforgery) => new { user = new { user.Id, user.UserName, user.DisplayName, user.Role, user.MustChangePassword }, csrfToken = antiforgery.GetAndStoreTokens(ctx).RequestToken };
     }
 }
+
+// The integration tests host the real application through WebApplicationFactory.
+public partial class Program { }

@@ -189,7 +189,15 @@ onUnmounted(() => window.clearInterval(refreshTimer))
   />
   <template v-if="active || readOnly">
     <CaseTopologyView v-if="work?.topology" :topology="work.topology" :devices="work.devices" />
-    <el-empty v-if="work && !work.devices.length" description="当前实操环境没有可用的模拟设备" :image-size="60" />
+    <el-empty v-if="work && !work.devices.length" description="当前实操环境没有可用的模拟设备" :image-size="60">
+      <p class="case-empty-hint">
+        {{
+          readOnly
+            ? '模拟设备来自案例资源关联的实训节点。请检查课堂机柜分配与节点配置，或稍后刷新重试。'
+            : '模拟设备来自案例资源关联的实训节点。请联系老师检查节点设备和机柜分配，或稍后刷新重试。'
+        }}
+      </p>
+    </el-empty>
     <template v-if="draft && work?.devices.length">
       <el-select :model-value="selected" :disabled="!!action || dirty" aria-label="选择模拟设备" @change="selectDevice">
         <el-option v-for="item in work.devices" :key="item.id" :label="item.name" :value="item.id" />
@@ -256,5 +264,14 @@ onUnmounted(() => window.clearInterval(refreshTimer))
 }
 .case-port :deep(.el-input) {
   flex: 1 1 200px;
+}
+
+.case-empty-hint {
+  max-width: 40ch;
+  margin: 8px auto 0;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 </style>

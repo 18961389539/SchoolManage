@@ -76,8 +76,17 @@ export interface BackupItem {
   size: number
 }
 
+export interface AutomaticBackupStatus {
+  enabled: boolean
+  timeOfDay: string
+  lastAttemptAt: string | null
+  lastSuccessAt: string | null
+  lastMessage: string
+}
+
 export interface BackupListResponse {
   items: BackupItem[]
+  automatic: AutomaticBackupStatus
 }
 
 export interface LicenseResource {
@@ -1095,6 +1104,7 @@ export interface CampPositionAdminSummary {
   description: string
   durationMinutes: number
   startupNodeId: string | null
+  published: boolean
   createdAt: string
   updatedAt: string
   skillCount: number
@@ -1110,6 +1120,7 @@ export interface CampPositionAdminDetail {
   description: string
   durationMinutes: number
   startupNodeId: string | null
+  published: boolean
   createdAt: string
   updatedAt: string
   attemptCount: number

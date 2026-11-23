@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace School.Training;
@@ -17,8 +18,8 @@ public static class ClassroomStatisticsEndpoints
         learners.MapGet("/classrooms/{id}/statistics/mine", GetMyStatistics);
         all.MapGet("/classrooms/{id}/students/{userId}/statistics", GetStudentStatistics);
         staff.MapGet("/classrooms/{id}/statistics/resources/{resourceId}/students", GetResourceStudents);
-        staff.MapGet("/classrooms/{id}/statistics/exports/resources", ExportResources);
-        staff.MapGet("/classrooms/{id}/statistics/exports/students", ExportStudents);
+        staff.MapGet("/classrooms/{id}/statistics/exports/resources", ExportResources).RequireRateLimiting("expensive");
+        staff.MapGet("/classrooms/{id}/statistics/exports/students", ExportStudents).RequireRateLimiting("expensive");
         all.MapGet("/classrooms/{id}/statistics/practice-attempts/{attemptId}", GetPracticeAttempt);
         all.MapGet("/classrooms/{id}/statistics/case-records/{recordId}", GetCaseRecord);
     }

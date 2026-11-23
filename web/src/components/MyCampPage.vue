@@ -7,6 +7,7 @@ import { campAttemptLabel, campAttemptStatusType } from '../camp'
 import { countdownText } from '../exam'
 import { durationText } from '../teaching'
 import { parseApiDate } from '../time'
+import { usePolling } from '../usePolling'
 import type { CampPositionLearnerSummary } from '../types'
 import CampRecordDrawer from './CampRecordDrawer.vue'
 import CampReportDrawer from './CampReportDrawer.vue'
@@ -17,13 +18,11 @@ const items = ref<CampPositionLearnerSummary[]>([])
 const loading = ref(false)
 const error = ref('')
 const search = ref(readListState('my-camp').search)
-const now = ref(Date.now())
+const { now } = usePolling(() => load(true), { intervalMs: 30000 })
 useListPersist('my-camp', () => ({ search: search.value, filters: {} }))
 const reportVisible = ref(false)
 const recordVisible = ref(false)
 const activeAttemptId = ref('')
-let ticker: number | undefined
-let refresher: number | undefined
 let requestId = 0
 let fetching = false
 
@@ -31,7 +30,7 @@ const sections = [
   { key: 'resume', title: '正在测评' },
   { key: 'ready', title: '可开始测评' },
   { key: 'graded', title: '已完成测评' },
-  { key: 'waiting', title: '尚未开放' }
+  { key: 'waiting', title: '暂不可开始' }
 ] as const
 
 function sectionOf(item: CampPositionLearnerSummary): (typeof sections)[number]['key'] {
@@ -60,6 +59,14 @@ function remaining(item: CampPositionLearnerSummary): number {
     return Math.max(0, Math.floor((parseApiDate(item.attempt.deadline).getTime() - now.value) / 1000))
   }
   return 0
+}
+
+function startReason(item: CampPositionLearnerSummary) {
+  if (item.attempt && item.attempt.status !== 'inProgress' && item.attempt.status !== 'graded') {
+    return '本次测评已提交，评分完成后可查看结果'
+  }
+  if (!item.questionCount) return '该岗位尚未配置测评题，请联系管理员'
+  return '暂不可进入测评'
 }
 
 function enter(item: CampPositionLearnerSummary) {
@@ -102,16 +109,10 @@ async function load(silent = false) {
 
 onMounted(() => {
   void load()
-  ticker = window.setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-  refresher = window.setInterval(() => void load(true), 30000)
 })
 
 onBeforeUnmount(() => {
   ++requestId
-  if (ticker !== undefined) window.clearInterval(ticker)
-  if (refresher !== undefined) window.clearInterval(refresher)
 })
 </script>
 
@@ -194,7 +195,7 @@ onBeforeUnmount(() => {
               <el-button v-else-if="item.canStart" type="primary" @click="enter(item)">
                 {{ item.attempt?.status === 'inProgress' ? '继续测评' : '开始测评' }}
               </el-button>
-              <span v-else class="assessment-note">暂不可进入测评</span>
+              <span v-else class="assessment-note">{{ startReason(item) }}</span>
             </div>
           </div>
         </article>
@@ -207,7 +208,7 @@ onBeforeUnmount(() => {
     :description="items.length ? '没有符合条件的岗位测评' : '暂无可参加的岗位测评'"
   >
     <el-button v-if="items.length" @click="search = ''">清除搜索</el-button>
-    <p v-else class="empty-hint">请联系授课教师，确认岗位测评已经发布并分配给你。</p>
+    <p v-else class="empty-hint">暂无已发布的岗位测评。岗位由平台管理员发布后才会出现在这里，如有需要请联系管理员。</p>
   </el-empty>
 
   <CampReportDrawer v-model="reportVisible" :attempt-id="activeAttemptId" />

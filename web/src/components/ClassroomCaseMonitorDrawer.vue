@@ -2,10 +2,11 @@
 import { onUnmounted, ref, watch } from 'vue'
 import { Camera, Delete, Download, Monitor, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, bytes, dateTime, del, messageOf, post } from '../api'
+import { api, bytes, dateTime, del, downloadFile, messageOf, post } from '../api'
 import { virtualMachineStatusText } from '../camp'
 import type { CaseEvidence, ClassroomCaseSession, ClassroomCaseSessionList } from '../types'
 import ClassroomCaseWork from './ClassroomCaseWork.vue'
+import TableEmpty from './TableEmpty.vue'
 
 const props = defineProps<{ visible: boolean; classroomId: string; classroomName: string }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -56,6 +57,16 @@ async function load(silent = false) {
   } finally {
     if (version === requestVersion) loading.value = false
   }
+}
+
+function clearSessionSearch() {
+  search.value = ''
+  void load()
+}
+
+function showAllSessions() {
+  statusFilter.value = 'all'
+  void load()
 }
 
 function startTimer() {
@@ -200,15 +211,7 @@ async function captureScreen() {
 
 async function download(evidence: CaseEvidence) {
   try {
-    const response = await fetch(`/api/case-evidences/${evidence.id}/download`, { credentials: 'same-origin' })
-    if (!response.ok) throw new Error('截图下载失败')
-    const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = evidence.fileName
-    link.click()
-    URL.revokeObjectURL(url)
+    await downloadFile(`/case-evidences/${evidence.id}/download`, evidence.fileName)
   } catch (failure) {
     ElMessage.error(messageOf(failure))
   }
@@ -372,11 +375,22 @@ onUnmounted(stopTimer)
           </tr>
         </tbody>
       </table>
-      <p v-else-if="!loading && !error" class="monitor-empty" role="status">
-        {{
+      <div v-else-if="!loading && !error" class="monitor-empty" role="status">
+        <strong>{{
           search.trim() ? '没有符合条件的实操会话' : statusFilter === 'active' ? '暂无进行中的实操会话' : '暂无实操会话'
-        }}
-      </p>
+        }}</strong>
+        <p>
+          {{
+            search.trim()
+              ? '试试调整关键词，或清除搜索查看当前筛选下的会话。'
+              : statusFilter === 'active'
+                ? '学生开始案例实操后会出现在这里，也可以切换查看全部会话。'
+                : '学生开始案例实操后，这里会显示会话状态。'
+          }}
+        </p>
+        <el-button v-if="search.trim()" @click="clearSessionSearch">清除搜索</el-button>
+        <el-button v-else-if="statusFilter === 'active'" @click="showAllSessions">查看全部会话</el-button>
+      </div>
     </div>
 
     <el-dialog
@@ -416,7 +430,14 @@ onUnmounted(stopTimer)
         :closable="false"
         class="section-notice"
       />
-      <el-table v-loading="evidenceLoading" :data="evidences" row-key="id" empty-text="暂无截图">
+      <el-table v-loading="evidenceLoading" :data="evidences" row-key="id" empty-text="">
+        <template #empty>
+          <TableEmpty
+            v-if="!evidenceLoading"
+            title="暂无取证截图"
+            hint="点击“截取屏幕”或“上传截图”后，取证记录会显示在这里。"
+          />
+        </template>
         <el-table-column label="预览" width="110">
           <template #default="{ row }">
             <el-image
@@ -602,11 +623,23 @@ onUnmounted(stopTimer)
 }
 
 .monitor-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   padding: 32px 16px;
   border: 1px dashed var(--el-border-color);
   border-radius: 10px;
   text-align: center;
+}
+
+.monitor-empty p {
+  max-width: 36ch;
+  margin: 0;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 @media (max-width: 930px) {

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import { entities } from './entities'
-import { navigationFor } from './navigation'
 import { createRoutes, operationsPageKeys, type RouteContext } from './routes'
 
 const host = { navigate: vi.fn(), openPassword: vi.fn(), refreshClassrooms: vi.fn() }
@@ -53,12 +52,113 @@ describe('route access', () => {
     }
   })
 
-  it('maps every sidebar entry of every role to a real page', () => {
+  it('gives every sidebar entry to a role that may open it', () => {
     for (const role of roles) {
-      for (const group of navigationFor(role)) {
+      for (const group of routes.navigation(role)) {
         for (const item of group.items) {
-          expect(routes.access(item.key, role), `${role} 的菜单项 ${item.key} 没有对应页面`).not.toBe('missing')
+          expect(routes.access(item.key, role), `${role} 的菜单项 ${item.key} 不可访问`).toBe('page')
         }
+      }
+    }
+  })
+
+  it('lists a page at most once per role', () => {
+    for (const role of roles) {
+      const seen = new Set<string>()
+      for (const group of routes.navigation(role)) {
+        for (const item of group.items) {
+          expect(seen.has(item.key), `${role} 的菜单重复出现 ${item.key}`).toBe(false)
+          seen.add(item.key)
+        }
+      }
+    }
+  })
+
+  it('keeps the sidebar groups and items in their established order', () => {
+    const menus = {
+      Admin: {
+        groups: ['工作空间', '教学中心', '岗位训练营', '教学组织', '实训资源', '运行维护'],
+        keys: [
+          'dashboard',
+          'courses',
+          'exam-questions',
+          'exam-papers',
+          'exams',
+          'classrooms',
+          'resources-overview',
+          'camp-positions',
+          'camp-reports',
+          'camp-records',
+          'camp-monitor',
+          'professions',
+          'classes',
+          'teachers',
+          'admins',
+          'students',
+          'device-types',
+          'cabinets',
+          'devices',
+          'nodes',
+          'virtual-machines',
+          'server',
+          'audits',
+          'backups',
+          'licenses',
+          'settings'
+        ]
+      },
+      Teacher: {
+        groups: ['教学空间', '岗位训练营'],
+        keys: [
+          'teacher-home',
+          'classrooms',
+          'my-resources',
+          'exams',
+          'exam-papers',
+          'exam-questions',
+          'skill-graph',
+          'resources-overview',
+          'camp-reports',
+          'camp-records',
+          'camp-monitor'
+        ]
+      },
+      Student: {
+        groups: ['学习空间'],
+        keys: [
+          'student-home',
+          'my-classrooms',
+          'my-resources',
+          'my-exams',
+          'exam-records',
+          'skill-graph',
+          'resources-overview',
+          'my-camp',
+          'camp-history'
+        ]
+      }
+    } as const
+    for (const role of roles) {
+      const navigation = routes.navigation(role)
+      expect(
+        navigation.map(group => group.label),
+        `${role} 的分组顺序`
+      ).toEqual(menus[role].groups)
+      expect(
+        navigation.flatMap(group => group.items.map(item => item.key)),
+        `${role} 的菜单顺序`
+      ).toEqual(menus[role].keys)
+    }
+  })
+
+  it('lists every placed page for a role that may open it', () => {
+    for (const role of roles) {
+      const keys = new Set(routes.navigation(role).flatMap(group => group.items.map(item => item.key)))
+      for (const entry of routes.entries) {
+        if (!entry.nav || (entry.roles && !entry.roles.includes(role))) continue
+        const placement = 'group' in entry.nav ? entry.nav : entry.nav[role]
+        if (!placement) continue
+        for (const key of entry.keys) expect(keys.has(key), `${role} 的菜单缺少已声明的页面 ${key}`).toBe(true)
       }
     }
   })
@@ -100,6 +200,11 @@ describe('route labels, groups and sidebar', () => {
   it('keeps the titles of pages without a sidebar entry', () => {
     expect(routes.label('exam-taking', 'Student')).toBe('在线考试')
     expect(routes.label('profile', 'Admin')).toBe('个人中心')
+  })
+
+  it('reads sidebar labels and groups for entity pages', () => {
+    expect(routes.label('devices', 'Admin')).toBe('实训设备')
+    expect(routes.group('devices', 'Admin')).toBe('实训资源')
   })
 
   it('keeps sub-pages inside their parent group', () => {

@@ -32,7 +32,8 @@ async function start(data){
   const useExe=existsSync(appExecutable);
   const child=spawn(useExe?appExecutable:'dotnet',useExe?['--urls',base]:[appDll,'--urls',base],{cwd:appDirectory,env:{...process.env,SCHOOL_DATA_DIR:data,SCHOOL_LICENSE_PUBLIC_KEY:keyFile,ASPNETCORE_ENVIRONMENT:'Production','School__Backups__RetentionCount':'2','School__Backups__MinimumFreeBytes':'0','School__Logs__RetentionDays':'1','School__Database__BusyTimeoutSeconds':'2'},windowsHide:true,stdio:['ignore','pipe','pipe']});
   processes.push(child); let output='';child.stdout.on('data',b=>{output=(output+b).slice(-80000)});child.stderr.on('data',b=>{output=(output+b).slice(-80000)});
-  for(let i=0;i<100;i++){if(child.exitCode!==null)throw Error(`Service exited: ${output}`);try{const r=await fetch(`${base}/api/status`);if(r.ok)return base;}catch{}await new Promise(r=>setTimeout(r,100));}
+  // A cold self-contained start can take well over 10 seconds on a busy or AV-scanned machine.
+  for(let i=0;i<300;i++){if(child.exitCode!==null)throw Error(`Service exited: ${output}`);try{const r=await fetch(`${base}/api/status`);if(r.ok)return base;}catch{}await new Promise(r=>setTimeout(r,100));}
   throw Error(`Service did not start: ${output}`);
 }
 class Client {
@@ -66,6 +67,15 @@ async function waitForImport(api,batchId,timeoutMs=120000){
     await new Promise(resolve=>setTimeout(resolve,100));
   }
   throw Error(`Import ${batchId} did not finish: ${JSON.stringify(last)}`);
+}
+function assertKeys(value,keys,label){
+  assert.ok(value&&typeof value==='object'&&!Array.isArray(value),`${label} should be an object`);
+  for(const key of keys)assert.ok(Object.prototype.hasOwnProperty.call(value,key),`${label} is missing ${key}`);
+}
+function assertPagedShape(response,itemKeys,label){
+  assertKeys(response,['total','items'],label);
+  assert.ok(Array.isArray(response.items),`${label}.items should be an array`);
+  for(const item of response.items.slice(0,3))assertKeys(item,itemKeys,`${label}.items[]`);
 }
 try{
   const data=path.join(dir,'data');
@@ -133,6 +143,27 @@ try{
   mark('CSRF和跨站拒绝、输入校验、专业班级关联、师生账号唯一性');
   mark('班级按专业、师生按班级、教师按角色筛选，可与关键词组合');
   mark('并发同名班级仅一个成功，数据库唯一约束与409映射生效');
+  const dashboard=await api.request('/dashboard');
+  assertKeys(dashboard,['schoolName','counts','recentAudits','server','version'],'dashboard');
+  assertKeys(dashboard.counts,['professions','classes','teachers','students','cabinets','devices','nodes'],'dashboard.counts');
+  assertKeys(dashboard.server,['machineName','os','framework'],'dashboard.server');
+  assertPagedShape(await api.request('/professions'),['id','name','code','remark'],'professions');
+  assertPagedShape(await api.request('/classes'),['id','name','professionId','professionName','remark'],'classes');
+  assertPagedShape(await api.request('/people?kind=student'),['id','kind','name','userName','number','classId','className','gender','phone','email','role'],'people');
+  assertPagedShape(await api.request('/courses'),['id','name','description','type','status','remark','createdAt','publishedAt','isActive','seriesId','version'],'courses');
+  assertPagedShape(await api.request('/exam-questions'),['id','bankId','bankName','type','stem','optionsJson','answerJson','analysis','score','createdAt','updatedAt','practicalNodeId'],'exam-questions');
+  assertPagedShape(await api.request('/exam-papers'),['id','name','description','remark','createdAt','updatedAt','questionCount','totalScore','typeCounts','examCount'],'exam-papers');
+  assertPagedShape(await api.request('/cabinets'),['id','name','host','port','jumpHost','jumpPort','jumpUserName','hasJumpPassword','remark','isSimulated','deviceCount','activeSessionCount'],'cabinets');
+  assertPagedShape(await api.request('/nodes'),['id','name','host','provider','port','userName','hasPassword','enabled','remark','totalCpu','totalMemoryMb','totalDiskGb','isSimulated','healthStatus','cpuUsagePercent','memoryUsagePercent','diskUsagePercent','virtualMachineCount','virtualMachineQuota','accountCount','accountQuota'],'nodes');
+  assertPagedShape(await api.request('/audits'),['id','at','userName','action','target','detail'],'audits');
+  const backups=await api.request('/backups');
+  assertKeys(backups,['items','automatic'],'backups');
+  assert.ok(Array.isArray(backups.items),'backups.items should be an array');
+  assertKeys(backups.automatic,['enabled','timeOfDay','lastAttemptAt','lastSuccessAt','lastMessage'],'backups.automatic');
+  const licenses=await api.request('/licenses');
+  assertKeys(licenses,['machineCode','publicKeyConfigured','mode','quotas','items'],'licenses');
+  assertKeys(await api.request('/server/info'),['hostName','osDescription','operatingSystem','architecture','isSimulated','collectedAt','cpu','memory','networks','bootTime','uptimeSeconds','processUptimeSeconds','warnings'],'server/info');
+  mark('高频接口响应形状稳定，前后端契约未漂移');
   const csv='姓名,账号,学号,班级,性别,手机号,电子邮箱\r\n导入学生,import001,2026002,软件一班,女,13800000001,import@example.test\r\n重复账号,testadmin,2026003,软件一班,男,,\r\n错误班级,import003,2026004,不存在班级,,,\r\n错误邮箱,import004,2026005,软件一班,,,bad-email\r\n';
   const preview=await api.request('/imports/preview?kind=student','POST',upload('students.csv',csv));
   assert.equal(preview.validCount,1);assert.equal(preview.errorCount,3);assert.ok(preview.rows[1].errors[0].column);assert.equal(preview.rows[1].rowNumber,3);

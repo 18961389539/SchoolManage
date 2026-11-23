@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { Delete, Download, Files, Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, bytes, dateTime, del, messageOf, post, put } from '../api'
+import { api, bytes, dateTime, del, downloadFile, messageOf, post, put } from '../api'
 import { appState, maxUploadMegabytes } from '../store'
-import { downloadFile } from '../exam'
+import { focusFirstField } from '../focusField'
 import type { CourseResourceDetail, CourseResourceFile } from '../types'
+import TableEmpty from './TableEmpty.vue'
 
 const visible = defineModel<boolean>({ required: true })
 const props = defineProps<{ resourceId: string; resourceName: string }>()
@@ -16,6 +17,16 @@ const loading = ref(false)
 const uploading = ref(false)
 const error = ref('')
 const uploadInput = ref<HTMLInputElement>()
+const dialogBody = ref<HTMLElement | null>(null)
+const refreshButton = ref<{ $el?: HTMLElement } | null>(null)
+
+async function onOpened() {
+  await nextTick()
+  if (focusFirstField(dialogBody.value)) return
+  const rootEl = refreshButton.value?.$el ?? (refreshButton.value as unknown as HTMLElement | undefined)
+  const button = rootEl?.querySelector?.('button') ?? rootEl
+  button?.focus()
+}
 
 const title = computed(() => `${props.resourceName || '资源'} · 附件`)
 const maxMegabytes = maxUploadMegabytes()
@@ -127,43 +138,56 @@ async function download(file: CourseResourceFile) {
 </script>
 
 <template>
-  <el-dialog v-model="visible" :title="title" width="min(760px, 96vw)" destroy-on-close>
-    <div class="file-toolbar">
-      <span class="file-hint">单个附件不超过 {{ maxMegabytes }}MB，单个资源最多 50 个附件。</span>
-      <div class="file-actions">
-        <el-button :icon="Refresh" :loading="loading" :disabled="uploading" @click="load">刷新</el-button>
-        <el-button type="primary" :icon="Plus" :loading="uploading" @click="openUpload">上传附件</el-button>
-        <input ref="uploadInput" class="upload-input" type="file" @change="uploadFile" />
+  <el-dialog v-model="visible" :title="title" width="min(760px, 96vw)" destroy-on-close @opened="onOpened">
+    <div ref="dialogBody" class="file-dialog-body">
+      <div class="file-toolbar">
+        <span class="file-hint">单个附件不超过 {{ maxMegabytes }}MB，单个资源最多 50 个附件。</span>
+        <div class="file-actions">
+          <el-button ref="refreshButton" :icon="Refresh" :loading="loading" :disabled="uploading" @click="load"
+            >刷新</el-button
+          >
+          <el-button type="primary" :icon="Plus" :loading="uploading" @click="openUpload">上传附件</el-button>
+          <input ref="uploadInput" class="upload-input" type="file" @change="uploadFile" />
+        </div>
       </div>
+      <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
+      <el-table v-loading="loading" :data="files" row-key="id" empty-text="">
+        <template #empty>
+          <TableEmpty v-if="!loading" title="暂无附件" hint="点击“上传附件”，可为该资源补充讲义、参考资料或其他文件。">
+            <template #action>
+              <el-button type="primary" plain :loading="uploading" @click="openUpload">上传附件</el-button>
+            </template>
+          </TableEmpty>
+        </template>
+        <el-table-column label="附件名称" min-width="230">
+          <template #default="{ row }">
+            <div class="file-name">
+              <el-icon><Files /></el-icon>
+              <span>{{ row.name }}</span>
+              <el-tag v-if="row.isPinned" size="small" type="warning" effect="plain">置顶</el-tag>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="大小" width="100">
+          <template #default="{ row }">{{ bytes(row.size) }}</template>
+        </el-table-column>
+        <el-table-column label="上传时间" width="170">
+          <template #default="{ row }">{{ dateTime(row.createdAt) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="280" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" :icon="Download" @click="download(row as CourseResourceFile)"
+              >下载</el-button
+            >
+            <el-button link :icon="Plus" @click="togglePin(row as CourseResourceFile)">
+              {{ row.isPinned ? '取消置顶' : '置顶' }}
+            </el-button>
+            <el-button link @click="rename(row as CourseResourceFile)">重命名</el-button>
+            <el-button link type="danger" :icon="Delete" @click="remove(row as CourseResourceFile)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
     </div>
-    <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
-    <el-table v-loading="loading" :data="files" row-key="id" empty-text="暂无附件">
-      <el-table-column label="附件名称" min-width="230">
-        <template #default="{ row }">
-          <div class="file-name">
-            <el-icon><Files /></el-icon>
-            <span>{{ row.name }}</span>
-            <el-tag v-if="row.isPinned" size="small" type="warning" effect="plain">置顶</el-tag>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column label="大小" width="100">
-        <template #default="{ row }">{{ bytes(row.size) }}</template>
-      </el-table-column>
-      <el-table-column label="上传时间" width="170">
-        <template #default="{ row }">{{ dateTime(row.createdAt) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="280" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" :icon="Download" @click="download(row as CourseResourceFile)">下载</el-button>
-          <el-button link :icon="Plus" @click="togglePin(row as CourseResourceFile)">
-            {{ row.isPinned ? '取消置顶' : '置顶' }}
-          </el-button>
-          <el-button link @click="rename(row as CourseResourceFile)">重命名</el-button>
-          <el-button link type="danger" :icon="Delete" @click="remove(row as CourseResourceFile)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
   </el-dialog>
 </template>
 

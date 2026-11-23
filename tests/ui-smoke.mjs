@@ -317,7 +317,7 @@ try {
   const contentRoot = existsSync(path.join(appDirectory, 'wwwroot', 'index.html')) ? appDirectory : path.join(root, 'src/School.Training');
   child = spawn(useExe ? appExecutable : 'dotnet', useExe ? ['--urls', base] : [appDll, '--urls', base], {
     cwd: contentRoot,
-    env: {...process.env, SCHOOL_DATA_DIR: path.join(runDirectory, 'data'), SCHOOL_LICENSE_PUBLIC_KEY: publicKeyPath, ASPNETCORE_ENVIRONMENT: 'Production'},
+    env: {...process.env, SCHOOL_DATA_DIR: path.join(runDirectory, 'data'), SCHOOL_LICENSE_PUBLIC_KEY: publicKeyPath, ASPNETCORE_ENVIRONMENT: 'Production', School__Backups__Automatic__Enabled: 'false'},
     windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
   });
   let output = '';
@@ -836,7 +836,7 @@ try {
   report.hostScreenshotRedactions = ['主机名称', '网卡说明', 'MAC 地址', 'IPv4 地址'];
   mark('服务器信息页面显示真实只读 CPU、内存、网卡，截图隐去主机和网络标识');
 
-  const nodesTitle = '集群节点';
+  const nodesTitle = '实训节点';
   await openPage(nodesTitle);
   const referenceName = '模拟计算节点 NODE-01';
   const referenceNode = rowNamed(referenceName);
@@ -886,7 +886,7 @@ try {
   await page.setViewportSize({width: 1440, height: 1000});
   await statusDrawer.getByRole('button', {name: /close|关闭/i}).click();
   await statusDrawer.waitFor({state: 'hidden'});
-  mark('集群节点可搜索并查看地址、启用及健康、三项使用率、虚拟机和账号数量配额');
+  mark('实训节点可搜索并查看地址、启用及健康、三项使用率、虚拟机和账号数量配额');
 
   await searchList(nodesTitle, '/nodes', '');
   const nodeName = 'UI 集群配置节点';
@@ -946,7 +946,7 @@ try {
   mark('通过系统配置页面保存模拟节点 IPv4、掩码、网关和北京时间');
 
   await deleteRow(nodeRow);
-  mark('集群节点新增、编辑地址/内存/两种配额、停启和删除');
+  mark('实训节点新增、编辑地址/内存/两种配额、停启和删除');
 
   await page.locator('.nav-group button', {hasText: '学生管理'}).click();
   await page.waitForSelector('h1:has-text("学生")', {timeout: 30000});

@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, del, messageOf, post, put } from '../api'
 import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
+import { useRequestGeneration } from '../requestGeneration'
 import { rangeText } from '../time'
 import {
   classroomResourceCountLines,
@@ -45,17 +46,16 @@ const loading = ref(false)
 const error = ref('')
 const search = ref(savedList.search)
 const statusFilter = ref(savedList.filters.status || '')
+const listRequests = useRequestGeneration()
 const tableViewport = window.matchMedia('(max-width: 1280px)')
 const narrowTable = ref(tableViewport.matches)
 function syncTableViewport(event: MediaQueryListEvent) {
   narrowTable.value = event.matches
 }
-
 const courseOptions = ref<(ClassroomSummary['resources'] & { id: string; name: string })[]>([])
 const selectedCourse = computed(() => courseOptions.value.find(course => course.id === form.courseId))
 const teachers = ref<TeacherOption[]>([])
 const teaching = ref<TeachingClassesResponse>({ professions: [], classes: [] })
-
 const dialogVisible = ref(false)
 const nameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
 function focusNameInput() {
@@ -112,10 +112,8 @@ const addStudentFormRef = ref<{ $el?: HTMLElement }>()
 function focusAddStudent() {
   focusFirstField(addStudentFormRef.value?.$el)
 }
-
 const statisticsVisible = ref(false)
 const statisticsClassroomId = ref('')
-
 const collaborationClassroom = ref<ClassroomSummary | null>(null)
 const groupsVisible = ref(false)
 const cabinetsVisible = ref(false)
@@ -133,6 +131,7 @@ function courseOptionName(type: string) {
 }
 
 async function load() {
+  const token = listRequests.begin()
   loading.value = true
   error.value = ''
   try {
@@ -140,6 +139,7 @@ async function load() {
     if (search.value.trim()) params.set('search', search.value.trim())
     if (statusFilter.value) params.set('status', statusFilter.value)
     const data = await api<Paged<ClassroomSummary>>(`/classrooms?${params.toString()}`)
+    if (!listRequests.isCurrent(token)) return
     items.value = data.items
     total.value = data.total
     const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
@@ -148,9 +148,9 @@ async function load() {
       return load()
     }
   } catch (failure) {
-    error.value = messageOf(failure)
+    if (listRequests.isCurrent(token)) error.value = messageOf(failure)
   } finally {
-    loading.value = false
+    if (listRequests.isCurrent(token)) loading.value = false
   }
 }
 
@@ -307,6 +307,11 @@ async function toggleOpen(item: ClassroomSummary) {
       await post(`/classrooms/${item.id}/close`)
       ElMessage.success('课堂已结课')
     } else {
+      await ElMessageBox.confirm(
+        `开放课堂“${item.name}”后，名单中的学生即可在到达开课时间后学习并提交记录。确认开放？`,
+        '开放课堂',
+        { type: 'warning', confirmButtonText: '确认开课', cancelButtonText: '取消' }
+      )
       const room = await post<{ status: ClassroomStatus }>(`/classrooms/${item.id}/open`)
       ElMessage.success(room.status === 'open' ? '课堂已开放' : '课堂将在设定时间开放')
     }
@@ -575,7 +580,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       <el-table-column label="操作" :width="narrowTable ? 175 : 215" :fixed="narrowTable ? false : 'right'">
         <template #default="{ row }">
           <div class="management-actions">
-            <el-button link type="primary" @click="openContent(row as ClassroomSummary)">内容</el-button>
+            <el-button link type="primary" @click="openContent(row as ClassroomSummary)">预览课程</el-button>
             <el-button link @click="openRoster(row as ClassroomSummary)">学生</el-button>
             <el-button link @click="openStatistics(row as ClassroomSummary)">统计</el-button>
             <el-dropdown trigger="click" @command="command => classroomCommand(command, row as ClassroomSummary)">

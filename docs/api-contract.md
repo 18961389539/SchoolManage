@@ -4,12 +4,16 @@ All JSON properties camelCase. Base URL `/api`. Errors use `{message, errors?, t
 
 Every endpoint binds the client disconnect signal (`HttpContext.RequestAborted`) to its database reads, writes, lock waits and file or backup I/O; a browser that cancels a request also stops the server-side work instead of leaving a query or an admin-lock waiter running. Single-row primary-key lookups may omit the token because they are bounded and immediate.
 
-The web client gives a request 60 s — 10 min for uploads — and reports a timeout instead of spinning forever; operations the server may legitimately spend minutes on (backup creation, Hyper-V power) opt out explicitly. Changing page cancels that page's in-flight reads and never its writes, so a form save or an exam answer already on the wire still lands.
+The web client gives a request 60 s — 10 min for uploads and file downloads — and reports a timeout instead of spinning forever; operations the server may legitimately spend minutes on (backup creation, Hyper-V power) opt out explicitly. Changing page cancels that page's in-flight reads and never its writes or a download already started, so a form save, an exam answer or an export already on the wire still lands.
 
-Frontend response contracts live in `web/src/types.ts`. `api<T>`, `post<T>` and `put<T>` have no `any` default, so each call site must name the expected payload; `Row` is reserved for runtime-configured entity forms and tables.
+Import preview/commit, backup creation/download, diagnostics, statistics exports and license imports are limited to 60 requests per minute per account; exceeding the window returns 429.
+
+Frontend response contracts live in `web/src/types.ts`. `api<T>`, `post<T>` and `put<T>` have no `any` default, so each call site must name the expected payload; `Row` is reserved for runtime-configured entity forms and tables. The import dialog additionally checks the preview and status payload shapes at runtime, so a renamed field becomes a visible contract error instead of blank cells.
 
 ## Setup and session
 - GET `/status`: `{initialized, product, version, schemaVersion, logWriteFailures, maxUploadBytes, schoolName}` anonymous. `maxUploadBytes` is the single source for the upload limit the web client enforces.
+- GET `/healthz`: anonymous `{status:"healthy"|"unhealthy", checks:{database:"ok"|"failed", disk:"ok"|"low"|"unavailable"}}`; 200 when healthy, 503 otherwise. No paths, accounts or version are returned.
+- Session cookies are HttpOnly, SameSite=Strict, 8 h sliding with a 24 h absolute limit; `School:Session:AbsoluteHours` adjusts the absolute window (1–168 h).
 - POST `/setup`: `{schoolName, userName, displayName,password}` -> session, first admin, loopback only
 - POST `/auth/login`: `{userName,password}` -> `{user:{id,userName,displayName,role},csrfToken}`
 - GET `/auth/me`: same session response
@@ -60,10 +64,14 @@ Frontend response contracts live in `web/src/types.ts`. `api<T>`, `post<T>` and 
 - GET/POST `/virtual-machines`, PUT/DELETE `/virtual-machines/{id}`: the list is paginated and supports name search and `nodeId` filtering. Administrators can create and edit simulated virtual machines with `{name,nodeId,cpuCount,memoryMb,diskGb,remark}`. POST `/virtual-machines/{id}/start` and `/virtual-machines/{id}/stop` change simulation state. Edits and deletion require a stopped VM.
 
 ## Operations
-- GET `/audits`: `{items:[{id,at,userName,action,target,detail}],total}` ordered by `at` then `id` descending so pages stay stable when timestamps repeat; backed by `IX_Audits_At_Id`. Records are retained until an operator archives or removes them.
+- GET `/audits`: `{items:[{id,at,userName,action,target,detail}],total}` ordered by `at` then `id` descending so pages stay stable when timestamps repeat; backed by `IX_Audits_At_Id`. Records are kept by default; `School:Audits:RetentionDays` enables the scheduled cleanup described in the operations guide.
+- GET `/audits/export?search=...`: streaming UTF-8 CSV with the same search filter, ordered oldest first, timestamps in Beijing time. Cells starting with `= + - @` are prefixed with `'` so spreadsheet software does not evaluate them. The export itself is audited.
+- GET `/diagnostics`: administrator-only support ZIP with `README.txt`, `status.json`, `settings.json`, `system.json`, `database.json`, the tail of the three most recent service logs and `manifest.json`. It contains no passwords, cookies, DataProtection keys or database file, and each download is audited.
 - GET `/settings`: `{schoolName,backupDirectory,...}`; PUT `/settings`: admin
-- POST `/backups`: create consistent local SQLite backup -> `{fileName,createdAt,size}`; returns 507 before writing when the free-space probe reports insufficient space or cannot read the volume
-- GET `/backups`: list; GET `/backups/{fileName}` authorized file download
+- POST `/backups`: create consistent local SQLite backup -> `{fileName,createdAt,size}`; returns 507 before writing when the free-space probe reports insufficient space or cannot read the volume, and 409 when another backup is already running
+- GET `/backups`: list plus `automatic:{enabled,timeOfDay,lastAttemptAt,lastSuccessAt,lastMessage}`; the scheduled worker runs daily at the configured local time, catches up when no backup succeeded in the last 24 h, and retries failures hourly
+- GET `/backups/{fileName}`: authorized file download
+- Backups default to `<data>/backups`; set `School:Backups:Directory` to an absolute path on another volume to separate them from the database. The ZIP contains the database, DataProtection keys and decryptable device credentials and must be handled as credential material.
 - GET `/licenses`: signed license metadata, machine code and five quota rows `{code,name,used,limit}`. `limit:null` means the dimension has never been enabled. `limit:0` forbids new allocation for that dimension.
 - POST `/licenses`: multipart `file` accepts 1–20 signed files, atomically. Resource codes `TRAINING.CABINETS`, `TRAINING.DEVICES`, `TRAINING.NODES`, `TRAINING.VMS` and `TRAINING.ASSIGNMENTS` enable corresponding limits. The highest currently valid grant determines the cap. Expired, corrupted or unverifiable grants give no capacity. Administrators can still manage and remove existing records. Legacy records remain readable and can be re-uploaded with the original signature to activate limits.
 - GET `/licenses/guide`: download usage and quota code instructions.

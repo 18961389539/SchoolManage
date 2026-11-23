@@ -5,6 +5,7 @@ import { api, dateTime, messageOf } from '../api'
 import { campAttemptLabel, campAttemptStatusType } from '../camp'
 import { countdownText } from '../exam'
 import { parseApiDate } from '../time'
+import { usePolling } from '../usePolling'
 import type { CampHistoryRow } from '../types'
 import CampRecordDrawer from './CampRecordDrawer.vue'
 import CampReportDrawer from './CampReportDrawer.vue'
@@ -16,12 +17,10 @@ const loading = ref(false)
 const error = ref('')
 const search = ref('')
 const appliedSearch = ref('')
-const now = ref(Date.now())
+const { now } = usePolling(() => load(true), { intervalMs: 30000 })
 const reportVisible = ref(false)
 const recordVisible = ref(false)
 const activeAttemptId = ref('')
-let ticker: number | undefined
-let refresher: number | undefined
 let searchTimer: number | undefined
 let requestId = 0
 let fetching = false
@@ -90,16 +89,10 @@ watch(search, value => {
 
 onMounted(() => {
   void load()
-  ticker = window.setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-  refresher = window.setInterval(() => void load(true), 30000)
 })
 
 onBeforeUnmount(() => {
   ++requestId
-  if (ticker !== undefined) window.clearInterval(ticker)
-  if (refresher !== undefined) window.clearInterval(refresher)
   if (searchTimer !== undefined) window.clearTimeout(searchTimer)
 })
 </script>

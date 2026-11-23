@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 
 import { Monitor, Refresh } from '@element-plus/icons-vue'
 import { api, messageOf } from '../api'
 import type { AssignedDevice, AssignedVirtualMachine, MyResourcesResponse } from '../types'
+import TableEmpty from './TableEmpty.vue'
 import VmConsoleDialog from './VmConsoleDialog.vue'
 
 const TerminalDialog = defineAsyncComponent(() => import('./TerminalDialog.vue'))
@@ -124,7 +125,13 @@ onBeforeUnmount(() => request?.abort())
         <h2 id="assigned-devices">实训设备</h2>
         <span>{{ resources.devices.length }} 台设备</span>
       </div>
-      <el-table :data="resources.devices" row-key="id" empty-text="已分配节点暂未关联实训设备">
+      <el-table :data="resources.devices" row-key="id" empty-text="">
+        <template #empty>
+          <TableEmpty
+            title="已分配节点暂未关联实训设备"
+            hint="管理员为节点关联模拟设备后，可在这里打开终端或 Web 管理。"
+          />
+        </template>
         <el-table-column prop="name" label="设备名称" min-width="170" show-overflow-tooltip />
         <el-table-column prop="nodeName" label="实训节点" min-width="150" show-overflow-tooltip />
         <el-table-column prop="cabinetName" label="所属机柜" min-width="130" show-overflow-tooltip />
@@ -183,7 +190,13 @@ onBeforeUnmount(() => request?.abort())
         <h2 id="assigned-machines">虚拟机</h2>
         <span>{{ resources.virtualMachines.length }} 台</span>
       </div>
-      <el-table :data="resources.virtualMachines" row-key="id" empty-text="已分配节点暂无模拟虚拟机">
+      <el-table :data="resources.virtualMachines" row-key="id" empty-text="">
+        <template #empty>
+          <TableEmpty
+            title="已分配节点暂无模拟虚拟机"
+            hint="管理员为节点配置虚拟机后，可在这里查看状态并连接控制台。"
+          />
+        </template>
         <el-table-column prop="name" label="虚拟机名称" min-width="155" show-overflow-tooltip />
         <el-table-column prop="nodeName" label="实训节点" min-width="135" show-overflow-tooltip />
         <el-table-column prop="ipAddress" label="IP 地址" min-width="130" />

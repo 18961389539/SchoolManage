@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { defineAsyncComponent, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { Monitor, Refresh } from '@element-plus/icons-vue'
 import { api, messageOf } from '../api'
 import { virtualMachineStatusText } from '../camp'
 import type { CampEnvironment } from '../types'
+import TableEmpty from './TableEmpty.vue'
 import VmConsoleDialog from './VmConsoleDialog.vue'
 
 const TerminalDialog = defineAsyncComponent(() => import('./TerminalDialog.vue'))
@@ -50,6 +51,11 @@ watch(
   { immediate: true }
 )
 
+const environmentUnconfigured = computed(() => {
+  const item = environment.value
+  return !!item && !item.node && !item.devices.length && !item.virtualMachines.length
+})
+
 function openTerminal(device: { id: string; name: string }) {
   terminalDevice.value = { ...device, connectionType: 'simulated', isSimulated: true }
 }
@@ -69,60 +75,85 @@ function openTerminal(device: { id: string; name: string }) {
     </div>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
     <div v-else-if="loading && !environment" class="environment-loading"><el-skeleton :rows="4" animated /></div>
+    <el-empty v-else-if="!loading && !error && !environment" description="暂未获取实训环境">
+      <p class="environment-hint">请刷新后重试。</p>
+      <el-button @click="load">刷新环境</el-button>
+    </el-empty>
     <template v-else-if="environment">
-      <el-table :data="environment.devices" row-key="id" empty-text="当前节点暂无可用模拟设备">
-        <el-table-column prop="name" label="设备" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="cabinetName" label="机柜" min-width="120" show-overflow-tooltip />
-        <el-table-column label="操作" width="220">
-          <template #default="{ row }">
-            <el-button link type="primary" :icon="Monitor" @click="openTerminal(row as { id: string; name: string })">
-              打开终端
-            </el-button>
-            <el-button link type="primary" @click="webDevice = row as { id: string; name: string }">Web 管理</el-button>
+      <el-empty v-if="environmentUnconfigured" description="尚未配置实训环境" :image-size="80">
+        <p class="environment-hint">
+          {{ emptyText || '请先为岗位配置已启用的实训节点，并确保节点下有设备和虚拟机。' }}
+        </p>
+      </el-empty>
+      <template v-else>
+        <p v-if="environment.node && !environment.node.enabled" class="environment-hint environment-hint--start">
+          当前实训节点已停用，设备和虚拟机可能无法使用。
+        </p>
+        <el-table :data="environment.devices" row-key="id" empty-text="">
+          <template #empty>
+            <TableEmpty
+              title="当前节点暂无可用模拟设备"
+              hint="为该实训节点关联模拟设备后，可在这里打开终端或 Web 管理。"
+            />
           </template>
-        </el-table-column>
-      </el-table>
-      <el-table :data="environment.virtualMachines" row-key="id" empty-text="当前节点暂无虚拟机">
-        <el-table-column label="虚拟机" min-width="180">
-          <template #default="{ row }">
-            <div class="machine-name">
-              <span>{{ row.name }}</span>
-              <el-tag v-if="row.selected" size="small" type="warning" effect="plain">测评机</el-tag>
-            </div>
+          <el-table-column prop="name" label="设备" min-width="170" show-overflow-tooltip />
+          <el-table-column prop="cabinetName" label="机柜" min-width="120" show-overflow-tooltip />
+          <el-table-column label="操作" width="220">
+            <template #default="{ row }">
+              <el-button link type="primary" :icon="Monitor" @click="openTerminal(row as { id: string; name: string })">
+                打开终端
+              </el-button>
+              <el-button link type="primary" @click="webDevice = row as { id: string; name: string }"
+                >Web 管理</el-button
+              >
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-table :data="environment.virtualMachines" row-key="id" empty-text="">
+          <template #empty>
+            <TableEmpty title="当前节点暂无虚拟机" hint="为该实训节点配置虚拟机后，评测机可在这里连接。" />
           </template>
-        </el-table-column>
-        <el-table-column label="状态" width="105">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'running' ? 'success' : 'info'" size="small">
-              {{ virtualMachineStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="配置" min-width="180">
-          <template #default="{ row }">{{ row.cpuCount }} 核 · {{ row.memoryMb }} MB · {{ row.diskGb }} GB</template>
-        </el-table-column>
-        <el-table-column v-if="attemptId" label="操作" width="110">
-          <template #default="{ row }">
-            <el-tooltip
-              v-if="row.selected"
-              :disabled="!campMachineReason(row as CampEnvironment['virtualMachines'][number])"
-              :content="campMachineReason(row as CampEnvironment['virtualMachines'][number])"
-              placement="top"
-            >
-              <span class="disabled-action-wrap">
-                <el-button
-                  link
-                  type="primary"
-                  :disabled="row.status !== 'running'"
-                  @click="connectMachine(row as CampEnvironment['virtualMachines'][number])"
-                  >连接</el-button
-                >
-              </span>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-      </el-table>
-      <p v-if="emptyText" class="environment-hint">{{ emptyText }}</p>
+          <el-table-column label="虚拟机" min-width="180">
+            <template #default="{ row }">
+              <div class="machine-name">
+                <span>{{ row.name }}</span>
+                <el-tag v-if="row.selected" size="small" type="warning" effect="plain">测评机</el-tag>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="105">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'running' ? 'success' : 'info'" size="small">
+                {{ virtualMachineStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="配置" min-width="180">
+            <template #default="{ row }">{{ row.cpuCount }} 核 · {{ row.memoryMb }} MB · {{ row.diskGb }} GB</template>
+          </el-table-column>
+          <el-table-column v-if="attemptId" label="操作" width="110">
+            <template #default="{ row }">
+              <el-tooltip
+                v-if="row.selected"
+                :disabled="!campMachineReason(row as CampEnvironment['virtualMachines'][number])"
+                :content="campMachineReason(row as CampEnvironment['virtualMachines'][number])"
+                placement="top"
+              >
+                <span class="disabled-action-wrap">
+                  <el-button
+                    link
+                    type="primary"
+                    :disabled="row.status !== 'running'"
+                    @click="connectMachine(row as CampEnvironment['virtualMachines'][number])"
+                    >连接</el-button
+                  >
+                </span>
+              </el-tooltip>
+            </template>
+          </el-table-column>
+        </el-table>
+        <p v-if="emptyText" class="environment-hint environment-hint--start">{{ emptyText }}</p>
+      </template>
     </template>
   </div>
 
@@ -186,8 +217,17 @@ function openTerminal(device: { id: string; name: string }) {
 }
 
 .environment-hint {
-  margin: 0;
+  max-width: 40ch;
+  margin: 0 auto 8px;
   color: #64788a;
   font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.environment-hint--start {
+  max-width: none;
+  margin: 0;
+  text-align: left;
 }
 </style>

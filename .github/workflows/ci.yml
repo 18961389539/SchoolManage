@@ -1,0 +1,104 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-gate:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # A fresh clone must contain everything the build needs; these paths were once left
+      # untracked locally, which made the pipeline silently incomplete.
+      - name: Verify required sources are tracked
+        shell: powershell
+        run: |
+          $required = @(
+            '.github/workflows/ci.yml',
+            'scripts/sign-release.ps1',
+            'src/School.Training/Migrations',
+            'tools/School.Training.DesignHost',
+            'dotnet-tools.json',
+            'Directory.Build.props',
+            'web/file-size-baseline.json',
+            'web/scripts/check-file-sizes.mjs'
+          )
+          foreach ($path in $required) {
+            $tracked = git ls-files -- $path
+            if (-not $tracked) { throw "Required path is not tracked by git: $path" }
+          }
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Publishes win-x64, then runs the 21-check release gate against that exact output:
+      # format, xUnit (including HTTP integration tests), migrations, application/Excel/
+      # infrastructure/load/security smokes, deployment policy and restore/rollback.
+      - name: Release gate
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1 -Version 0.1.0-ci -AllowUnsigned
+
+      - name: Publish gate summary
+        if: always()
+        shell: powershell
+        run: |
+          $path = 'docs/verification/release-test-gate.json'
+          if (Test-Path -LiteralPath $path) {
+            $gate = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+            "Release gate: $($gate.status) · $($gate.version) · $($gate.checks.Count) checks" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+      # playwright-core drives the installed Edge; axe-core only reports accessibility findings.
+      - name: Install UI test drivers
+        run: npm install --prefix .local/e2e --no-save --no-audit --no-fund playwright-core@1.65.1 axe-core@4.14.1
+
+      - name: Build app for UI harness
+        run: dotnet build src/School.Training/School.Training.csproj -c Debug --nologo
+
+      - name: UI regression (routes, requests, pages, lists, dialogs, session)
+        env:
+          CHROME_PATH: 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+          UI_SUITE_REPORT_PATH: ${{ github.workspace }}\docs\verification\ui-suite-ci.json
+        run: npm --prefix web run test:ui
+
+      - name: Verify release manifest
+        if: success()
+        shell: powershell
+        run: |
+          $manifest = Get-Content -LiteralPath 'artifacts/SchoolTraining-0.1.0-ci-manifest.json' -Raw | ConvertFrom-Json
+          if ($manifest.version -ne '0.1.0-ci') { throw "Unexpected manifest version: $($manifest.version)" }
+          if (-not $manifest.commit -or $manifest.commit -eq 'unknown') { throw 'Release manifest has no source commit.' }
+          if ($manifest.workTreeDirty) { throw 'Release manifest was produced from a dirty work tree.' }
+          if ($manifest.gateStatus -ne 'passed') { throw "Release gate status is $($manifest.gateStatus)." }
+          if ($manifest.evidence.Count -lt 10) { throw "Release manifest lists only $($manifest.evidence.Count) evidence files." }
+          "Release manifest: $($manifest.commit) · $($manifest.gateStatus) · $($manifest.evidence.Count) evidence files" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification
+          path: |
+            docs/verification/release-test-gate.json
+            docs/verification/ui-suite-ci.json
+            artifacts/SchoolTraining-0.1.0-ci-manifest.json
+            artifacts/SchoolTraining-0.1.0-ci-SHA256SUMS.txt
+          if-no-files-found: warn

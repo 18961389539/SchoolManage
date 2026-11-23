@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.DataProtection;
@@ -184,12 +185,16 @@ public static partial class InfrastructureEndpoints
             var nodeIds = rows.Select(x => x.Id).ToArray();
             var usage = await ReadNodeUsageAsync(db, nodeIds, ct);
             var accountCounts = await db.NodeAccountAssignments.AsNoTracking().Where(x => nodeIds.Contains(x.NodeId)).GroupBy(x => x.NodeId).Select(g => new { NodeId = g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.NodeId, x => x.Count, ct);
-            var items = new List<object>(rows.Count);
-            foreach (var row in rows)
+            var inspections = new ConcurrentDictionary<string, HyperVResult?>(StringComparer.OrdinalIgnoreCase);
+            var hyperVNodes = rows.Where(row => row.Provider == HyperVProvider.Name).ToArray();
+            if (hyperVNodes.Length > 0)
             {
-                var real = row.Provider == HyperVProvider.Name ? await hyperV.InspectAsync(row.Host, ct) : null;
-                items.Add(NodeView(row, usage.GetValueOrDefault(row.Id), accountCounts.GetValueOrDefault(row.Id), real?.Metrics));
+                await Parallel.ForEachAsync(hyperVNodes, new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = ct },
+                    async (row, token) => inspections[row.Id] = await hyperV.InspectAsync(row.Host, token));
             }
+            var items = rows.Select(row => NodeView(
+                row, usage.GetValueOrDefault(row.Id), accountCounts.GetValueOrDefault(row.Id),
+                inspections.GetValueOrDefault(row.Id)?.Metrics)).ToList();
             return Results.Ok(new { total, items });
         });
         group.MapPost("/nodes", async (NodeInput input, SchoolDbContext db, IDataProtectionProvider protection, HttpContext ctx, LicenseQuotaPolicy quota) =>

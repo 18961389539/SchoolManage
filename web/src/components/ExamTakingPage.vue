@@ -514,7 +514,7 @@ function goRecords() {
           {{ completed.autoSubmitted ? '考试时间已到，试卷已自动提交' : '试卷提交成功' }}
         </h2>
         <p v-if="completed.pendingPractical">文字实操题待批阅，最终成绩将在批阅后显示。</p>
-        <p v-else>自动评分已完成。可在考试动态中查看成绩。</p>
+        <p v-else>自动评分已完成。可在考试记录中查看成绩与复盘。</p>
         <div class="finish-scores">
           <div>
             <span>客观分</span><strong>{{ completed.objectiveScore }}</strong>
@@ -535,7 +535,7 @@ function goRecords() {
         </div>
         <div class="finish-actions">
           <el-button @click="goBack">返回我的考试</el-button>
-          <el-button type="primary" @click="goRecords">查看考试动态</el-button>
+          <el-button type="primary" @click="goRecords">查看考试记录</el-button>
         </div>
       </section>
 

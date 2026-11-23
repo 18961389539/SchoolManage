@@ -14,6 +14,28 @@ export async function run({ base, browser, admin, check }) {
   check('首屏数据加载完成（未被自身导航取消）', cards > 0, `cards=${cards}`)
   check('首屏无错误提示', (await page.locator('.el-message--error').count()) === 0)
 
+  // 启动读取属于外壳：/status 在途时切页，不能把启动流程取消在骨架屏里。
+  let statusStarted = false
+  let markStatusStarted = () => {}
+  const statusStartedSignal = new Promise(resolve => (markStatusStarted = resolve))
+  await page.route('**/api/status', async route => {
+    statusStarted = true
+    markStatusStarted()
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    await route.continue().catch(() => {})
+  })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await Promise.race([statusStartedSignal, page.waitForTimeout(5000)])
+  check('启动状态请求已发出', statusStarted)
+  await page.evaluate(() => {
+    location.hash = 'students'
+  })
+  await page.waitForSelector('.app-layout', { timeout: 8000 })
+  await page.waitForTimeout(600)
+  check('启动请求不被同时的切页取消', (await page.locator('.main-content').innerText()).includes('学生管理'))
+  check('启动过程未停留在骨架屏', (await page.locator('.startup-screen').count()) === 0)
+  await page.unroute('**/api/status')
+
   // 读请求在途时切页：新页面正常渲染，且不冒出上一个页面的错误。
   await page.route('**/api/courses?**', async route => {
     await new Promise(resolve => setTimeout(resolve, 2500))

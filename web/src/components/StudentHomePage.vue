@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { DataAnalysis, Refresh, Tickets } from '@element-plus/icons-vue'
+import { DataAnalysis, Refresh, School, Tickets } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
 import type { StudentHomeResponse } from '../analytics'
 import HomeClassroomsPanel from './HomeClassroomsPanel.vue'
@@ -57,7 +57,8 @@ onMounted(load)
       </p>
     </div>
     <div class="heading-actions">
-      <el-button type="primary" :icon="Tickets" @click="emit('navigate', 'my-exams')">我的考试</el-button>
+      <el-button type="primary" :icon="School" @click="emit('navigate', 'my-classrooms')">我的课堂</el-button>
+      <el-button :icon="Tickets" @click="emit('navigate', 'my-exams')">我的考试</el-button>
       <el-button :icon="DataAnalysis" @click="emit('navigate', 'skill-graph')">技能图谱</el-button>
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新数据</el-button>
     </div>
@@ -92,7 +93,7 @@ onMounted(load)
               aria-label="资源达标率"
             />
             <p>
-              已达标 {{ data.overview.passed }} / {{ data.overview.totalResources }} · 达标线 60%
+              已达标 {{ data.overview.passed }} / {{ data.overview.totalResources }} · 达标线为资源完成度 60%
               <template v-if="data.overview.isPassing"> · 已达标</template>
             </p>
           </template>

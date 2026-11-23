@@ -5,11 +5,13 @@ using Microsoft.EntityFrameworkCore.Storage;
 namespace School.Training;
 
 /// <summary>
-/// Ordered, idempotent schema upgrades anchored on SQLite PRAGMA user_version.
-/// A database snapshot is written before any v1 database is changed.
+/// New databases are created by EF Core migrations. Existing databases keep the legacy
+/// PRAGMA user_version upgrade ladder up to v17, then join the EF history. The product
+/// markers remain for backup validation and offline tooling.
 /// </summary>
 public static class DatabaseMigrations
 {
+    public const int LegacyVersion = 17;
     public const int CurrentVersion = DatabaseSafety.SchemaVersion;
     const string ClassIndexName = "IX_Classes_ProfessionId_Name";
 
@@ -18,23 +20,91 @@ public static class DatabaseMigrations
         var exists = File.Exists(paths.Database) && new FileInfo(paths.Database).Length > 0;
         if (!exists)
         {
-            await db.Database.EnsureCreatedAsync(cancellationToken);
+            await db.Database.MigrateAsync(cancellationToken);
+            await SetMarkersAsync(db, cancellationToken);
             await SeedQuestionBankAsync(db, cancellationToken);
-            await db.Database.ExecuteSqlRawAsync($"PRAGMA application_id={DatabaseSafety.ApplicationId};", cancellationToken);
-            await db.Database.ExecuteSqlRawAsync($"PRAGMA user_version={CurrentVersion};", cancellationToken);
-            logger.LogInformation("Created database schema version {Version}.", CurrentVersion);
+            logger.LogInformation("Created database schema version {Version} from EF Core migrations.", CurrentVersion);
             return;
         }
 
         var version = await DatabaseSafety.Inspect(paths.Database);
         if (version > CurrentVersion) throw new InvalidDataException($"数据库结构版本 {version} 高于当前程序支持的版本 {CurrentVersion}，请升级程序后再启动");
-        if (version < 1) throw new InvalidDataException("数据库缺少有效的结构版本标记，拒绝自动迁移");
-        if (version == CurrentVersion) return;
+        var historyExists = await HasHistoryAsync(db, cancellationToken);
+        var snapshotTaken = false;
+        if (!historyExists)
+        {
+            if (version > LegacyVersion) throw new InvalidDataException("数据库缺少 EF Core 迁移历史，无法确定结构版本");
+            if (version < 1) throw new InvalidDataException("数据库缺少有效的结构版本标记，拒绝自动迁移");
+            if (version < LegacyVersion)
+            {
+                await UpgradeLegacyAsync(db, paths, options, logger, version, cancellationToken);
+                snapshotTaken = true;
+            }
+            await BaselineAsync(db, logger, cancellationToken);
+        }
 
+        var pending = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToArray();
+        if (pending.Length > 0)
+        {
+            if (!snapshotTaken)
+            {
+                var snapshot = Path.Combine(paths.Backups, $"pre-migration-v{version}-{DateTime.UtcNow:yyyyMMddHHmmssfff}.db");
+                await DatabaseBackups.CreateSnapshotAsync(db, snapshot);
+                FileRetention.Apply(paths.Backups, "pre-migration-*.db", options.PreMigrationBackupCount, long.MaxValue, protectedFile: snapshot);
+                logger.LogWarning("EF Core migration starts from version {From} to {To}; pre-upgrade snapshot: {Snapshot}", version, CurrentVersion, snapshot);
+            }
+            await db.Database.MigrateAsync(cancellationToken);
+            logger.LogInformation("Applied EF Core migrations: {Migrations}", string.Join(", ", pending));
+        }
+
+        await SetMarkersAsync(db, cancellationToken);
+        await SeedQuestionBankAsync(db, cancellationToken);
+    }
+
+    static async Task SetMarkersAsync(SchoolDbContext db, CancellationToken cancellationToken)
+    {
+        await db.Database.ExecuteSqlRawAsync($"PRAGMA application_id={DatabaseSafety.ApplicationId};", cancellationToken);
+        await db.Database.ExecuteSqlRawAsync($"PRAGMA user_version={CurrentVersion};", cancellationToken);
+    }
+
+    static async Task<bool> HasHistoryAsync(SchoolDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open) await db.Database.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name='__EFMigrationsHistory';";
+        var exists = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken)) > 0;
+        await db.Database.CloseConnectionAsync();
+        return exists;
+    }
+
+    static async Task BaselineAsync(SchoolDbContext db, ILogger logger, CancellationToken cancellationToken)
+    {
+        // The initial migration is the baseline key for pre-EF databases. Never regenerate or
+        // rename it; add a new migration instead.
+        var baseline = db.Database.GetMigrations().FirstOrDefault()
+            ?? throw new InvalidOperationException("程序未包含任何 EF Core 迁移");
+        var productVersion = typeof(DbContext).Assembly.GetName().Version?.ToString(3) ?? "10.0.15";
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+                "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
+                "ProductVersion" TEXT NOT NULL
+            );
+            """, cancellationToken);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+            VALUES ({baseline}, {productVersion});
+            """, cancellationToken);
+        logger.LogInformation("Baselined existing database into EF Core migration {Migration}.", baseline);
+    }
+
+    /// <summary>Legacy v1..v17 ladder for databases created before EF Core migrations.</summary>
+    static async Task UpgradeLegacyAsync(SchoolDbContext db, AppPaths paths, StorageOptions options, ILogger logger, int version, CancellationToken cancellationToken)
+    {
         var snapshot = Path.Combine(paths.Backups, $"pre-migration-v{version}-{DateTime.UtcNow:yyyyMMddHHmmssfff}.db");
         await DatabaseBackups.CreateSnapshotAsync(db, snapshot);
         FileRetention.Apply(paths.Backups, "pre-migration-*.db", options.PreMigrationBackupCount, long.MaxValue, protectedFile: snapshot);
-        logger.LogWarning("Database schema upgrade started from version {From} to {To}; pre-upgrade snapshot: {Snapshot}", version, CurrentVersion, snapshot);
+        logger.LogWarning("Database schema upgrade started from version {From} to {To}; pre-upgrade snapshot: {Snapshot}", version, LegacyVersion, snapshot);
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         try
@@ -670,7 +740,7 @@ public static class DatabaseMigrations
                 await AddColumnIfMissingAsync(db, "CourseResources", "Version", "\"Version\" INTEGER NOT NULL DEFAULT 0", cancellationToken);
                 version = 17;
             }
-            await db.Database.ExecuteSqlRawAsync($"PRAGMA user_version={CurrentVersion};", cancellationToken);
+            await db.Database.ExecuteSqlRawAsync($"PRAGMA user_version={LegacyVersion};", cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
         catch
@@ -679,7 +749,7 @@ public static class DatabaseMigrations
             throw;
         }
 
-        logger.LogInformation("Database schema upgraded to version {Version}.", version);
+        logger.LogInformation("Database schema upgraded to legacy version {Version}.", version);
     }
 
     static Task SeedQuestionBankAsync(SchoolDbContext db, CancellationToken ct)

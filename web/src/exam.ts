@@ -93,27 +93,3 @@ export function unansweredCount(
     question.type === 'practical' ? !question.textAnswer.trim() : question.selected.length === 0
   ).length
 }
-
-/** Downloads an authenticated API file and saves it under a readable name. */
-export async function downloadFile(path: string, fileName: string): Promise<void> {
-  const response = await fetch(`/api${path}`, { credentials: 'same-origin' })
-  if (!response.ok) {
-    let message = `下载失败（${response.status}）`
-    try {
-      const body = await response.json()
-      if (body?.message) message = body.message
-    } catch {
-      // Non-JSON failure bodies keep the generic message.
-    }
-    throw new Error(message)
-  }
-  const blob = await response.blob()
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = fileName
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  URL.revokeObjectURL(url)
-}

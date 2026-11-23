@@ -23,13 +23,26 @@ dotnet run --project src/School.Training -- --urls http://127.0.0.1:5080
 
 打开 `http://127.0.0.1:5080`，在服务器本机完成首次管理员初始化。系统不预置通用管理员口令。初始化完成后通过界面的“创建模拟环境”入口生成模拟资源。
 
+数据库结构由 EF Core Migrations 管理。新增结构变更时执行 `dotnet tool restore`，创建迁移并递增 `DatabaseSafety.SchemaVersion`：
+
+```powershell
+dotnet ef migrations add <Name> --project src/School.Training --startup-project tools/School.Training.DesignHost --output-dir Migrations
+```
+
+存量 v1–v17 数据库在启动时仍走旧版升级阶梯，完成后自动加入 `__EFMigrationsHistory` 基线。
+
 ## 构建 Windows 交付包
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1 -Version 0.1.0
+# 本地验证构建：显式允许未签名
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1 -Version 0.1.0 -AllowUnsigned
 ```
 
-构建会先发布 Release 程序，再对发布目录执行格式检查、xUnit、迁移、应用、Excel、节点账号、基础设施、负载、安全及部署回归。部署回归包括安装失败回退与备份恢复。完整门禁共 19 项，`-SkipFrontend` 时跳过 4 项前端检查。任一检查失败即停止打包，结果写入 `docs/verification/release-test-gate.json`。
+正式发布需在命令中加入下方签名参数，未提供证书时脚本会直接失败。
+
+完整发布（含安装器）默认要求代码签名：安装 Windows SDK 后，用 `-SigningThumbprint <证书指纹>` 从证书存储取证书，或用 `-SigningPfx <文件>` 并设置环境变量 `SCHOOL_SIGNING_PFX_PASSWORD` 取私钥口令；脚本会对发布程序和安装器执行 Authenticode 签名并校验签名。未提供证书时构建直接失败；本地门禁或 CI 需要显式加 `-AllowUnsigned`，或用 `-SkipInstaller` 只跑门禁。`-RequireSigning` 可再显式强调签名要求。
+
+构建会先发布 Release 程序，再对发布目录执行格式检查、xUnit、迁移、应用、Excel、节点账号、基础设施、负载、安全及部署回归。部署回归包括安装失败回退与备份恢复。逐项门禁结果以 `docs/verification/release-test-gate.json` 为准，`-SkipFrontend` 时跳过 5 项前端检查。任一检查失败即停止打包。发布包只携带本次门禁报告，并生成包含提交、构建时间和证据哈希的 `release-manifest.json`。
 
 如果当前开发服务器占用 `web/node_modules`，将 `web` 源码及锁文件复制到独立目录，并通过 `-FrontendDirectory` 指定该目录。前端构建、测试和依赖清单将使用这份副本。
 
@@ -38,6 +51,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps
 - `SchoolTraining-0.1.0-Setup.exe`：自包含安装程序，申请管理员权限后注册本系统服务。
 - `SchoolTraining-0.1.0-win-x64.zip`：离线发布包、安装维护脚本和文档。
 - `SchoolTraining-0.1.0-SHA256SUMS.txt`：发布包校验值。
+- `SchoolTraining-0.1.0-manifest.json`：本次构建的提交、构建时间、门禁状态、证据哈希和产物校验值。
 
 安装程序可以使用 `--quiet --validate-only` 验证嵌入载荷；该模式只在临时目录解压检查，不注册服务、不修改防火墙、不安装程序。
 
@@ -49,5 +63,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps
 - [交付验证清单](docs/delivery-checklist.md)：源码构建、模拟流程、安装与恢复的验证方法。
 - [API 契约](docs/api-contract.md)：前后端接口约定。
 - 界面回归（可选，不属发布门禁）：`node tests/ui-smoke.mjs`，需要本机 Chromium/Edge 与 `playwright-core`；覆盖初始化登录、万行导入预览分页、仅看问题行和服务异常重试页，报告写入 `docs/verification/ui-smoke.json`。
+- 套件式界面回归：`npm --prefix web run test:ui`，覆盖路由、请求、页面、列表、对话框和会话，并对控制台、学生、考试、审计页面输出 axe 无障碍报告（只报告，不影响退出码），报告写入 `.local/verification/ui-suite.json`。GitHub Actions 在每次推送和 PR 上运行同一套发布门禁及该界面回归。
 
 当前版本仍在迭代。发布包生成、构建成功或模拟测试成功，均不能单独证明完整采购参数已验收；以验收矩阵中的实测证据为准。

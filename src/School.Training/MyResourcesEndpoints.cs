@@ -28,8 +28,11 @@ public static class MyResourcesEndpoints
                                 where device.ConnectionType == ResourceProviders.Simulated &&
                                     (assignedNodes.Any(item => item.Id == device.NodeId) || cabinetIds.Contains(device.CabinetId))
                                 orderby node.Name, device.Name
-                                select new { device.Id, device.Name, device.NodeId, nodeName = node == null ? "" : node.Name,
-                                    cabinetName = cabinet.Name, canAccess = accessible.Any(item => item.Id == device.Id) })
+                                select new
+                                {
+                                    device.Id, device.Name, device.NodeId, nodeName = node == null ? "" : node.Name,
+                                    cabinetName = cabinet.Name, canAccess = accessible.Any(item => item.Id == device.Id)
+                                })
             .ToListAsync(ct);
         var reserved = SimulatedVirtualMachines.ReservedIds(db, DateTime.UtcNow);
         var virtualMachines = await (from node in assignedNodes

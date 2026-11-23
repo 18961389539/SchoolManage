@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Clock, Document, Monitor, Refresh, Search, Tickets } from '@element-plus/icons-vue'
 import { api, messageOf } from '../api'
 import { readListState, useListPersist } from '../listState'
+import { usePolling } from '../usePolling'
 import {
   attemptStatusLabel,
   attemptStatusType,
@@ -25,9 +26,7 @@ const error = ref('')
 const savedList = readListState('my-exams')
 const search = ref(savedList.search)
 const statusFilter = ref(savedList.filters.status || '')
-const now = ref(Date.now())
-let ticker: number | undefined
-let refresher: number | undefined
+const { now } = usePolling(() => load(true), { intervalMs: 30000 })
 let requestId = 0
 let fetching = false
 
@@ -147,23 +146,23 @@ function scoreText(item: ExamHallItem): string {
 
 onMounted(() => {
   void load()
-  ticker = window.setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-  refresher = window.setInterval(() => void load(true), 30000)
 })
 
 onBeforeUnmount(() => {
   ++requestId
-  if (ticker !== undefined) window.clearInterval(ticker)
-  if (refresher !== undefined) window.clearInterval(refresher)
 })
 </script>
 
 <template>
   <section class="page-heading learner-catalog-heading">
-    <h1>我的考试</h1>
-    <el-button :icon="Refresh" :loading="loading" @click="load()">刷新考试</el-button>
+    <div>
+      <h1>我的考试</h1>
+      <p>参加进行中的考试；交卷后的成绩与复盘请到「考试记录」查看。</p>
+    </div>
+    <div class="heading-actions">
+      <el-button @click="emit('navigate', 'exam-records')">考试记录</el-button>
+      <el-button :icon="Refresh" :loading="loading" @click="load()">刷新考试</el-button>
+    </div>
   </section>
 
   <div class="surface student-filters" role="search" aria-label="查找考试">
@@ -260,7 +259,9 @@ onBeforeUnmount(() => {
             <el-button v-if="item.canStart" type="primary" @click="enterExam(item)">
               {{ item.attemptStatus === 'inProgress' ? '继续作答' : '进入考试' }}
             </el-button>
-            <el-button v-else-if="item.canReview" type="primary" plain @click="viewRecord(item)">查看成绩</el-button>
+            <el-button v-else-if="item.canReview" type="primary" plain @click="viewRecord(item)"
+              >查看考试记录</el-button
+            >
           </div>
         </article>
       </div>

@@ -159,8 +159,11 @@ public static class CourseFileEndpoints
         => name.Length is 0 or > 100 || name.Any(char.IsControl) ? "附件名称需为 1–100 个字符且不能包含控制字符" : null;
 
     public static object View(CourseResourceFile file)
-        => new { file.Id, file.ResourceId, file.Name, file.Size, file.IsPinned, file.SortOrder, file.CreatedAt,
-            canPreview = PreviewContentType(file.StoredName) != null };
+        => new
+        {
+            file.Id, file.ResourceId, file.Name, file.Size, file.IsPinned, file.SortOrder, file.CreatedAt,
+            canPreview = PreviewContentType(file.StoredName) != null
+        };
 
     static IResult Bad(string message) => Results.BadRequest(new { message });
     static IResult Conflict(string message) => Results.Conflict(new { message });

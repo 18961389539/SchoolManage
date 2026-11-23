@@ -22,6 +22,7 @@ public static class CampEndpoints
         reader.MapGet("/camp/attempts/{attemptId}/record", Record);
         admin.MapPost("/camp/positions", CreatePosition);
         admin.MapPut("/camp/positions/{id}", UpdatePosition);
+        admin.MapPost("/camp/positions/{id}/publish", PublishPosition);
         admin.MapDelete("/camp/positions/{id}", DeletePosition);
 
         learners.MapPost("/camp/positions/{id}/start", StartPosition);
@@ -43,6 +44,14 @@ public static class CampEndpoints
         var isAdmin = ctx.User.IsInRole("Admin");
         var search = request.Query["search"].ToString().Trim();
         var query = db.JobPositions.AsNoTracking();
+        if (!isAdmin)
+        {
+            var learnerId = CurrentUserId(ctx);
+            var activeIds = await db.JobAttempts.AsNoTracking()
+                .Where(item => item.UserId == learnerId && item.Status == "inProgress")
+                .Select(item => item.PositionId).ToListAsync(ct);
+            query = query.Where(item => item.Published || activeIds.Contains(item.Id));
+        }
         if (search.Length > 0) query = query.Where(item => item.Name.Contains(search) || item.Description.Contains(search));
         var positions = await query.OrderByDescending(item => item.UpdatedAt).ThenBy(item => item.Name).Take(500).ToListAsync(ct);
         var ids = positions.Select(item => item.Id).ToArray();
@@ -63,7 +72,7 @@ public static class CampEndpoints
                     var own = stats.Where(stat => stat.PositionId == item.Id).ToArray();
                     return new
                     {
-                        item.Id, item.Name, item.Description, item.DurationMinutes, item.StartupNodeId, item.CreatedAt, item.UpdatedAt,
+                        item.Id, item.Name, item.Description, item.DurationMinutes, item.StartupNodeId, item.Published, item.CreatedAt, item.UpdatedAt,
                         skillCount = skillCounts.GetValueOrDefault(item.Id),
                         questionCount = own.Length,
                         practicalCount = own.Count(question => question.Type == "practical"),
@@ -90,7 +99,7 @@ public static class CampEndpoints
                     ? Math.Max(0, (int)Math.Ceiling((attempt.Deadline - now).TotalSeconds)) : 0;
                 return new
                 {
-                    position.Id, position.Name, position.Description, position.DurationMinutes, position.StartupNodeId,
+                    position.Id, position.Name, position.Description, position.DurationMinutes, position.StartupNodeId, position.Published,
                     skillCount = skillCountsForLearner.GetValueOrDefault(position.Id),
                     questionCount = own.Length,
                     practicalCount = own.Count(question => question.Type == "practical"),
@@ -110,6 +119,12 @@ public static class CampEndpoints
     {
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (position == null) return NotFound("岗位不存在");
+        if (!ctx.User.IsInRole("Admin") && !position.Published)
+        {
+            var viewerId = CurrentUserId(ctx);
+            if (!await db.JobAttempts.AsNoTracking().AnyAsync(item => item.PositionId == id && item.UserId == viewerId, ct))
+                return NotFound("岗位不存在");
+        }
         var skills = await db.JobSkills.AsNoTracking().Where(item => item.PositionId == id).OrderBy(item => item.SortOrder).ToListAsync(ct);
         var questions = await db.JobQuestions.AsNoTracking().Where(item => item.PositionId == id).OrderBy(item => item.SortOrder).ToListAsync(ct);
         if (ctx.User.IsInRole("Admin"))
@@ -118,7 +133,7 @@ public static class CampEndpoints
             var attemptCount = await db.JobAttempts.CountAsync(item => item.PositionId == id, ct);
             return Results.Ok(new
             {
-                position.Id, position.Name, position.Description, position.DurationMinutes, position.StartupNodeId,
+                position.Id, position.Name, position.Description, position.DurationMinutes, position.StartupNodeId, position.Published,
                 position.CreatedAt, position.UpdatedAt, attemptCount,
                 canEditStructure = attemptCount == 0,
                 questionCount = questions.Count,
@@ -196,7 +211,8 @@ public static class CampEndpoints
         var entity = new JobPosition
         {
             Name = name, Description = (input.Description ?? "").Trim(), DurationMinutes = input.DurationMinutes,
-            StartupNodeId = string.IsNullOrWhiteSpace(input.StartupNodeId) ? null : input.StartupNodeId
+            StartupNodeId = string.IsNullOrWhiteSpace(input.StartupNodeId) ? null : input.StartupNodeId,
+            Published = false
         };
         db.JobPositions.Add(entity);
         var skills = CampLogic.BuildSkills(entity.Id, input.Skills);
@@ -306,6 +322,17 @@ public static class CampEndpoints
         return Results.Ok(new { message = "已删除" });
     }
 
+    static async Task<IResult> PublishPosition(string id, CampPublishInput input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
+    {
+        var entity = await db.JobPositions.FirstOrDefaultAsync(item => item.Id == id, ct);
+        if (entity == null) return NotFound("岗位不存在");
+        entity.Published = input.Published;
+        entity.UpdatedAt = DateTime.UtcNow;
+        Audit.Add(db, ctx, input.Published ? "发布岗位测评" : "取消发布岗位测评", entity.Name);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { entity.Id, entity.Published });
+    }
+
     static async Task<IResult> StartPosition(string id, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -316,6 +343,7 @@ public static class CampEndpoints
         if (questions.Count == 0) return Conflict("该岗位还没有配置测评题，请联系管理员");
         var now = DateTime.UtcNow;
         var attempt = await db.JobAttempts.FirstOrDefaultAsync(item => item.PositionId == id && item.UserId == userId, ct);
+        if (!position.Published && attempt is not { Status: "inProgress" }) return Conflict("该岗位尚未发布");
         if (attempt != null)
         {
             if (attempt.Status != "inProgress") return Conflict("该岗位测评已完成，可在测评历史中查看");

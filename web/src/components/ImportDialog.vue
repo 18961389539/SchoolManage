@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, Download, CircleCheck, Warning, Delete } from '@element-plus/icons-vue'
 import { api, post, messageOf, passwordIssue, ApiError, type Row } from '../api'
 import { appState, maxUploadMegabytes } from '../store'
+import { assertImportPreview, assertImportStatus } from '../importContract'
 import type { ImportIssue, ImportJobState, ImportPreviewResponse, ImportRow, ImportStatusResponse } from '../types'
 const props = defineProps<{ modelValue: boolean; kind: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; committed: [] }>()
@@ -97,10 +98,12 @@ async function chooseFile(event: Event) {
   const data = new FormData()
   data.append('file', file)
   try {
-    const result = await api<ImportPreviewResponse>(`/imports/preview?kind=${props.kind}`, {
-      method: 'POST',
-      body: data
-    })
+    const result = assertImportPreview(
+      await api<unknown>(`/imports/preview?kind=${props.kind}`, {
+        method: 'POST',
+        body: data
+      })
+    )
     if (run !== previewRun) return
     preview.value = result
     page.value = 1
@@ -118,7 +121,7 @@ async function waitForImport(batchId: string, run: number) {
   while (Date.now() < deadline && run === pollRun) {
     let job: ImportStatusResponse
     try {
-      job = await api<ImportStatusResponse>(`/imports/${batchId}`)
+      job = assertImportStatus(await api<unknown>(`/imports/${batchId}`))
       consecutiveErrors = 0
     } catch (err) {
       if (run !== pollRun) throw err
@@ -168,10 +171,12 @@ async function startImport(target: ImportPreviewResponse) {
   jobTotal.value = validCount.value
   const run = ++pollRun
   try {
-    const started = await post<ImportStatusResponse>(`/imports/${target.batchId}/commit`, {
-      removeInvalidRows: removedInvalid.value,
-      initialPassword: password.value
-    })
+    const started = assertImportStatus(
+      await post<unknown>(`/imports/${target.batchId}/commit`, {
+        removeInvalidRows: removedInvalid.value,
+        initialPassword: password.value
+      })
+    )
     if (run !== pollRun) return
     jobStatus.value = started.status
     const result = await waitForImport(String(target.batchId), run)
@@ -215,7 +220,7 @@ async function cancelImport() {
   const run = pollRun
   cancelBusy.value = true
   try {
-    const job = await post<ImportStatusResponse>(`/imports/${target.batchId}/cancel`)
+    const job = assertImportStatus(await post<unknown>(`/imports/${target.batchId}/cancel`))
     if (run !== pollRun || preview.value !== target) return
     jobStatus.value = job.status
     ElMessage.info(job.message || '正在取消导入任务')

@@ -259,7 +259,7 @@ watch(
       v-loading="loading"
       :data="assignments"
       row-key="id"
-      empty-text="暂无机柜分配"
+      empty-text="暂无机柜分配，请点击“分配机柜”为小组配置设备"
       @selection-change="(rows: unknown) => (selected = rows as ClassroomCabinetAssignment[])"
     >
       <el-table-column type="selection" width="46" />

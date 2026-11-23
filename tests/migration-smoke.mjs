@@ -82,7 +82,7 @@ const classIndex = db => db.prepare('PRAGMA index_list("Classes")').all().find(i
 const auditIndex = db => db.prepare('PRAGMA index_list("Audits")').all().find(index => index.name === 'IX_Audits_At_Id');
 const importColumns = db => db.prepare('PRAGMA table_info("ImportBatches")').all().map(column => column.name);
 const deviceColumns = db => db.prepare('PRAGMA table_info("Devices")').all().map(column => column.name);
-const currentVersion = 16;
+const currentVersion = 17;
 
 function removeDeviceNodeAssociation(db) {
   const columns = deviceColumns(db).filter(column => column !== 'NodeId').map(name => `"${name}"`).join(', ');
@@ -118,14 +118,19 @@ try {
   assert.equal(auditIndex(db)?.unique, 0);
   assert.ok(importColumns(db).includes('Status'));
   assert.ok(importColumns(db).includes('ProcessedCount'));
-  assert.ok(deviceColumns(db).includes('NodeId'));
+  assert.equal(deviceColumns(db).includes('NodeId'), true);
+  for (const table of ['Courses','CourseChapters','CourseSections','CourseResources'])
+    assert.ok(db.prepare(`PRAGMA table_info("${table}")`).all().some(column => column.name === 'Version' && column.notnull === 1));
+  const history = db.prepare('SELECT "MigrationId" FROM "__EFMigrationsHistory"').all();
+  assert.equal(history.length, 1);
+  assert.match(history[0].MigrationId, /_InitialCreate$/);
   db.close();
   await stopService(service); service = null;
   pass(`fresh database is created at schema version ${currentVersion} with device links, import job state and audit index`);
 
   db = openDb();
   db.exec('DROP INDEX "IX_Classes_ProfessionId_Name"');
-  db.exec('PRAGMA user_version=1');
+  db.exec('DROP TABLE IF EXISTS "__EFMigrationsHistory"; PRAGMA user_version=1');
   assert.equal(versionOf(db), 1);
   assert.equal(classIndex(db), undefined);
   assert.equal(Number(db.prepare('SELECT COUNT(*) AS count FROM "Classes"').get().count), 1);
@@ -165,13 +170,14 @@ try {
     .run('legacy-preview', 'migration-admin', 'student', '[]', new Date().toISOString(), 0);
   db.prepare('INSERT INTO "ImportBatches" ("Id","UserId","Kind","RowsJson","CreatedAt","Committed") VALUES (?,?,?,?,?,?)')
     .run('legacy-completed', 'migration-admin', 'teacher', '[]', new Date().toISOString(), 1);
-  db.exec('PRAGMA user_version=2');
+  db.exec('DROP TABLE IF EXISTS "__EFMigrationsHistory"; PRAGMA user_version=2');
   assert.equal(importColumns(db).includes('Status'), false);
   db.close();
   service = await startService();
   await stopService(service); service = null;
   db = openDb();
   assert.equal(versionOf(db), currentVersion);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM "__EFMigrationsHistory"').get().count, 1);
   assert.ok(importColumns(db).includes('Status'));
   assert.equal(auditIndex(db)?.unique, 0);
   const legacyStatuses = db.prepare('SELECT "Id","Status" FROM "ImportBatches" WHERE "Id" LIKE ? ORDER BY "Id"').all('legacy-%');
@@ -181,7 +187,7 @@ try {
 
   db = openDb();
   db.exec('DROP INDEX "IX_Audits_At_Id"');
-  db.exec('PRAGMA user_version=3');
+  db.exec('DROP TABLE IF EXISTS "__EFMigrationsHistory"; PRAGMA user_version=3');
   assert.equal(auditIndex(db), undefined);
   db.close();
   service = await startService();
@@ -197,7 +203,7 @@ try {
 
   db = openDb();
   removeDeviceNodeAssociation(db);
-  db.exec('PRAGMA user_version=4');
+  db.exec('DROP TABLE IF EXISTS "__EFMigrationsHistory"; PRAGMA user_version=4');
   db.close();
   runApp(['--validate-backup', path.join(data, 'school.db'), path.join(data, 'keys')]);
   service = await startService();
@@ -222,6 +228,7 @@ try {
     ALTER TABLE "ClassroomCaseSessions" DROP COLUMN "Revision";
     ALTER TABLE "ClassroomCaseSessions" DROP COLUMN "EnvironmentJson";
     ALTER TABLE "ClassroomCaseSessions" DROP COLUMN "RubricJson";
+    DROP TABLE IF EXISTS "__EFMigrationsHistory";
     PRAGMA user_version=9;
   `);
   db.close();
@@ -244,6 +251,7 @@ try {
     ALTER TABLE "ExamPaperQuestions" DROP COLUMN "PracticalNodeId";
     ALTER TABLE "ExamPaperQuestions" DROP COLUMN "PracticalRubricJson";
     ALTER TABLE "ExamAnswers" DROP COLUMN "PracticalDetailsJson";
+    DROP TABLE IF EXISTS "__EFMigrationsHistory";
     PRAGMA user_version=10;
   `);
   db.close();
@@ -270,7 +278,7 @@ try {
   db.exec(`INSERT INTO "ExamQuestions_v11" (${questionColumns}) SELECT ${questionColumns} FROM "ExamQuestions"`);
   db.exec('DROP TABLE "ExamQuestions"; ALTER TABLE "ExamQuestions_v11" RENAME TO "ExamQuestions"; DROP TABLE "ExamQuestionBanks"');
   for (const sql of questionIndexes) db.exec(sql);
-  db.exec('PRAGMA user_version=11');
+  db.exec('DROP TABLE IF EXISTS "__EFMigrationsHistory"; PRAGMA user_version=11');
   db.close();
   runApp(['--validate-backup', path.join(data, 'school.db'), path.join(data, 'keys')]);
   service = await startService();
@@ -290,6 +298,7 @@ try {
     DROP INDEX "IX_VirtualMachines_IpAddress";
     ALTER TABLE "VirtualMachines" DROP COLUMN "Uuid";
     ALTER TABLE "VirtualMachines" DROP COLUMN "IpAddress";
+    DROP TABLE IF EXISTS "__EFMigrationsHistory";
     PRAGMA user_version=12;
   `);
   db.close();
@@ -327,6 +336,7 @@ try {
     INSERT INTO "Courses" ("Id","Name","Description","Type","Status","Remark","CreatedAt")
       VALUES ('v13-published','兼容已发布课程','','core','published','','2026-01-01'),
              ('v13-draft','兼容草稿课程','','core','draft','','2026-01-01');
+    DROP TABLE IF EXISTS "__EFMigrationsHistory";
     PRAGMA user_version=13;
   `);
   db.exec('PRAGMA legacy_alter_table=OFF; PRAGMA foreign_keys=ON;');
@@ -354,6 +364,7 @@ try {
     ALTER TABLE "CourseResources" DROP COLUMN "TopologyBlueprintJson";
     ALTER TABLE "ClassroomCaseSessions" DROP COLUMN "TopologyBlueprintJson";
     DROP TABLE "CaseTopologyTemplates";
+    DROP TABLE IF EXISTS "__EFMigrationsHistory";
     PRAGMA user_version=14;
   `);
   db.close();
@@ -371,8 +382,27 @@ try {
   pass('v14 migration adds exercise topology templates and per-project deployment and VM identity fields');
 
   db = openDb();
+  for (const table of ['Courses','CourseChapters','CourseSections','CourseResources'])
+    db.exec(`ALTER TABLE "${table}" DROP COLUMN "Version"`);
+  db.exec('DROP TABLE IF EXISTS "__EFMigrationsHistory"; PRAGMA user_version=16');
+  db.close();
+  runApp(['--validate-backup', path.join(data, 'school.db'), path.join(data, 'keys')]);
+  service = await startService();
+  await stopService(service); service = null;
+  db = openDb();
+  assert.equal(versionOf(db), currentVersion);
+  for (const table of ['Courses','CourseChapters','CourseSections','CourseResources']) {
+    const column = db.prepare(`PRAGMA table_info("${table}")`).all().find(item => item.name === 'Version');
+    assert.equal(column?.notnull, 1);
+    assert.equal(column?.dflt_value, '0');
+  }
+  assert.equal(db.prepare('PRAGMA foreign_key_check').all().length, 0);
+  db.close();
+  pass('v16 migration adds content version columns for optimistic concurrency');
+
+  db = openDb();
   db.exec('DROP INDEX "IX_Classes_ProfessionId_Name"');
-  db.exec('PRAGMA user_version=1');
+  db.exec('DROP TABLE IF EXISTS "__EFMigrationsHistory"; PRAGMA user_version=1');
   db.prepare('INSERT INTO "Classes" ("Id","Name","ProfessionId","Remark") VALUES (?,?,?,?)')
     .run(randomBytes(16).toString('hex'), schoolClass.name, profession.id, '重复迁移阻断');
   db.close();

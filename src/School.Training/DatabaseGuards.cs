@@ -21,6 +21,15 @@ public static class DatabaseGuards
             """);
 
         await db.Database.ExecuteSqlRawAsync("""
+            CREATE TRIGGER IF NOT EXISTS "TR_ExamQuestions_RequireBank_Insert"
+            BEFORE INSERT ON "ExamQuestions" WHEN NEW."BankId" IS NULL
+            BEGIN SELECT RAISE(ABORT, 'Exam question requires a bank'); END;
+            CREATE TRIGGER IF NOT EXISTS "TR_ExamQuestions_RequireBank_Update"
+            BEFORE UPDATE OF "BankId" ON "ExamQuestions" WHEN NEW."BankId" IS NULL
+            BEGIN SELECT RAISE(ABORT, 'Exam question requires a bank'); END;
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
             CREATE TRIGGER IF NOT EXISTS "TR_Users_KeepAdmin_Delete"
             BEFORE DELETE ON "Users"
             WHEN OLD."Role" = 'Admin'

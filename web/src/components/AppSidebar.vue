@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { ArrowDown, Close, QuestionFilled, School, Search } from '@element-plus/icons-vue'
-import type { NavGroup } from '../navigation'
+import type { NavGroup } from '../routes'
 
 const props = defineProps<{
   groups: NavGroup[]

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { Refresh, Search, Tickets } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
 import { attemptStatusLabel, attemptStatusType, deploymentLabel, deploymentType } from '../exam'
 import type { ExamMonitorResponse, ExamMonitorRow } from '../types'
+import TableEmpty from './TableEmpty.vue'
 
 const props = defineProps<{ modelValue: boolean; examId: string; examName: string }>()
-const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
+const emit = defineEmits<{ 'update:modelValue': [value: boolean]; 'open-roster': [] }>()
 
 const visible = computed({
   get: () => props.modelValue,
@@ -27,6 +28,25 @@ const items = computed(() => {
     [item.name, item.userName, item.number, item.className].some(value => value.toLowerCase().includes(keyword))
   )
 })
+
+const searching = computed(() => search.value.trim().length > 0)
+
+function clearSearch() {
+  search.value = ''
+}
+
+function monitorEmptyTitle() {
+  if (error.value) return '监控数据加载失败'
+  if (searching.value) return '没有符合条件的学生'
+  if (!(data.value?.items || []).length) return '暂无应考学生'
+  return '暂无监控数据'
+}
+
+function monitorEmptyHint() {
+  if (error.value) return '请稍后刷新重试。'
+  if (searching.value) return '试试调整关键词，或清除搜索查看全部应考学生。'
+  return '请先在考试名单中添加学生，开考后这里会显示作答进度。'
+}
 
 async function load(silent = false) {
   if (!props.examId) return
@@ -102,12 +122,22 @@ function rowProgressType(row: ExamMonitorRow): 'success' | 'warning' | 'exceptio
       <div class="monitor-actions">
         <el-input v-model="search" class="search-box" clearable placeholder="搜索学生" :prefix-icon="Search" />
         <el-button :icon="Refresh" :loading="loading" @click="load()">刷新</el-button>
+        <el-button :icon="Tickets" @click="emit('open-roster')">考试名单</el-button>
       </div>
     </div>
     <p class="monitor-hint">每 20 秒自动刷新；进度来自学生已保存的答案。</p>
+    <p v-if="items.length" class="table-scroll-hint">横向滚动可查看更多列</p>
 
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
-    <el-table v-loading="loading" :data="items" row-key="studentUserId" empty-text="暂无监控数据">
+    <el-table v-loading="loading" :data="items" row-key="studentUserId" empty-text="">
+      <template #empty>
+        <TableEmpty v-if="!loading" :title="monitorEmptyTitle()" :hint="monitorEmptyHint()">
+          <template v-if="!error" #action>
+            <el-button v-if="searching" @click="clearSearch">清除搜索</el-button>
+            <el-button v-else type="primary" plain @click="emit('open-roster')">打开考试名单</el-button>
+          </template>
+        </TableEmpty>
+      </template>
       <el-table-column prop="name" label="学生" min-width="130">
         <template #default="{ row }">
           <strong>{{ row.name }}</strong>

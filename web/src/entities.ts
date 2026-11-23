@@ -26,6 +26,8 @@ export interface Entity {
   subtitle: string
   endpoint: string
   kind?: string
+  fixedQuery?: Record<string, string>
+  defaults?: Record<string, string>
   fields: Field[]
   filters?: Field[]
   columns: Column[]
@@ -51,56 +53,79 @@ const profession: Field = {
   source: '/professions'
 }
 const schoolClass: Field = { key: 'classId', label: '所属班级', type: 'select', source: '/classes' }
-const teacherRole: Field = {
-  key: 'role',
-  label: '所属角色',
-  type: 'select',
-  required: true,
-  default: 'Teacher',
-  options: [
-    { label: '教师', value: 'Teacher' },
-    { label: '管理员', value: 'Admin' }
-  ]
+const personProfiles = {
+  teacher: {
+    title: '教师管理',
+    singular: '教师',
+    subtitle: '维护教师档案与授课账号，与平台管理员账号分开管理。',
+    kind: 'teacher',
+    icon: 'User',
+    role: 'Teacher',
+    numberLabel: '教师工号',
+    filterByClass: true
+  },
+  student: {
+    title: '学生管理',
+    singular: '学生',
+    subtitle: '统一管理学生档案与账号，支持导入前数据校验。',
+    kind: 'student',
+    icon: 'User',
+    role: 'Student',
+    numberLabel: '学号',
+    filterByClass: true
+  },
+  admin: {
+    title: '管理员账号',
+    singular: '管理员',
+    subtitle: '维护平台管理员账号，与教师档案分开管理。',
+    kind: 'teacher',
+    icon: 'Key',
+    role: 'Admin',
+    numberLabel: '教师工号',
+    filterByClass: false
+  }
+} as const
+
+const person = (kind: keyof typeof personProfiles): Entity => {
+  const profile = personProfiles[kind]
+  return {
+    title: profile.title,
+    singular: profile.singular,
+    subtitle: profile.subtitle,
+    endpoint: '/people',
+    kind: profile.kind,
+    icon: profile.icon,
+    defaults: { role: profile.role },
+    fixedQuery: profile.role === 'Student' ? undefined : { role: profile.role },
+    filters: profile.filterByClass ? [schoolClass] : [],
+    columns: [
+      { key: 'name', label: '姓名', width: 95 },
+      { key: 'userName', label: '平台账号', width: 95 },
+      { key: 'number', label: profile.numberLabel, width: 110 },
+      { key: 'className', label: '所属班级', width: 100 },
+      { key: 'gender', label: '性别', width: 60 },
+      { key: 'phone', label: '手机号码', width: 115 },
+      { key: 'email', label: '电子邮箱', width: 175 }
+    ],
+    fields: [
+      { key: 'name', label: '姓名', required: true },
+      { key: 'userName', label: '平台账号', required: true, placeholder: '字母、数字或下划线' },
+      { key: 'number', label: profile.numberLabel, required: true },
+      schoolClass,
+      { key: 'gender', label: '性别', type: 'select', options: gender },
+      { key: 'phone', label: '手机号码' },
+      { key: 'email', label: '电子邮箱', type: 'email' },
+      {
+        key: 'password',
+        label: '初始密码',
+        type: 'password',
+        required: true,
+        createOnly: true,
+        help: '12–128 位，同时包含字母和数字，请单独告知本人。'
+      }
+    ]
+  }
 }
-const person = (kind: string): Entity => ({
-  title: kind === 'teacher' ? '教师管理' : '学生管理',
-  singular: kind === 'teacher' ? '教师' : '学生',
-  subtitle: kind === 'teacher' ? '维护教师档案、平台账号与班级关联。' : '统一管理学生档案与账号，支持导入前数据校验。',
-  endpoint: '/people',
-  kind,
-  icon: 'User',
-  filters: kind === 'teacher' ? [schoolClass, teacherRole] : [schoolClass],
-  columns: [
-    { key: 'name', label: '姓名', width: 95 },
-    { key: 'userName', label: '平台账号', width: 95 },
-    { key: 'number', label: kind === 'teacher' ? '教师工号' : '学号', width: 110 },
-    { key: 'className', label: '所属班级', width: 100 },
-    ...(kind === 'teacher' ? [{ key: 'role', label: '所属角色', width: 90 }] : []),
-    { key: 'gender', label: '性别', width: 60 },
-    { key: 'phone', label: '手机号码', width: 115 },
-    { key: 'email', label: '电子邮箱', width: 175 }
-  ],
-  fields: [
-    { key: 'name', label: '姓名', required: true },
-    { key: 'userName', label: '平台账号', required: true, placeholder: '字母、数字或下划线' },
-    { key: 'number', label: kind === 'teacher' ? '教师工号' : '学号', required: true },
-    schoolClass,
-    { key: 'gender', label: '性别', type: 'select', options: gender },
-    { key: 'phone', label: '手机号码' },
-    { key: 'email', label: '电子邮箱', type: 'email' },
-    kind === 'teacher'
-      ? teacherRole
-      : { ...teacherRole, default: 'Student', options: [{ label: '学生', value: 'Student' }] },
-    {
-      key: 'password',
-      label: '初始密码',
-      type: 'password',
-      required: true,
-      createOnly: true,
-      help: '12–128 位，同时包含字母和数字，请单独告知本人。'
-    }
-  ]
-})
 export const entities: Record<string, Entity> = {
   professions: {
     title: '专业管理',
@@ -134,6 +159,7 @@ export const entities: Record<string, Entity> = {
     fields: [{ key: 'name', label: '班级名称', required: true }, profession, remark]
   },
   teachers: person('teacher'),
+  admins: person('admin'),
   students: person('student'),
   'device-types': {
     title: '设备类型',
@@ -203,7 +229,12 @@ export const entities: Record<string, Entity> = {
       { key: 'jumpHost', label: '跳板机地址' },
       { key: 'jumpPort', label: '跳板机端口', type: 'number', default: 22, min: 1, max: 65535 },
       { key: 'jumpUserName', label: '跳板机账号' },
-      { key: 'jumpPassword', label: '跳板机密码', type: 'password', help: '编辑时留空表示保留现有凭据。' },
+      {
+        key: 'jumpPassword',
+        label: '跳板机密码',
+        type: 'password',
+        help: '编辑时留空表示保留现有凭据。模拟机柜不读取该密码；接入真实跳板链路后用于登录。'
+      },
       remark
     ]
   },
@@ -257,14 +288,19 @@ export const entities: Record<string, Entity> = {
       },
       { key: 'webPort', label: 'Web 端口', type: 'number', default: 80, min: 1, max: 65535 },
       { key: 'userName', label: '连接账号' },
-      { key: 'password', label: '连接密码', type: 'password', help: '编辑时留空表示保留现有凭据。' },
+      {
+        key: 'password',
+        label: '连接密码',
+        type: 'password',
+        help: '编辑时留空表示保留现有凭据。模拟设备不读取该密码；接入真实终端后用于认证。'
+      },
       remark
     ]
   },
   nodes: {
-    title: '集群节点',
+    title: '实训节点',
     singular: '节点',
-    subtitle: '维护节点连接信息，按适配器读取资源和健康状态。',
+    subtitle: '维护实训节点连接信息，按适配器读取资源和健康状态。可登记 Hyper-V 等主机。',
     endpoint: '/nodes',
     icon: 'Connection',
     columns: [
@@ -320,7 +356,12 @@ export const entities: Record<string, Entity> = {
       },
       { key: 'port', label: '接口端口', type: 'number', default: 8006, min: 1, max: 65535 },
       { key: 'userName', label: '接口账号' },
-      { key: 'password', label: '接口密码 / 令牌', type: 'password', help: '仅写入，列表不回传凭据。' },
+      {
+        key: 'password',
+        label: '接口密码 / 令牌',
+        type: 'password',
+        help: '仅写入，列表不回传凭据。模拟节点不读取该密码；Hyper-V 接入使用独立服务身份。'
+      },
       { key: 'enabled', label: '允许资源分配', type: 'switch', default: true },
       remark
     ]

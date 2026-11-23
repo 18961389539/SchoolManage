@@ -1,20 +1,20 @@
 {
-  "recordedAtUtc": "2026-11-20T10:15:56.042Z",
+  "recordedAtUtc": "2026-11-23T07:03:23.762Z",
   "status": "passed",
   "command": "node tests/load-smoke.mjs",
-  "sourceDirectory": "artifacts/SchoolTraining-0.1.0-p9-win-x64/app",
-  "runtimeDirectory": ".local/load-smoke-mcBTbM/program",
-  "dataDirectory": ".local/load-smoke-mcBTbM/data",
-  "serviceLog": ".local/load-smoke-mcBTbM/service-output.log",
+  "sourceDirectory": "artifacts/SchoolTraining-0.1.0-win-x64/app",
+  "runtimeDirectory": ".local/load-smoke-FLOXmk/program",
+  "dataDirectory": ".local/load-smoke-FLOXmk/data",
+  "serviceLog": ".local/load-smoke-FLOXmk/service-output.log",
   "machine": {
     "platform": "win32",
     "architecture": "x64",
     "osRelease": "10.0.26300",
-    "logicalCpuCount": 16,
-    "availableParallelism": 16,
-    "cpuModel": "13th Gen Intel(R) Core(TM) i5-13400F",
-    "totalMemoryBytes": 17014874112,
-    "nodeVersion": "v22.22.2"
+    "logicalCpuCount": 12,
+    "availableParallelism": 12,
+    "cpuModel": "12th Gen Intel(R) Core(TM) i5-12450H",
+    "totalMemoryBytes": 16890716160,
+    "nodeVersion": "v24.15.0"
   },
   "parameters": {
     "readCount": 100,
@@ -34,12 +34,12 @@
       "concurrency": 20,
       "successCount": 100,
       "failureCount": 0,
-      "elapsedMs": 64.73,
-      "throughputRequestsPerSecond": 1544.85,
+      "elapsedMs": 87.52,
+      "throughputRequestsPerSecond": 1142.62,
       "latencyMs": {
-        "p50": 7.83,
-        "p95": 31.01,
-        "max": 35.38
+        "p50": 12.68,
+        "p95": 47.29,
+        "max": 53.01
       },
       "quantileMethod": "nearest-rank",
       "errors": []
@@ -49,74 +49,68 @@
       "concurrency": 8,
       "successCount": 40,
       "failureCount": 0,
-      "elapsedMs": 952.85,
-      "throughputRequestsPerSecond": 41.98,
+      "elapsedMs": 765.59,
+      "throughputRequestsPerSecond": 52.25,
       "latencyMs": {
-        "p50": 2.27,
-        "p95": 636.56,
-        "max": 952.15
+        "p50": 4.53,
+        "p95": 460.43,
+        "max": 764.75
       },
       "quantileMethod": "nearest-rank",
       "errors": []
     },
     "studentImportWithConcurrentWrites": {
       "studentCount": 100,
-      "previewLatencyMs": 498.58,
-      "commitLatencyMs": 3130.51,
+      "previewLatencyMs": 504.43,
+      "commitLatencyMs": 568.83,
       "importResult": {
-        "batchId": "c232e265c0f24ef29ed9c361af4b6575",
+        "batchId": "0e0091de7554487881143517af776456",
         "status": "completed",
         "processedCount": 100,
         "totalCount": 100,
         "importedCount": 100,
         "removedCount": 0,
         "failureMessage": "",
-        "createdAt": "2026-11-20T10:15:52.7920891Z",
-        "queuedAt": "2026-11-20T10:15:52.8373017Z",
-        "startedAt": "2026-11-20T10:15:52.8674472Z",
-        "completedAt": "2026-11-20T10:15:55.8228125Z",
+        "createdAt": "2026-11-23T07:03:22.9235213Z",
+        "queuedAt": "2026-11-23T07:03:22.9812837Z",
+        "startedAt": "2026-11-23T07:03:22.9943894Z",
+        "completedAt": "2026-11-23T07:03:23.3907365Z",
         "message": "已导入100条记录"
       },
       "observedImportStates": [
         {
-          "status": "queued",
-          "processedCount": 0,
-          "totalCount": 100,
-          "elapsedMs": 36.25
-        },
-        {
           "status": "running",
           "processedCount": 0,
           "totalCount": 100,
-          "elapsedMs": 144.8
+          "elapsedMs": 45.93
         },
         {
           "status": "running",
           "processedCount": 100,
           "totalCount": 100,
-          "elapsedMs": 3019.76
+          "elapsedMs": 464.91
         },
         {
           "status": "completed",
           "processedCount": 100,
           "totalCount": 100,
-          "elapsedMs": 3130.51
+          "elapsedMs": 568.83
         }
       ],
       "pendingAtProbeDispatch": true,
       "writesStartedWhileImportPending": 8,
-      "writesCompletedWhileImportPending": 8,
+      "writesCompletedWhileImportPending": 7,
       "writeProbes": {
         "requestCount": 8,
         "concurrency": 4,
         "successCount": 8,
         "failureCount": 0,
-        "elapsedMs": 476.86,
-        "throughputRequestsPerSecond": 16.78,
+        "elapsedMs": 460.11,
+        "throughputRequestsPerSecond": 17.39,
         "latencyMs": {
-          "p50": 4.32,
-          "p95": 476.23,
-          "max": 476.23
+          "p50": 4.48,
+          "p95": 459.96,
+          "max": 459.96
         },
         "quantileMethod": "nearest-rank",
         "errors": []
@@ -125,73 +119,73 @@
         {
           "index": 0,
           "success": true,
-          "latencyMs": 319.23,
+          "latencyMs": 459.96,
           "startedWhileImportPending": true,
-          "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 571.97,
+          "completedWhileImportPending": false,
+          "completedAfterImportStartMs": 711.47,
           "error": null
         },
         {
           "index": 1,
           "success": true,
-          "latencyMs": 4.32,
+          "latencyMs": 4.48,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 257.37,
+          "completedAfterImportStartMs": 256.31,
           "error": null
         },
         {
           "index": 2,
           "success": true,
-          "latencyMs": 476.23,
+          "latencyMs": 7.27,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 729.42,
+          "completedAfterImportStartMs": 259.27,
           "error": null
         },
         {
           "index": 3,
           "success": true,
-          "latencyMs": 159.86,
+          "latencyMs": 308.33,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 413.16,
+          "completedAfterImportStartMs": 560.42,
           "error": null
         },
         {
           "index": 4,
           "success": true,
-          "latencyMs": 4.49,
+          "latencyMs": 3.87,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 261.89,
+          "completedAfterImportStartMs": 260.22,
           "error": null
         },
         {
           "index": 5,
           "success": true,
-          "latencyMs": 3.35,
+          "latencyMs": 4.33,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 265.26,
+          "completedAfterImportStartMs": 263.63,
           "error": null
         },
         {
           "index": 6,
           "success": true,
-          "latencyMs": 2.6,
+          "latencyMs": 305.86,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 267.87,
+          "completedAfterImportStartMs": 566.11,
           "error": null
         },
         {
           "index": 7,
           "success": true,
-          "latencyMs": 2.46,
+          "latencyMs": 3.61,
           "startedWhileImportPending": true,
           "completedWhileImportPending": true,
-          "completedAfterImportStartMs": 270.35,
+          "completedAfterImportStartMs": 267.26,
           "error": null
         }
       ],
@@ -232,9 +226,9 @@
     "Other development processes may share this machine. No claim is made about concurrent real users, sustained workloads, or other hardware.",
     "Import progress is observed through the persisted batch-status endpoint. The initial password stays in process memory and is never persisted. Password hashing finishes before the SQLite write transaction starts."
   ],
-  "sourceAssemblySha256": "91C3D9DD79513FCA3447322320384AC9E0913D1FB64699E3B075E6215E2FFE36",
-  "testedAssemblySha256": "91C3D9DD79513FCA3447322320384AC9E0913D1FB64699E3B075E6215E2FFE36",
-  "isolatedUrl": "http://127.0.0.1:54712",
+  "sourceAssemblySha256": "68FA8D7B56B60DD203327C52C58D63B848DC99D3135AC1126AAF61CE9405D638",
+  "testedAssemblySha256": "68FA8D7B56B60DD203327C52C58D63B848DC99D3135AC1126AAF61CE9405D638",
+  "isolatedUrl": "http://127.0.0.1:41009",
   "serviceExit": {
     "code": null,
     "signal": "SIGTERM"

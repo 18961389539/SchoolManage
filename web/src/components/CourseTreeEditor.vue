@@ -198,7 +198,13 @@ async function confirmDelete(message: string, title: string) {
 }
 
 async function deleteChapter(id: string, name: string) {
-  if (!(await confirmDelete(`删除“${name}”会同时删除其下的小节、资源和学习记录，是否继续？`, '删除大章'))) return
+  if (
+    !(await confirmDelete(
+      `删除“${name}”会同时删除其下的小节和资源；若已有学习记录或实操会话将被拒绝，是否继续？`,
+      '删除大章'
+    ))
+  )
+    return
   try {
     await del(`/chapters/${id}`)
     ElMessage.success('大章已删除')
@@ -209,7 +215,10 @@ async function deleteChapter(id: string, name: string) {
 }
 
 async function deleteSection(id: string, name: string) {
-  if (!(await confirmDelete(`删除“${name}”会同时删除其下资源和学习记录，是否继续？`, '删除小节'))) return
+  if (
+    !(await confirmDelete(`删除“${name}”会同时删除其下资源；若已有学习记录或实操会话将被拒绝，是否继续？`, '删除小节'))
+  )
+    return
   try {
     await del(`/sections/${id}`)
     ElMessage.success('小节已删除')
@@ -251,7 +260,13 @@ function openImport(sectionId: string, sectionName: string) {
 }
 
 async function deleteResource(id: string, name: string) {
-  if (!(await confirmDelete(`删除资源“${name}”会同时删除题目与关联学习记录，是否继续？`, '删除资源'))) return
+  if (
+    !(await confirmDelete(
+      `删除资源“${name}”会同时删除题目与文件；若已有学习记录或实操会话将被拒绝，是否继续？`,
+      '删除资源'
+    ))
+  )
+    return
   try {
     await del(`/resources/${id}`)
     ElMessage.success('资源已删除')
@@ -284,6 +299,7 @@ async function deleteResource(id: string, name: string) {
       </div>
       <el-empty v-if="!course.chapters.length" description="课程还没有大章">
         <p class="tree-hint">按“大章 → 小节 → 资源”的顺序构建课程目录。</p>
+        <el-button type="primary" :icon="Plus" @click="openChapterCreate">新增大章</el-button>
       </el-empty>
       <div v-else class="course-tree">
         <section v-for="(chapter, chapterIndex) in course.chapters" :key="chapter.id" class="chapter-block">
@@ -301,7 +317,10 @@ async function deleteResource(id: string, name: string) {
               >
             </div>
           </header>
-          <p v-if="!chapter.sections.length" class="tree-empty">尚未添加小节</p>
+          <p v-if="!chapter.sections.length" class="tree-empty">
+            尚未添加小节
+            <el-button link type="primary" @click="openSectionCreate(chapter.id)">新增小节</el-button>
+          </p>
           <div v-for="section in chapter.sections" :key="section.id" class="section-block">
             <header class="section-head">
               <div>
@@ -317,7 +336,10 @@ async function deleteResource(id: string, name: string) {
                 >
               </div>
             </header>
-            <p v-if="!section.resources.length" class="tree-empty">尚未添加资源</p>
+            <p v-if="!section.resources.length" class="tree-empty">
+              尚未添加资源
+              <el-button link type="primary" @click="openResourceCreate(section.id)">新增资源</el-button>
+            </p>
             <ul v-else class="resource-list">
               <li v-for="resource in section.resources" :key="resource.id">
                 <el-tag size="small" effect="plain">{{ labelOf(resourceKindOptions, resource.kind) }}</el-tag>
@@ -495,6 +517,10 @@ async function deleteResource(id: string, name: string) {
 }
 
 .tree-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   margin: 12px 0 0;
   color: #56697c;
   font-size: 12px;

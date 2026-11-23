@@ -5,6 +5,7 @@ import { api, dateTime, messageOf } from '../api'
 import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { attemptStatusLabel, attemptStatusType } from '../exam'
+import { usePolling } from '../usePolling'
 import type { ExamRecordSummary, Paged } from '../types'
 import AttemptReviewDrawer from './AttemptReviewDrawer.vue'
 
@@ -21,7 +22,7 @@ const page = ref(props.initialSearch ? 1 : savedList.page)
 const pageSize = ref(props.initialSearch ? 10 : savedList.pageSize)
 const search = ref(props.initialSearch || savedList.search)
 const appliedSearch = ref(search.value.trim())
-let refreshTimer: number | undefined
+usePolling(() => load(true), { intervalMs: 30000, clockMs: 0 })
 let requestId = 0
 let fetching = false
 
@@ -93,10 +94,8 @@ function openReview(record: ExamRecordSummary) {
 
 onMounted(() => {
   void load()
-  refreshTimer = window.setInterval(() => void load(true), 30000)
 })
 onUnmounted(() => {
-  window.clearInterval(refreshTimer)
   ++requestId
 })
 </script>
@@ -107,7 +106,8 @@ onUnmounted(() => {
       <el-button link :icon="ArrowLeft" class="history-back" @click="emit('navigate', 'my-exams')">
         返回我的考试
       </el-button>
-      <h1>考试动态</h1>
+      <h1>考试记录</h1>
+      <p>这里是交卷后的作答记录与复盘，进行中的考试请到「我的考试」。</p>
     </div>
     <el-button :icon="Refresh" :loading="loading" @click="load()">刷新记录</el-button>
   </section>

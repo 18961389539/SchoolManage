@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Download, Refresh } from '@element-plus/icons-vue'
+import { Download, Refresh, Tickets } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { api, messageOf } from '../api'
-import { downloadFile, examQuestionTypeLabel } from '../exam'
+import { api, downloadFile, messageOf } from '../api'
+import { examQuestionTypeLabel } from '../exam'
 import type { ExamStatistics } from '../types'
 
 const props = defineProps<{ modelValue: boolean; examId: string; examName: string }>()
-const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
+const emit = defineEmits<{ 'update:modelValue': [value: boolean]; 'open-roster': [] }>()
 
 const visible = computed({
   get: () => props.modelValue,
@@ -67,13 +67,39 @@ watch(
       <p class="stats-hint">分数段按应考人数计算，成绩统计按已出分考生计算。</p>
       <div class="stats-actions">
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
+        <el-button :icon="Tickets" @click="emit('open-roster')">考试名单</el-button>
         <el-button type="primary" :icon="Download" :loading="exporting" @click="exportCsv">导出统计</el-button>
       </div>
     </div>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
     <el-skeleton v-if="loading && !data" :rows="5" animated />
+    <el-empty v-else-if="!loading && !data && !error" description="暂无考试统计数据">
+      <p class="stats-empty-hint">统计数据加载后，将在这里展示应考情况、分数段和各题型正确率。</p>
+    </el-empty>
 
     <div v-if="data" v-loading="loading" class="stats-report">
+      <el-alert
+        v-if="!data.expected"
+        title="本场考试还没有应考学生"
+        type="info"
+        show-icon
+        :closable="false"
+        class="section-notice"
+      >
+        <p class="stats-empty-hint stats-empty-hint--start">
+          请先在考试名单中添加学生。分数段按应考人数计算，成绩统计将在有名单后显示。
+        </p>
+        <el-button type="primary" plain @click="emit('open-roster')">打开考试名单</el-button>
+      </el-alert>
+      <el-alert
+        v-else-if="!data.graded"
+        title="尚无已出分成绩"
+        description="平均分、及格率和高低分将在批阅完成后显示；分数段仍按应考人数计算。"
+        type="info"
+        show-icon
+        :closable="false"
+        class="section-notice"
+      />
       <section class="stats-section">
         <header><h3>数据总览</h3></header>
         <dl class="stats-grid">
@@ -137,7 +163,10 @@ watch(
           <h3>各题型正确率</h3>
           <span>实操题按已评分题中的满分作答计算</span>
         </header>
-        <ul class="question-stat-list">
+        <el-empty v-if="!data.typeStats.length" description="暂无题型统计" :image-size="70">
+          <p class="stats-empty-hint">试卷题目作答并评分后，将在这里显示各题型正确率。</p>
+        </el-empty>
+        <ul v-else class="question-stat-list">
           <li v-for="row in data.typeStats" :key="row.type" class="question-stat">
             <h4>{{ examQuestionTypeLabel(row.type) }}</h4>
             <div class="question-accuracy">
@@ -184,10 +213,24 @@ watch(
 }
 
 .stats-hint,
-.stats-section header span {
+.stats-section header span,
+.stats-empty-hint {
   margin: 0;
   color: var(--el-text-color-regular);
   font-size: 12px;
+}
+
+.stats-empty-hint {
+  max-width: 36ch;
+  margin: 8px auto 0;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.stats-empty-hint--start {
+  max-width: none;
+  margin: 0 0 10px;
+  text-align: left;
 }
 
 .stats-actions {

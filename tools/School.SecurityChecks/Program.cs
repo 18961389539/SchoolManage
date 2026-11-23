@@ -157,24 +157,24 @@ try
     {
         var hasher = new CountingHasher();
         var known = new AppUser { UserName = "operator", DisplayName = "Operator", Role = "Admin", PasswordHash = "stored-hash" };
-        Ensure(!CredentialVerification.TryVerify(hasher, null, "wrong-password", out _), "An unknown account was accepted.");
+        Ensure(!CredentialVerification.TryVerify(hasher, null, "wrong-password", out _, out _), "An unknown account was accepted.");
         Ensure(hasher.Calls == 1, "An unknown account skipped password hashing, leaving an account-enumeration timing signal.");
         hasher.Reset();
-        Ensure(!CredentialVerification.TryVerify(hasher, known, "wrong-password", out _), "A wrong password was accepted.");
+        Ensure(!CredentialVerification.TryVerify(hasher, known, "wrong-password", out _, out _), "A wrong password was accepted.");
         Ensure(hasher.Calls == 1, "A known account did not verify exactly once.");
         hasher.Reset();
         var overlong = new string('a', CredentialVerification.MaxPasswordLength + 40);
-        Ensure(!CredentialVerification.TryVerify(hasher, known, overlong, out _), "An over-long password was accepted.");
+        Ensure(!CredentialVerification.TryVerify(hasher, known, overlong, out _, out _), "An over-long password was accepted.");
         Ensure(hasher.Calls == 1 && hasher.LastPassword?.Length == CredentialVerification.MaxPasswordLength, "Over-long passwords must be truncated and hashed instead of rejected before hashing.");
         hasher.Reset();
-        Ensure(!CredentialVerification.TryVerify(hasher, known, "", out _), "An empty password was accepted.");
+        Ensure(!CredentialVerification.TryVerify(hasher, known, "", out _, out _), "An empty password was accepted.");
         Ensure(hasher.Calls == 1, "An empty password skipped hashing.");
 
         var realHasher = new PasswordHasher<AppUser>();
         var real = new AppUser { UserName = "real-user", DisplayName = "Real", Role = "Admin" };
         real.PasswordHash = realHasher.HashPassword(real, "Correct-Password-123");
-        Ensure(CredentialVerification.TryVerify(realHasher, real, "Correct-Password-123", out var authenticated) && authenticated.Id == real.Id, "A correct password was rejected.");
-        Ensure(!CredentialVerification.TryVerify(realHasher, null, "Correct-Password-123", out _), "The placeholder hash accepted a real password for an unknown account.");
+        Ensure(CredentialVerification.TryVerify(realHasher, real, "Correct-Password-123", out var authenticated, out _) && authenticated.Id == real.Id, "A correct password was rejected.");
+        Ensure(!CredentialVerification.TryVerify(realHasher, null, "Correct-Password-123", out _, out _), "The placeholder hash accepted a real password for an unknown account.");
         return Task.CompletedTask;
     });
     setupStatus = "passed";

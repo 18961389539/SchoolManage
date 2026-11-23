@@ -25,6 +25,7 @@ const ADMIN_PAGES = [
 const STUDENT_PAGES = [
   ['#/student-home', ''],
   ['#/my-exams', '我的考试'],
+  ['#/skill-graph', '技能图谱'],
   ['#/resources-overview', '资源概览'],
   ['#/profile', '个人中心']
 ]

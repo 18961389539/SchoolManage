@@ -2,8 +2,8 @@
 import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import { ArrowLeft, Download, Monitor, Refresh, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { api, dateTime, messageOf, post } from '../api'
-import { downloadFile, selectedText } from '../exam'
+import { api, dateTime, downloadFile, messageOf, post } from '../api'
+import { selectedText } from '../exam'
 import { courseStatusOptions, courseTypeOptions, durationText, labelOf, resourceKindOptions } from '../teaching'
 import type {
   CoursePreviewEnvironment,
@@ -11,6 +11,7 @@ import type {
   CoursePreviewResource,
   CoursePreviewResponse
 } from '../types'
+import TableEmpty from './TableEmpty.vue'
 import VmConsoleDialog from './VmConsoleDialog.vue'
 import CaseTopologyView from './CaseTopologyView.vue'
 
@@ -202,7 +203,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
   <section class="page-heading preview-heading">
     <div>
       <h1>{{ data?.course.name || '课程预览' }}</h1>
-      <p>以学员视角浏览课程目录、教学资源、练习与实操环境；预览操作不会生成学习记录。</p>
+      <p>这是课程预览，不是正式学习。练习提交与实操连接仅供体验，不计入学习成绩或进度；正式学习请到「我的课堂」。</p>
     </div>
     <div class="heading-actions">
       <el-button :icon="ArrowLeft" @click="emit('navigate', props.backKey)">返回</el-button>
@@ -223,7 +224,8 @@ function resultTagType(questionId: string): 'success' | 'danger' {
       <template #title>
         预览模式 · {{ labelOf(courseTypeOptions, data.course.type) }} ·
         {{ labelOf(courseStatusOptions, data.course.status) }}
-        <span v-if="!showAnswers"> · 练习提交后可查看本次得分与解析</span>
+        · 练习与实操不计入学习记录
+        <span v-if="!showAnswers"> · 提交后可查看本次得分与解析</span>
       </template>
     </el-alert>
     <div class="preview-layout">
@@ -232,7 +234,12 @@ function resultTagType(questionId: string): 'success' | 'danger' {
           <span>课程目录</span>
           <small>{{ resources.length }} 个资源</small>
         </div>
-        <el-empty v-if="!data.tree.length" description="课程暂无章节" :image-size="70" />
+        <el-empty v-if="!data.tree.length" description="课程暂无章节" :image-size="70">
+          <p class="empty-hint">此课程尚未配置目录。这是预览，不会记学习成绩；正式学习请到课堂。</p>
+          <el-button v-if="backKey === 'courses'" type="primary" plain @click="emit('navigate', 'courses')">
+            返回课程管理配置目录
+          </el-button>
+        </el-empty>
         <div v-for="(chapter, chapterIndex) in data.tree" :key="chapter.id" class="outline-chapter">
           <h3>第 {{ chapterIndex + 1 }} 章 · {{ chapter.name }}</h3>
           <div v-for="section in chapter.sections" :key="section.id" class="outline-section">
@@ -253,13 +260,21 @@ function resultTagType(questionId: string): 'success' | 'danger' {
               </el-tag>
               <span>{{ resource.name }}</span>
             </button>
-            <p v-if="!section.resources.length" class="outline-empty">暂无资源</p>
+            <p v-if="!section.resources.length" class="outline-empty">本节尚未添加资源</p>
           </div>
         </div>
       </aside>
 
       <article class="surface preview-content">
-        <el-empty v-if="!active" description="请选择左侧资源开始预览" />
+        <el-empty v-if="!data.tree.length" description="课程暂无章节" :image-size="80">
+          <p class="empty-hint">配置课程目录后，可在这里预览讲义、练习和实操环境。预览不会记学习成绩。</p>
+          <el-button v-if="backKey === 'courses'" type="primary" plain @click="emit('navigate', 'courses')">
+            返回课程管理配置目录
+          </el-button>
+        </el-empty>
+        <el-empty v-else-if="!active" description="请选择左侧资源开始预览">
+          <p class="empty-hint">从左侧目录选择一个资源后，可预览讲义、练习和实操环境。</p>
+        </el-empty>
         <template v-else>
           <header class="content-head">
             <div>
@@ -343,7 +358,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
               </el-button>
               <el-tag v-if="practiceResult" :type="practiceResult.passed ? 'success' : 'warning'" size="large">
                 本次得分 {{ practiceResult.score }} / {{ practiceResult.maxScore }} ·
-                {{ practiceResult.passed ? '达到 60% 合格线' : '未达到 60% 合格线' }}
+                {{ practiceResult.passed ? '达到预览合格线（得分 60%）' : '未达到预览合格线（得分 60%）' }}
               </el-tag>
             </div>
           </section>
@@ -371,7 +386,13 @@ function resultTagType(questionId: string): 'success' | 'danger' {
                 :topology="environment.resource.topologyBlueprint"
                 :devices="environment.topologyDevices"
               />
-              <el-table :data="environment.devices" row-key="id" empty-text="当前节点暂无可用模拟设备">
+              <el-table :data="environment.devices" row-key="id" empty-text="">
+                <template #empty>
+                  <TableEmpty
+                    title="当前节点暂无可用模拟设备"
+                    hint="预览环境由平台分配。节点关联模拟设备后，可在这里打开终端或 Web 管理。"
+                  />
+                </template>
                 <el-table-column prop="name" label="设备" min-width="170" show-overflow-tooltip />
                 <el-table-column prop="cabinetName" label="机柜" min-width="120" show-overflow-tooltip />
                 <el-table-column label="操作" width="220">
@@ -390,7 +411,13 @@ function resultTagType(questionId: string): 'success' | 'danger' {
                   </template>
                 </el-table-column>
               </el-table>
-              <el-table :data="environment.virtualMachines" row-key="id" empty-text="当前节点暂无虚拟机">
+              <el-table :data="environment.virtualMachines" row-key="id" empty-text="">
+                <template #empty>
+                  <TableEmpty
+                    title="当前节点暂无虚拟机"
+                    hint="预览环境由平台分配。节点配置虚拟机后，可在这里查看状态并连接。"
+                  />
+                </template>
                 <el-table-column prop="name" label="虚拟机" min-width="160" show-overflow-tooltip />
                 <el-table-column label="状态" width="105">
                   <template #default="{ row }">
@@ -560,6 +587,15 @@ function resultTagType(questionId: string): 'success' | 'danger' {
   margin: 2px 0 0 4px;
   color: #5d6f80;
   font-size: 11px;
+}
+
+.empty-hint {
+  max-width: 36ch;
+  margin: 8px auto 12px;
+  color: #56697c;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .preview-content {

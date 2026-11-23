@@ -27,7 +27,7 @@ export async function runNodeAccountUiChecks({page, ui, adminApi, mark, capture,
   const pageButton = (panel, direction) => panel.locator(`.node-account-pagination .btn-${direction}`);
   const activePage = panel => panel.locator('.el-pager .is-active');
 
-  await openPage('集群节点');
+  await openPage('实训节点');
   const nodeRow = rowNamed(nodeName);
   await nodeRow.getByRole('cell', {name: '0 / 11', exact: true}).waitFor();
   await button(nodeRow, '分配账号').click();

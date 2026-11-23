@@ -89,7 +89,7 @@ const preview = computed(() => {
         :title="teacher ? '暂无课堂' : '暂未加入课堂'"
         :hint="teacher ? undefined : '请联系授课教师，确认已加入课堂'"
       />
-      <el-button v-if="teacher" type="primary" plain @click="emit('all')">前往课堂管理</el-button>
+      <el-button v-if="teacher" type="primary" plain @click="emit('all')">前往我的课堂</el-button>
     </div>
   </section>
 </template>

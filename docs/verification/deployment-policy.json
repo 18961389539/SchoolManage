@@ -1,8 +1,8 @@
 {
     "suite":  "deployment-acl-host-policy",
     "powershellVersion":  "5.1.26100.9818",
-    "completedAtUtc":  "2026-11-20T10:15:57.5839681Z",
-    "commonScriptSha256":  "DAECD14FD3F13186A5D5FE396EB38451DBEB842C0282D796F8D4EEA494EF2ABC",
+    "completedAtUtc":  "2026-11-23T07:03:25.8172830Z",
+    "commonScriptSha256":  "1F4788FCDB883EB5DBECD2C52CA16E7CE49B398F047B5C3D955961DBB7132167",
     "passed":  true,
     "passedChecks":  20,
     "totalChecks":  20,

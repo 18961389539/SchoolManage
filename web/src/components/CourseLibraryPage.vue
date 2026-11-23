@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
 import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
+import { useRequestGeneration } from '../requestGeneration'
 import { confirmReload, isStale } from '../stale'
 import { courseStatusOptions, courseTypeOptions, durationText, labelOf } from '../teaching'
 import type { CoreCourseSeries, CourseDetail, CourseSummary, Paged } from '../types'
@@ -26,6 +27,7 @@ const error = ref('')
 const search = ref(savedList.search)
 const statusFilter = ref(savedList.filters.status || '')
 const typeFilter = ref(savedList.filters.type || '')
+const listRequests = useRequestGeneration()
 
 const dialogVisible = ref(false)
 const nameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
@@ -107,6 +109,7 @@ const treeVisible = ref(false)
 const treeCourseId = ref('')
 
 async function load() {
+  const token = listRequests.begin()
   loading.value = true
   error.value = ''
   try {
@@ -115,6 +118,7 @@ async function load() {
     if (statusFilter.value) params.set('status', statusFilter.value)
     if (typeFilter.value) params.set('type', typeFilter.value)
     const data = await api<Paged<CourseSummary>>(`/courses?${params.toString()}`)
+    if (!listRequests.isCurrent(token)) return
     items.value = data.items
     total.value = data.total
     const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
@@ -123,9 +127,9 @@ async function load() {
       return load()
     }
   } catch (failure) {
-    error.value = messageOf(failure)
+    if (listRequests.isCurrent(token)) error.value = messageOf(failure)
   } finally {
-    loading.value = false
+    if (listRequests.isCurrent(token)) loading.value = false
   }
 }
 
@@ -251,11 +255,15 @@ async function toggleActivation(course: CourseSummary) {
 
 async function removeCourse(course: CourseSummary) {
   try {
-    await ElMessageBox.confirm(`确定删除课程“${course.name}”吗？课程目录与学习记录会一并删除。`, '删除课程', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消'
-    })
+    await ElMessageBox.confirm(
+      `确定删除课程“${course.name}”吗？课程目录会一并删除；已被课堂使用时不能删除。`,
+      '删除课程',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消'
+      }
+    )
     await del(`/courses/${course.id}`)
     ElMessage.success('课程已删除')
     if (items.value.length === 1 && page.value > 1) page.value--

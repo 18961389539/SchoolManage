@@ -11,8 +11,8 @@ public sealed class StorageOptions
     public long LogMaxTotalBytes { get; init; } = 200 * 1024 * 1024;
 
     /// <summary>
-    /// Lowest level written to <c>logs/service-*.log</c>. The file logger is synchronous, so
-    /// raising this level is the supported way to cut per-request log writes on a busy host.
+    /// Lowest level written to <c>logs/service-*.log</c>. The file logger drains a background
+    /// queue, so raising this level reduces queue pressure rather than blocking a request.
     /// </summary>
     public LogLevel LogMinimumLevel { get; init; } = LogLevel.Information;
     public int BackupRetentionCount { get; init; } = 20;

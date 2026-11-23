@@ -2,8 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { DataAnalysis, Download, Refresh, Search, User } from '@element-plus/icons-vue'
-import { api, dateTime, messageOf } from '../api'
-import { downloadFile } from '../exam'
+import { api, dateTime, downloadFile, messageOf } from '../api'
 import { remainingText } from '../analytics'
 import type {
   ClassroomStatisticsResponse,
@@ -14,6 +13,7 @@ import type {
 } from '../analytics'
 import { classroomStatusOptions, labelOf } from '../teaching'
 import StudentStatsDetailView from './StudentStatsDetail.vue'
+import TableEmpty from './TableEmpty.vue'
 
 const props = defineProps<{ visible: boolean; classroomId: string }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -77,6 +77,29 @@ const attentionStudents = computed(() => {
     .sort((a, b) => a.overall.passRate - b.overall.passRate)
     .slice(0, 5)
 })
+
+const attentionEmptyTitle = computed(() => {
+  if (!data.value?.students.length) return '课堂暂无学生'
+  if (!data.value.students.some(student => student.overall.total > 0)) return '学生尚未开始学习'
+  return '暂无需要重点关注的学生'
+})
+
+const attentionEmptyHint = computed(() => {
+  if (!data.value?.students.length) return '加入学生后，达标率靠后的学生会显示在这里。'
+  if (!data.value.students.some(student => student.overall.total > 0)) return '有学习记录且未达标的学生会出现在这里。'
+  return '当前学生均已达标，可在“学生维度”查看全部数据。'
+})
+
+const studentFiltering = computed(() => !!(studentSearch.value.trim() || studentChapterId.value))
+
+function clearStudentFilters() {
+  studentSearch.value = ''
+  if (studentChapterId.value) {
+    studentChapterId.value = ''
+    chapterStudents.value = null
+    chapterError.value = ''
+  }
+}
 
 const visibleChapters = computed(() => {
   if (!data.value) return []
@@ -317,7 +340,9 @@ watch(
                     />
                     <p>学习率 {{ chapter.learningRate }}% · 达标率 {{ chapter.passRate }}%</p>
                   </div>
-                  <el-empty v-if="!chapterRows.length" description="课程暂无章节资源" :image-size="70" />
+                  <el-empty v-if="!chapterRows.length" description="课程暂无章节资源" :image-size="70">
+                    <p class="empty-hint">请先在课堂内容中配置课程章节和资源，再查看达标进度。</p>
+                  </el-empty>
                 </div>
               </section>
 
@@ -345,7 +370,9 @@ watch(
                   <span class="attention-rate">{{ student.overall.passRate }}%</span>
                   <el-tag size="small" type="warning">未达标</el-tag>
                 </button>
-                <el-empty v-if="!attentionStudents.length" description="暂无需要重点关注的学生" :image-size="70" />
+                <el-empty v-if="!attentionStudents.length" :description="attentionEmptyTitle" :image-size="70">
+                  <p class="empty-hint">{{ attentionEmptyHint }}</p>
+                </el-empty>
                 <el-button text type="primary" @click="activeTab = 'students'">查看全部学生数据</el-button>
               </section>
             </div>
@@ -377,7 +404,14 @@ watch(
                 导出资源维度
               </el-button>
             </div>
-            <el-empty v-if="!visibleChapters.length" description="暂无章节资源" :image-size="80" />
+            <el-empty
+              v-if="!visibleChapters.length"
+              :description="chapterFilter ? '当前筛选下没有章节' : '暂无章节资源'"
+              :image-size="80"
+            >
+              <p v-if="!chapterFilter" class="empty-hint">请先在课堂内容中配置课程章节和资源。</p>
+              <el-button v-else @click="chapterFilter = ''">清除筛选</el-button>
+            </el-empty>
             <el-collapse v-else v-model="expandedChapters" class="resource-collapse">
               <el-collapse-item v-for="chapter in visibleChapters" :key="chapter.id" :name="chapter.id">
                 <template #title>
@@ -472,7 +506,7 @@ watch(
             </div>
             <div class="student-table-caption">
               <span>共 {{ filteredStudents.length }} 名学生</span>
-              <span>达标线为资源 60%</span>
+              <span>资源达标线为完成度 60%；理论练习另按单次得分 60% 计</span>
             </div>
             <el-alert
               v-if="chapterError"
@@ -492,9 +526,24 @@ watch(
                 max-height="min(64vh, 40rem)"
                 native-scrollbar
                 :scrollbar-tabindex="0"
-                empty-text="暂无符合条件的学生"
+                empty-text=""
                 @row-click="row => openStudent(row.userId)"
               >
+                <template #empty>
+                  <TableEmpty
+                    v-if="!chapterLoading"
+                    :title="studentFiltering ? '暂无符合条件的学生' : '课堂暂无学生'"
+                    :hint="
+                      studentFiltering
+                        ? '试试调整关键词或章节，或清除筛选查看全部学生。'
+                        : '加入学生后，这里会显示学习率、达标情况与最近学习记录。'
+                    "
+                  >
+                    <template v-if="studentFiltering" #action>
+                      <el-button @click="clearStudentFilters">清除筛选</el-button>
+                    </template>
+                  </TableEmpty>
+                </template>
                 <el-table-column label="学生" min-width="156" fixed>
                   <template #default="{ row }">
                     <strong class="student-name">{{ row.name }}</strong>
@@ -537,7 +586,9 @@ watch(
           </el-tab-pane>
         </el-tabs>
       </template>
-      <el-empty v-else-if="!loading && !error" description="暂无课堂统计数据" />
+      <el-empty v-else-if="!loading && !error" description="暂无课堂统计数据">
+        <p class="empty-hint">课堂数据加载后，将在这里展示章节、资源与学生的学情。</p>
+      </el-empty>
     </div>
 
     <el-dialog
@@ -885,6 +936,15 @@ watch(
   margin: 0 0 6px;
   color: var(--el-text-color-regular);
   font-size: 12px;
+}
+
+.empty-hint {
+  max-width: 36ch;
+  margin: 8px auto 0;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .table-region :deep(.el-scrollbar__wrap:focus-visible) {

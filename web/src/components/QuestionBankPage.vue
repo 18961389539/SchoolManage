@@ -32,6 +32,7 @@ import CaseRubricEditor from './CaseRubricEditor.vue'
 import QuestionBankSelect from './QuestionBankSelect.vue'
 import { bankAccepts, examQuestionBankLabels } from '../questionBanks'
 import { useDiscardGuard } from '../discardGuard'
+import TableEmpty from './TableEmpty.vue'
 
 interface ImportPreview {
   bankType: ExamQuestionBank['type']
@@ -47,7 +48,9 @@ interface ImportPreview {
   }[]
 }
 
-const props = defineProps<{ bank: ExamQuestionBank }>()
+const props = defineProps<{ bank: ExamQuestionBank; readOnly?: boolean }>()
+const canWrite = computed(() => !props.readOnly)
+const filtering = computed(() => !!search.value.trim() || !!typeFilter.value)
 const emit = defineEmits<{ back: [] }>()
 const scope = computed(() => new URLSearchParams({ bankId: props.bank.id }).toString())
 const allowedQuestionTypes = computed(() =>
@@ -484,8 +487,8 @@ onMounted(load)
     </div>
     <div class="heading-actions">
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      <el-button :icon="UploadFilled" @click="openImport">导入题目</el-button>
-      <el-button type="primary" :icon="Plus" @click="openCreate">新建题目</el-button>
+      <el-button v-if="canWrite" :icon="UploadFilled" @click="openImport">导入题目</el-button>
+      <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建题目</el-button>
     </div>
   </section>
 
@@ -512,7 +515,7 @@ onMounted(load)
         <el-button type="primary" :icon="Search" @click="applyFilters">查询</el-button>
         <el-button @click="resetFilters">重置</el-button>
         <el-button
-          v-if="selected.length"
+          v-if="canWrite && selected.length"
           type="danger"
           plain
           :icon="Delete"
@@ -530,10 +533,29 @@ onMounted(load)
       v-loading="loading"
       :data="items"
       row-key="id"
-      empty-text="题库暂无题目"
+      empty-text=""
       @selection-change="(rows: unknown) => (selected = rows as ExamQuestionSummary[])"
     >
-      <el-table-column type="selection" width="46" />
+      <template #empty>
+        <TableEmpty
+          v-if="!loading"
+          :title="error ? '题目加载失败' : filtering ? '没有符合条件的题目' : '题库暂无题目'"
+          :hint="
+            error
+              ? '请检查服务状态后刷新重试'
+              : filtering
+                ? '试试调整关键词或题型，也可清除后查看全部题目。'
+                : canWrite
+                  ? '点击右上角「新建题目」或导入题目。'
+                  : '该题库暂无题目。'
+          "
+        >
+          <template v-if="!error && filtering" #action>
+            <el-button type="primary" plain @click="resetFilters">清除筛选</el-button>
+          </template>
+        </TableEmpty>
+      </template>
+      <el-table-column v-if="canWrite" type="selection" width="46" />
       <el-table-column label="题型" width="96">
         <template #default="{ row }">
           <el-tag size="small" effect="plain">{{ examQuestionTypeLabel(row.type) }}</el-tag>
@@ -570,8 +592,13 @@ onMounted(load)
       <el-table-column label="操作" width="196" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" :icon="View" @click="openPreview(row as ExamQuestionSummary)">预览</el-button>
-          <el-button link :icon="EditPen" @click="openEdit(row as ExamQuestionSummary)">编辑</el-button>
-          <el-button link type="danger" :icon="Delete" @click="removeQuestion(row as ExamQuestionSummary)"
+          <el-button v-if="canWrite" link :icon="EditPen" @click="openEdit(row as ExamQuestionSummary)">编辑</el-button>
+          <el-button
+            v-if="canWrite"
+            link
+            type="danger"
+            :icon="Delete"
+            @click="removeQuestion(row as ExamQuestionSummary)"
             >删除</el-button
           >
         </template>

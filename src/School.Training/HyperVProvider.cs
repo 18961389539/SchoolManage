@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
@@ -8,16 +9,27 @@ namespace School.Training;
 public sealed class HyperVProvider(IConfiguration configuration, ILogger<HyperVProvider> logger)
 {
     public const string Name = "hyperv";
+    readonly ConcurrentDictionary<string, CacheEntry> inspectCache = new(StringComparer.OrdinalIgnoreCase);
+    sealed record CacheEntry(DateTime ExpiresAt, HyperVResult? Result);
 
     public bool IsConfigured(string host)
         => OperatingSystem.IsWindows() && configuration.GetSection("School:HyperV:Hosts").GetChildren()
             .Any(entry => string.Equals(entry.Value?.Trim(), host, StringComparison.OrdinalIgnoreCase));
 
-    public Task<HyperVResult?> InspectAsync(string host, CancellationToken ct)
-        => RunAsync(host, "inspect", null, ct);
+    public async Task<HyperVResult?> InspectAsync(string host, CancellationToken ct)
+    {
+        if (inspectCache.TryGetValue(host, out var cached) && cached.ExpiresAt > DateTime.UtcNow) return cached.Result;
+        var result = await RunAsync(host, "inspect", null, ct);
+        inspectCache[host] = new CacheEntry(DateTime.UtcNow.AddSeconds(10), result);
+        return result;
+    }
 
-    public Task<HyperVResult?> ControlAsync(string host, Guid id, string action, CancellationToken ct)
-        => RunAsync(host, action, id, ct);
+    public async Task<HyperVResult?> ControlAsync(string host, Guid id, string action, CancellationToken ct)
+    {
+        var result = await RunAsync(host, action, id, ct);
+        if (result != null) inspectCache.TryRemove(host, out _);
+        return result;
+    }
 
     async Task<HyperVResult?> RunAsync(string host, string action, Guid? id, CancellationToken ct)
     {

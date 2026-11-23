@@ -1,48 +1,48 @@
 {
-  "recordedAtUtc": "2026-11-20T10:15:56.9890472Z",
+  "recordedAtUtc": "2026-11-23T07:03:24.9567883Z",
   "status": "passed",
   "command": "dotnet run --project tools/School.SecurityChecks -c Release -- --require-setup-access",
-  "mainAssemblySha256": "602E77D63C376588582242FF03BE2C0B75E4A82C142BAE11AD9E02FE7D33D9EF",
+  "mainAssemblySha256": "DF5CF8E70780FA8967A7BDD04ACCEA3A994C69D8D6E6E3CAC174A1F535D23439",
   "checks": [
     {
       "name": "request cancellation is isolated to its own lease",
       "status": "passed",
-      "elapsedMs": 2.32
+      "elapsedMs": 2.68
     },
     {
       "name": "application stopping cancels every active terminal without waiting for ApplicationStopped",
       "status": "passed",
-      "elapsedMs": 13.19
+      "elapsedMs": 18.92
     },
     {
       "name": "new requests cannot obtain a usable lease after stop or with an already-aborted request",
       "status": "passed",
-      "elapsedMs": 0.71
+      "elapsedMs": 1.25
     },
     {
       "name": "stale release does not remove or cancel a later lease for the same device",
       "status": "passed",
-      "elapsedMs": 0.3
+      "elapsedMs": 0.38
     },
     {
       "name": "user revocation and cabinet reclaim preserve unrelated leases",
       "status": "passed",
-      "elapsedMs": 1.74
+      "elapsedMs": 2.76
     },
     {
       "name": "parallel acquire racing host shutdown never leaves a usable lease",
       "status": "passed",
-      "elapsedMs": 3.24
+      "elapsedMs": 4.43
     },
     {
       "name": "setup access distinguishes local endpoints from remote LAN clients and unspecified addresses",
       "status": "passed",
-      "elapsedMs": 6.05
+      "elapsedMs": 8.89
     },
     {
       "name": "unknown accounts and over-long passwords still perform one full hash verification",
       "status": "passed",
-      "elapsedMs": 175.1
+      "elapsedMs": 256.39
     }
   ],
   "setupAccess": {

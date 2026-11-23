@@ -2,8 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { Download, UploadFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { api, messageOf } from '../api'
-import { downloadFile } from '../exam'
+import { api, downloadFile, messageOf } from '../api'
 import type { CourseQuestion, CourseQuestionParseError, CourseQuestionParseResponse } from '../types'
 
 const visible = defineModel<boolean>({ required: true })

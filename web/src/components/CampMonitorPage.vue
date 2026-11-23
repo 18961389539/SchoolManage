@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Clock, Monitor, Refresh, RefreshRight } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, messageOf, post } from '../api'
 import { virtualMachineStatusText } from '../camp'
 import { countdownText } from '../exam'
 import { parseApiDate } from '../time'
+import { usePolling } from '../usePolling'
 import type { CampMonitorRow, CampRestartResponse } from '../types'
 import CampEnvironmentPanel from './CampEnvironmentPanel.vue'
 import TableEmpty from './TableEmpty.vue'
@@ -13,12 +14,10 @@ import TableEmpty from './TableEmpty.vue'
 const items = ref<CampMonitorRow[]>([])
 const loading = ref(false)
 const error = ref('')
-const now = ref(Date.now())
+const { now } = usePolling(() => load(true), { intervalMs: 15000 })
 const envVisible = ref(false)
 const envAttempt = ref<CampMonitorRow | null>(null)
 const restarting = ref('')
-let ticker: number | undefined
-let refresher: number | undefined
 
 const envUrl = computed(() => (envAttempt.value ? `/camp/monitor/${envAttempt.value.attemptId}/environment` : ''))
 const nearest = computed(() => {
@@ -82,15 +81,6 @@ async function restart(row: CampMonitorRow) {
 
 onMounted(() => {
   void load()
-  ticker = window.setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-  refresher = window.setInterval(() => void load(true), 15000)
-})
-
-onBeforeUnmount(() => {
-  if (ticker !== undefined) window.clearInterval(ticker)
-  if (refresher !== undefined) window.clearInterval(refresher)
 })
 </script>
 

@@ -13,7 +13,7 @@ public static class Validation
     public const int UserNameMaxLength = 64;
     public const int PasswordMinLength = 12;
     public const int PasswordMaxLength = 128;
-    public const int MaxPage = 1_000_000;
+    public const int MaxPage = 10_000;
     public const int MaxPageSize = 1000;
     public const int DefaultPageSize = 20;
 

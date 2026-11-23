@@ -13,16 +13,17 @@ import {
   Document,
   FolderOpened,
   Check,
+  CopyDocument,
   Delete,
   EditPen
 } from '@element-plus/icons-vue'
-import { api, post, put, listItems, messageOf, dateTime, bytes, type Row } from '../api'
+import { api, downloadFile, post, put, listItems, messageOf, dateTime, bytes, type Row } from '../api'
 import { appState } from '../store'
 import { readListState, useListPersist } from '../listState'
 import { focusFirstField } from '../focusField'
-import { downloadFile } from '../exam'
-import type { BackupItem, LicenseUploadResult, NodeRow, Paged } from '../types'
+import type { AutomaticBackupStatus, BackupItem, LicenseUploadResult, NodeRow, Paged } from '../types'
 import DataRecord from './DataRecord.vue'
+import TableEmpty from './TableEmpty.vue'
 import EntityRowMenu, { type EntityRowAction } from './EntityRowMenu.vue'
 import ServerOverview from './ServerOverview.vue'
 import VmConsoleDialog from './VmConsoleDialog.vue'
@@ -94,6 +95,37 @@ const title = computed(() => titles[props.pageKey]!)
 const licenseMetadata = computed(() =>
   data.value ? { machineCode: data.value.machineCode, items: data.value.items } : null
 )
+const automaticStatus = computed(() => (data.value?.automatic as AutomaticBackupStatus | undefined) || null)
+
+const automaticBackupFailed = computed(() => {
+  const item = automaticStatus.value
+  if (!item) return false
+  if (item.lastAttemptAt && (!item.lastSuccessAt || Date.parse(item.lastAttemptAt) > Date.parse(item.lastSuccessAt)))
+    return true
+  return !!(item.enabled && !item.lastSuccessAt)
+})
+
+const automaticBackupAlertType = computed(() => {
+  if (!automaticStatus.value?.enabled) return 'info' as const
+  return automaticBackupFailed.value ? 'warning' : 'success'
+})
+
+const automaticBackupTitle = computed(() => {
+  const item = automaticStatus.value
+  if (!item) return ''
+  if (!item.enabled) return '自动备份：已关闭'
+  const label = `自动备份：每天 ${item.timeOfDay}`
+  return automaticBackupFailed.value ? `${label}（最近一次未成功）` : label
+})
+
+const automaticBackupDescription = computed(() => {
+  const item = automaticStatus.value
+  if (!item) return ''
+  const last = item.lastSuccessAt ? `上次成功：${dateTime(item.lastSuccessAt)}` : '尚无成功备份'
+  const result = item.lastMessage ? `最近结果：${item.lastMessage}` : ''
+  return [last, result].filter(Boolean).join('；')
+})
+const auditExportHref = computed(() => `/api/audits/export?search=${encodeURIComponent(search.value.trim())}`)
 async function load() {
   const version = ++loadVersion
   loading.value = true
@@ -122,16 +154,40 @@ async function load() {
   }
 }
 async function createBackup() {
+  try {
+    await ElMessageBox.confirm(
+      '创建备份可能需要几分钟，期间请勿关闭或刷新本页。备份会占用磁盘空间；若自动备份正在进行，本次请求可能会被拒绝。确认现在创建吗？',
+      '创建备份',
+      { type: 'warning', confirmButtonText: '开始创建', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
   saving.value = true
   try {
     const result = await post<BackupItem>('/backups', undefined, { timeoutMs: 0 })
-    ElMessage.success(`备份已创建：${result.fileName || ''}`)
+    ElMessage.success(`备份已创建：${result.fileName || ''}。建议立即下载并保存到服务器以外的位置。`)
     await load()
   } catch (err) {
     ElMessage.error(messageOf(err))
   } finally {
     saving.value = false
   }
+}
+
+function copyRestoreCommand(fileName: string) {
+  const command =
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\\Program Files\\SchoolTraining\\scripts\\restore-backup.ps1' -BackupFile '<请填写已下载的备份路径>\\" +
+    fileName +
+    "'"
+  if (!navigator.clipboard) {
+    ElMessage.warning('浏览器未允许复制，请手动记录恢复命令')
+    return
+  }
+  navigator.clipboard
+    .writeText(command)
+    .then(() => ElMessage.success('已复制恢复命令示例，请将备份路径替换为实际下载位置后再执行'))
+    .catch(() => ElMessage.warning('浏览器未允许复制，请手动记录恢复命令'))
 }
 async function saveSettings() {
   if (!String(settings.schoolName || '').trim()) {
@@ -448,6 +504,8 @@ useListPersist(opsStateKey, () => ({ search: search.value, filters: {}, page: pa
         >新增模拟虚拟机</el-button
       ><el-button v-if="pageKey === 'backups'" type="primary" :icon="Plus" :loading="saving" @click="createBackup"
         >创建备份</el-button
+      ><el-button v-if="['server', 'settings'].includes(pageKey)" tag="a" href="/api/diagnostics" :icon="Document"
+        >下载诊断包</el-button
       ><template v-if="pageKey === 'licenses'"
         ><el-button tag="a" href="/api/licenses/guide" :icon="Document">使用说明</el-button
         ><el-button type="primary" :icon="Upload" :loading="saving" @click="licenseInput?.click()">上传许可证</el-button
@@ -579,7 +637,10 @@ useListPersist(opsStateKey, () => ({ search: search.value, filters: {}, page: pa
         /><el-button @click="resetSearch">搜索</el-button
         ><el-button v-if="searching" @click="clearSearch">清除</el-button>
       </div>
-      <span class="record-count">共 {{ total }} 条记录</span>
+      <div class="heading-actions">
+        <el-button tag="a" :href="auditExportHref" :icon="Download">导出 CSV</el-button>
+        <span class="record-count">共 {{ total }} 条记录</span>
+      </div>
     </div>
     <el-table
       :data="rows"
@@ -613,22 +674,44 @@ useListPersist(opsStateKey, () => ({ search: search.value, filters: {}, page: pa
         <el-icon :size="25"><FolderOpened /></el-icon>
       </div>
       <div>
-        <strong>备份文件包含业务数据与必要密钥</strong>
-        <p>请妥善保存下载文件。恢复时使用随安装包提供的恢复工具，按说明停止服务并验证恢复结果。</p>
+        <strong>本页不能直接恢复数据</strong>
+        <p>
+          备份文件包含业务数据与必要密钥，请下载后妥善保存到服务器以外的位置。恢复会停止服务，并用备份中的数据库和密钥替换当前数据。请先记录当前程序版本，再在服务器上使用安装目录中的
+          <code>scripts\restore-backup.ps1</code>
+          按运维说明执行并验证结果。默认脚本路径为
+          <code>C:\Program Files\SchoolTraining\scripts\restore-backup.ps1</code>。
+        </p>
       </div>
     </div>
+    <el-alert
+      v-if="automaticStatus"
+      :type="automaticBackupAlertType"
+      show-icon
+      :closable="false"
+      class="section-notice"
+      :title="automaticBackupTitle"
+      :description="automaticBackupDescription"
+    />
     <section class="surface" v-loading="loading">
       <div class="table-toolbar">
         <strong>备份记录</strong><span class="record-count">{{ rows.length }} 个文件</span>
       </div>
-      <el-table :data="rows" empty-text="暂无备份，点击“创建备份”生成首个备份文件"
-        ><el-table-column prop="fileName" label="备份文件" min-width="260" /><el-table-column
+      <p v-if="rows.length" class="table-scroll-hint">横向滚动可查看更多列</p>
+      <el-table :data="rows" empty-text=""
+        ><template #empty>
+          <TableEmpty
+            v-if="!loading"
+            title="暂无备份文件"
+            hint="点击右上角“创建备份”生成首个备份，并下载保存到服务器以外的位置。"
+          />
+        </template>
+        <el-table-column prop="fileName" label="备份文件" min-width="260" /><el-table-column
           label="创建时间（北京时间）"
           min-width="220"
           ><template #default="{ row }">{{ dateTime(row.createdAt) }}</template></el-table-column
         ><el-table-column label="文件大小" width="140"
           ><template #default="{ row }">{{ bytes(row.size) }}</template></el-table-column
-        ><el-table-column label="操作" width="120"
+        ><el-table-column label="操作" min-width="210"
           ><template #default="{ row }"
             ><el-button
               link
@@ -637,6 +720,8 @@ useListPersist(opsStateKey, () => ({ search: search.value, filters: {}, page: pa
               tag="a"
               :href="`/api/backups/${encodeURIComponent(row.fileName)}`"
               >下载</el-button
+            ><el-button link :icon="CopyDocument" @click="copyRestoreCommand(row.fileName)"
+              >复制恢复命令</el-button
             ></template
           ></el-table-column
         ></el-table

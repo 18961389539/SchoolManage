@@ -4,6 +4,7 @@ import { Refresh, Search } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
 import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
+import { useRequestGeneration } from '../requestGeneration'
 import type { CampStaffRecordRow, Paged } from '../types'
 import CampRecordDrawer from './CampRecordDrawer.vue'
 import TableEmpty from './TableEmpty.vue'
@@ -16,16 +17,19 @@ const pageSize = ref(savedList.pageSize)
 const search = ref(savedList.search)
 const loading = ref(false)
 const error = ref('')
+const listRequests = useRequestGeneration()
 const recordVisible = ref(false)
 const activeAttemptId = ref('')
 
 async function load() {
+  const token = listRequests.begin()
   loading.value = true
   error.value = ''
   try {
     const params = new URLSearchParams({ page: String(page.value), pageSize: String(pageSize.value) })
     if (search.value.trim()) params.set('search', search.value.trim())
     const data = await api<Paged<CampStaffRecordRow>>(`/camp/records?${params.toString()}`)
+    if (!listRequests.isCurrent(token)) return
     items.value = data.items
     total.value = data.total
     const recovered = recoverPage(page.value, pageSize.value, total.value, items.value.length)
@@ -34,9 +38,9 @@ async function load() {
       return load()
     }
   } catch (failure) {
-    error.value = messageOf(failure)
+    if (listRequests.isCurrent(token)) error.value = messageOf(failure)
   } finally {
-    loading.value = false
+    if (listRequests.isCurrent(token)) loading.value = false
   }
 }
 

@@ -42,6 +42,7 @@ public class JobPosition
     public string Description { get; set; } = "";
     public int DurationMinutes { get; set; } = 60;
     public string? StartupNodeId { get; set; }
+    public bool Published { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -115,6 +116,7 @@ public sealed record CampQuestionInput(
 public sealed record CampPositionInput(
     string Name, string? Description, int DurationMinutes, string? StartupNodeId = null,
     CampSkillInput[]? Skills = null, CampQuestionInput[]? Questions = null);
+public sealed record CampPublishInput(bool Published);
 public sealed record CampSaveAnswersInput(CampAnswerInput[]? Answers);
 public sealed record CampAnswerInput(string QuestionId, int[]? Selected, string? Text = null);
 public sealed record CampRubricItem(string Item, string Keyword, int Score);

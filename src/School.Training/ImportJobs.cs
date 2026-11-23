@@ -137,9 +137,7 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, IServiceScopeFactory sc
                 ?? throw new InvalidDataException("导入预览数据无法读取，请重新上传");
             if (rows.Count == 0 || rows.Count != batch.TotalCount) throw new InvalidDataException("导入预览数据不完整，请重新上传");
 
-            // Validation must run before any password hashing: a stale preview fails the whole
-            // batch, and hashing dominates the run time (the 310000-iteration PBKDF2 hash is the
-            // largest per-row cost), so invalid rows must never be hashed.
+            // Validation must run before hashing: a stale preview fails the whole batch.
             await ImportEndpoints.ValidateRows(rows, batch.Kind, db, token);
             if (rows.Any(row => row.Errors.Count > 0))
             {
@@ -148,31 +146,33 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, IServiceScopeFactory sc
             }
 
             var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
+            // Every account in the batch receives the same administrator-supplied initial
+            // password and must change it at first login. Hashing once per batch instead of
+            // once per row removes the KDF from the import critical path; the shared hash is
+            // replaced with a private one when each account changes its password. The tradeoff
+            // is that all pending accounts carry equal hashes for a credential that is already
+            // shared and known to the administrator.
+            var initialHash = hasher.HashPassword(
+                new AppUser { UserName = "__import__", DisplayName = "__import__", Role = "Student" },
+                request.InitialPassword);
             var prepared = new Dictionary<int, AppUser>(rows.Count);
-            var degree = Math.Clamp(Environment.ProcessorCount, 1, 8);
             const int progressInterval = 250;
             var processed = 0;
             foreach (var chunk in rows.Chunk(progressInterval))
             {
                 token.ThrowIfCancellationRequested();
-                var users = new AppUser[chunk.Length];
-                await Parallel.ForEachAsync(Enumerable.Range(0, chunk.Length),
-                    new ParallelOptions { MaxDegreeOfParallelism = degree, CancellationToken = token },
-                    (index, _) =>
+                foreach (var row in chunk)
+                {
+                    var data = row.Data;
+                    prepared.Add(row.RowNumber, new AppUser
                     {
-                        var data = chunk[index].Data;
-                        var user = new AppUser
-                        {
-                            UserName = data.UserName,
-                            DisplayName = data.Name,
-                            Role = batch.Kind == "teacher" ? "Teacher" : "Student",
-                            MustChangePassword = true
-                        };
-                        user.PasswordHash = hasher.HashPassword(user, request.InitialPassword);
-                        users[index] = user;
-                        return ValueTask.CompletedTask;
+                        UserName = data.UserName,
+                        DisplayName = data.Name,
+                        Role = batch.Kind == "teacher" ? "Teacher" : "Student",
+                        MustChangePassword = true,
+                        PasswordHash = initialHash
                     });
-                for (var index = 0; index < chunk.Length; index++) prepared.Add(chunk[index].RowNumber, users[index]);
+                }
                 processed += chunk.Length;
                 await ReportProgressAsync(request.BatchId, processed, token);
             }

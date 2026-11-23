@@ -61,16 +61,16 @@ function onDialogOpened() {
 function fieldOptions(
   field: Field
 ): { label: string; value: string | number | boolean | object; disabled?: boolean }[] {
-  return (
+  const options: { label: string; value: string | number | boolean | object; disabled?: boolean }[] =
     field.options ||
     (field.source ? (props.options[field.source] || []).map(row => ({ label: row.name, value: row.id })) : [])
-  )
+  return options.filter(option => !option.disabled || option.value === form[field.key])
 }
 
 async function submit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
-  const payload: Row = { ...form }
+  const payload: Row = { ...form, ...(props.entity.defaults ?? {}) }
   if (props.entity.kind) payload.kind = props.entity.kind
   if (!payload.classId && props.entity.kind) payload.classId = null
   if (props.entity.endpoint === '/devices') {

@@ -6,6 +6,7 @@ import { api, dateTime, messageOf, post } from '../api'
 import { attemptStatusLabel, attemptStatusType, deploymentLabel, deploymentType } from '../exam'
 import type { ExamRosterStudent, ExamStudentOption } from '../types'
 import ExamDeploymentDialog from './ExamDeploymentDialog.vue'
+import TableEmpty from './TableEmpty.vue'
 import { focusFirstField } from '../focusField'
 
 const props = defineProps<{
@@ -71,6 +72,19 @@ const filtered = computed(() => {
   )
 })
 const deployedCount = computed(() => items.value.filter(item => item.deploymentStatus === 'deployed').length)
+const searching = computed(() => search.value.trim().length > 0)
+
+function rosterEmptyTitle() {
+  if (error.value) return '名单加载失败'
+  if (searching.value) return '没有符合条件的学生'
+  return '名单中还没有学生'
+}
+
+function rosterEmptyHint() {
+  if (error.value) return '请稍后刷新重试。'
+  if (searching.value) return '试试调整关键词，或清除搜索查看全部名单。'
+  return props.editable ? '点击“添加学生”，将应考学生加入本场考试。' : '应考学生加入后会显示在这里。'
+}
 
 async function load(background = false) {
   const id = props.examId
@@ -261,14 +275,22 @@ watch(
     </div>
 
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
+    <p v-if="filtered.length" class="table-scroll-hint">横向滚动可查看更多列</p>
     <el-table
       ref="rosterTable"
       v-loading="loading"
       :data="filtered"
       row-key="studentUserId"
-      empty-text="名单中还没有学生"
+      empty-text=""
       @selection-change="rows => (selection = rows)"
     >
+      <template #empty>
+        <TableEmpty v-if="!loading" :title="rosterEmptyTitle()" :hint="rosterEmptyHint()">
+          <template v-if="searching && !error" #action>
+            <el-button @click="search = ''">清除搜索</el-button>
+          </template>
+        </TableEmpty>
+      </template>
       <el-table-column v-if="editable || (projectCount && deployable)" type="selection" reserve-selection width="46" />
       <el-table-column prop="name" label="学生" min-width="140">
         <template #default="{ row }">
@@ -437,6 +459,7 @@ watch(
 }
 
 @media (max-width: 640px) {
+  .roster-toolbar .search-box,
   .roster-toolbar .record-count {
     margin-left: 0;
     width: 100%;

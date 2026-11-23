@@ -1,5 +1,3 @@
-using System.Security.Claims;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,15 +18,16 @@ public sealed class BackupSpaceTests : IDisposable
         await using var db = Open(paths);
         var reads = 0;
 
-        var result = await OperationsEndpoints.CreateBackupAsync(paths, db,
-            new StorageOptions { BackupMinimumFreeBytes = 1024 }, new DefaultHttpContext(), path =>
+        var result = await BackupService.CreateAsync(paths, db,
+            new StorageOptions { BackupMinimumFreeBytes = 1024 }, "admin", "创建备份", path =>
             {
                 Assert.Equal(paths.Backups, path);
                 reads++;
                 return available;
-            });
+            }, CancellationToken.None);
 
-        Assert.Equal(507, ((IStatusCodeHttpResult)result).StatusCode);
+        Assert.Equal(507, result.StatusCode);
+        Assert.False(result.Success);
         Assert.Equal(expectedReads, reads);
         Assert.Equal(new[] { original }, Directory.GetFiles(paths.Backups));
         Assert.Equal("existing backup", await File.ReadAllTextAsync(original));
@@ -49,13 +48,11 @@ public sealed class BackupSpaceTests : IDisposable
         Assert.Equal(pageCount, await command.ExecuteScalarAsync());
 
         // Force a real SQLITE_FULL on the audit insert without filling the host volume.
-        var context = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, new string('x', 262_144))], "test"))
-        };
-        var result = await OperationsEndpoints.CreateBackupAsync(paths, db, new StorageOptions(), context, _ => long.MaxValue);
+        var result = await BackupService.CreateAsync(paths, db, new StorageOptions(),
+            new string('x', 262_144), "创建备份", _ => long.MaxValue, CancellationToken.None);
 
-        Assert.Equal(507, ((IStatusCodeHttpResult)result).StatusCode);
+        Assert.Equal(507, result.StatusCode);
+        Assert.False(result.Success);
         Assert.Empty(Directory.EnumerateFileSystemEntries(paths.Backups));
         Assert.Equal(0, await db.Audits.CountAsync());
     }
@@ -65,13 +62,13 @@ public sealed class BackupSpaceTests : IDisposable
     [InlineData(unchecked((int)0x80070027), true)]
     [InlineData(unchecked((int)0x80070005), false)]
     public void WindowsWriteCodesDistinguishFullDiskFromOtherIoFailures(int hresult, bool full)
-        => Assert.Equal(full, OperationsEndpoints.IsDiskFull(new IOException("test write failure", hresult)));
+        => Assert.Equal(full, BackupService.IsDiskFull(new IOException("test write failure", hresult)));
 
     [Fact]
     public void DirectoryProbeReadsAnExistingDirectoryAndRejectsMissingDirectories()
     {
-        Assert.True(OperationsEndpoints.AvailableFreeBytes(directory.FullName) is >= 0);
-        Assert.Null(OperationsEndpoints.AvailableFreeBytes(Path.Combine(directory.FullName, "missing")));
+        Assert.True(BackupService.AvailableFreeBytes(directory.FullName) is >= 0);
+        Assert.Null(BackupService.AvailableFreeBytes(Path.Combine(directory.FullName, "missing")));
     }
 
     private static SchoolDbContext Open(AppPaths paths)

@@ -8,7 +8,7 @@ namespace School.Training;
 public static class DatabaseSafety
 {
     public const int ApplicationId = 0x5354524E;
-    public const int SchemaVersion = 17;
+    public const int SchemaVersion = 18;
 
     public static async Task ValidateBackup(string path, string keysDirectory)
     {

@@ -36,6 +36,7 @@ const emit = defineEmits<{
   'web-console': [row: Row]
   action: [row: Row, key: string]
   reset: [row: Row]
+  'role-change': [row: Row, role: 'Admin' | 'Teacher']
   view: [row: Row]
   edit: [row: Row]
   remove: [row: Row]
@@ -146,6 +147,12 @@ function rowActions(row: Row): EntityRowAction[] {
     actions.push({ label: '分配账号', run: () => emit('action', row, 'accounts') })
   } else {
     if (props.isPeople) actions.push({ label: '重置密码', type: 'warning', run: () => emit('reset', row) })
+    if (props.entityKey === 'teachers') {
+      actions.push({ label: '设为管理员', run: () => emit('role-change', row, 'Admin') })
+    }
+    if (props.entityKey === 'admins') {
+      actions.push({ label: '改为教师', run: () => emit('role-change', row, 'Teacher') })
+    }
     actions.push({ label: '查看', run: () => emit('view', row) })
   }
   actions.push(

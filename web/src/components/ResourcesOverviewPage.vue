@@ -108,6 +108,11 @@ function enterCourse(course: Pick<CourseSummary, 'id'>) {
   emit('navigate', 'course-preview', { courseId: course.id, backKey: 'resources-overview' })
 }
 
+function goCourseLibrary() {
+  detailVisible.value = false
+  emit('navigate', 'courses')
+}
+
 async function openCourse(course: CourseSummary) {
   detailVisible.value = true
   detailLoading.value = true
@@ -129,7 +134,7 @@ onMounted(load)
   <section class="page-heading">
     <div>
       <h1>资源概览</h1>
-      <p>浏览已发布课程的章节、小节与学习资源，了解课程内容规模。</p>
+      <p>浏览已发布课程的章节、小节与资源。这里是课程预览，练习和实操不计入学习成绩；正式学习请进入「我的课堂」。</p>
     </div>
     <el-button :icon="Refresh" :loading="loading" @click="load">刷新目录</el-button>
   </section>
@@ -152,7 +157,9 @@ onMounted(load)
         </div>
       </article>
     </div>
-    <el-empty v-if="!series.length && !loading && !error" description="暂无已发布的专业核心课系列" />
+    <el-empty v-if="!series.length && !loading && !error" description="暂无已发布的专业核心课系列">
+      <p class="empty-hint">管理员发布专业核心课系列后，将在这里按系列浏览课程。</p>
+    </el-empty>
   </section>
   <section v-else class="surface">
     <header v-if="activeSeries" class="overview-toolbar">
@@ -223,7 +230,7 @@ onMounted(load)
           >
           <div class="catalog-actions">
             <el-button link :icon="View" @click="openCourse(course)">查看结构</el-button>
-            <el-button link type="primary" @click="enterCourse(course)">进入课程</el-button>
+            <el-button link type="primary" @click="enterCourse(course)">预览课程</el-button>
           </div>
         </div>
       </article>
@@ -264,13 +271,24 @@ onMounted(load)
       <div class="detail-summary">
         <el-tag size="small" effect="plain">{{ labelOf(courseTypeOptions, detail.type) }}</el-tag>
         <span>{{ detail.chapterCount }} 大章 · {{ detail.sectionCount }} 小节 · {{ detail.resourceCount }} 资源</span>
-        <el-button type="primary" size="small" @click="enterCourse(detail)">进入课程学习</el-button>
+        <el-button type="primary" size="small" @click="enterCourse(detail)">预览课程</el-button>
       </div>
       <p v-if="detail.description" class="detail-description">{{ detail.description }}</p>
       <p v-if="detail.remark" class="detail-remark">备注：{{ detail.remark }}</p>
 
       <div v-if="!detail.chapters.length" class="tree-loading">
-        <el-empty description="课程暂未配置章节" />
+        <el-empty description="课程暂未配置章节">
+          <p class="empty-hint">
+            {{
+              isStudent
+                ? '教师配置课程目录后，将在这里展示章节和资源。'
+                : role === 'Admin'
+                  ? '请先在课程管理中配置大章、小节和资源。'
+                  : '课程目录由管理员在课程管理中配置，完成后会显示在这里。'
+            }}
+          </p>
+          <el-button v-if="role === 'Admin'" type="primary" plain @click="goCourseLibrary">去课程管理</el-button>
+        </el-empty>
       </div>
       <div v-else class="catalog-tree">
         <section v-for="chapter in detail.chapters" :key="chapter.id" class="catalog-chapter">
@@ -289,9 +307,9 @@ onMounted(load)
                 <small v-if="resource.questionCount">{{ resource.questionCount }} 题</small>
               </li>
             </ul>
-            <p v-else class="tree-empty">本节暂无资源</p>
+            <p v-else class="tree-empty">本节尚未添加资源</p>
           </div>
-          <p v-if="!chapter.sections.length" class="tree-empty">本章暂无小节</p>
+          <p v-if="!chapter.sections.length" class="tree-empty">本章尚未添加小节</p>
         </section>
       </div>
     </template>

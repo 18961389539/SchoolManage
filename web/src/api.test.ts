@@ -1,7 +1,22 @@
-import { describe, expect, it } from 'vitest'
-import { ApiError, bytes, listItems, messageOf, passwordIssue } from './api'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ApiError, bytes, downloadFile, listItems, messageOf, passwordIssue } from './api'
+import { cancelPageReads } from './requestScope'
 
 const policyMessage = '密码须为 12–128 位，且同时包含字母和数字'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
+
+function stubBrowser() {
+  const anchor = { href: '', download: '', click: vi.fn(), remove: vi.fn() }
+  const append = vi.fn()
+  vi.stubGlobal('document', { createElement: vi.fn(() => anchor), body: { append } })
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test')
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  return { anchor, append }
+}
 
 describe('passwordIssue', () => {
   it('accepts 12–128 characters containing letters and digits', () => {
@@ -52,5 +67,57 @@ describe('messageOf', () => {
     expect(messageOf(new Error('boom'))).toBe('boom')
     expect(messageOf(new ApiError('服务不可用', 503))).toBe('服务不可用')
     expect(messageOf('nope')).toBe('操作失败，请稍后重试')
+  })
+})
+
+describe('downloadFile', () => {
+  it('saves the response under the given name and cleans up the object URL', async () => {
+    const { anchor, append } = stubBrowser()
+    const fetchMock = vi.fn(async () => new Response(new Blob(['data']), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await downloadFile('/exports/1', '统计.csv')
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/exports/1', expect.objectContaining({ credentials: 'same-origin' }))
+    expect(anchor.download).toBe('统计.csv')
+    expect(anchor.click).toHaveBeenCalled()
+    expect(append).toHaveBeenCalledWith(anchor)
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test')
+  })
+
+  it('reuses the shared error payload and trace id', async () => {
+    stubBrowser()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: '导出失败', traceId: 't1' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          })
+      )
+    )
+
+    await expect(downloadFile('/exports/1', 'x.csv')).rejects.toThrow('导出失败（追踪号 t1）')
+  })
+
+  it('keeps running when the operator leaves the page', async () => {
+    stubBrowser()
+    let signal: AbortSignal | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+        signal = init?.signal ?? undefined
+        return new Promise<Response>(resolve =>
+          setTimeout(() => resolve(new Response(new Blob(['x']), { status: 200 })), 10)
+        )
+      })
+    )
+
+    const pending = downloadFile('/exports/1', 'x.csv')
+    cancelPageReads()
+    await pending
+
+    expect(signal?.aborted).toBe(false)
   })
 })

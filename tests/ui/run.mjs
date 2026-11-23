@@ -7,7 +7,9 @@
  *
  * 前置：dotnet build src/School.Training && npm --prefix web run build
  */
-import { createChecker, ensureStudents, openBrowser, signInAdmin, signInStudent, startServer } from './harness.mjs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { createChecker, ensureStudents, loadAxe, openBrowser, openPage, root, signInAdmin, signInStudent, startServer, visit } from './harness.mjs'
 import * as routes from './suites/routes.mjs'
 import * as requests from './suites/requests.mjs'
 import * as pages from './suites/pages.mjs'
@@ -26,6 +28,7 @@ if (!selected.length) {
 }
 
 const checker = createChecker()
+const accessibility = { axeAvailable: false, pages: [], totalViolations: 0 }
 let server
 let browser
 let failure = null
@@ -37,6 +40,55 @@ try {
   const admin = await signInAdmin(server.base)
   const student = await signInStudent(server.base, admin)
   await ensureStudents(server.base, admin, 25)
+
+  // Accessibility findings are recorded and printed but never counted as suite failures.
+  const axePath = loadAxe()
+  if (axePath) {
+    accessibility.axeAvailable = true
+    // The app sends `script-src 'self'`; page.addScriptTag would be blocked. Playwright's
+    // evaluate runs through the debugger protocol, which is not subject to page CSP.
+    const axeSource = await readFile(axePath, 'utf8')
+    const targets = [
+      ['#/dashboard', '控制台'],
+      ['#/students', '学生管理'],
+      ['#/exams', '考试管理'],
+      ['#/audits', '操作日志']
+    ]
+    let view
+    try {
+      view = await openPage(browser, server.base, admin.jar)
+      for (const [hash, label] of targets) {
+        try {
+          await visit(view.page, server.base, hash, { wait: 300 })
+          await view.page.evaluate(axeSource)
+          const result = await view.page.evaluate(async () =>
+            await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] } })
+          )
+          const violations = result.violations.map(item => ({
+            id: item.id,
+            impact: item.impact,
+            help: item.help,
+            nodes: item.nodes.length
+          }))
+          const nodes = violations.reduce((sum, item) => sum + item.nodes, 0)
+          accessibility.pages.push({ page: hash, label, violations })
+          accessibility.totalViolations += nodes
+          console.log(`A11Y ${label}: ${violations.length} 类 / ${nodes} 个节点（仅报告）`)
+          for (const item of violations.slice(0, 3))
+            console.log(`  - ${item.id} (${item.impact || 'n/a'}) × ${item.nodes}: ${item.help}`)
+        } catch (error) {
+          accessibility.pages.push({ page: hash, label, error: String(error?.message || error) })
+          console.log(`A11Y ${label}: 扫描失败（仅报告） ${error?.message || error}`)
+        }
+      }
+    } catch (error) {
+      console.log(`A11Y 扫描未执行（仅报告）：${error?.message || error}`)
+    } finally {
+      await view?.context.close().catch(() => {})
+    }
+  } else {
+    console.log('未找到 axe-core，跳过无障碍扫描（npm install --prefix .local/e2e --no-save axe-core）')
+  }
 
   for (const suite of selected) {
     const started = Date.now()
@@ -56,6 +108,26 @@ try {
 }
 
 const { total, failed, labels } = checker.summary()
+const reportPath = process.env.UI_SUITE_REPORT_PATH ?? path.join(root, '.local/verification/ui-suite.json')
+await mkdir(path.dirname(reportPath), { recursive: true })
+await writeFile(
+  reportPath,
+  JSON.stringify(
+    {
+      status: failure || failed ? 'failed' : 'passed',
+      suites: selected.map(suite => suite.name),
+      total,
+      failed,
+      labels,
+      failure: failure ? String(failure.message || failure) : null,
+      accessibility,
+      completedAtUtc: new Date().toISOString()
+    },
+    null,
+    2
+  ) + '\n',
+  'utf8'
+)
 if (failure) {
   console.error(`\n运行失败：${failure.message || failure}`)
   process.exit(1)

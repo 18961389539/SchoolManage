@@ -18,6 +18,7 @@ import { api, post, messageOf, dateTime } from '../api'
 import { appState } from '../store'
 import type { AdminHomeResponse } from '../analytics'
 import type { BootstrapResult, DashboardResponse } from '../types'
+import TableEmpty from './TableEmpty.vue'
 const emit = defineEmits<{ navigate: [key: string] }>()
 const loading = ref(false),
   creating = ref(false),
@@ -40,7 +41,7 @@ const quickActions = [
 const resourceStats = computed(() => [
   { label: '专业目录', value: data.value?.counts.professions, route: 'professions' },
   { label: '机柜资源', value: data.value?.counts.cabinets, route: 'cabinets' },
-  { label: '集群节点', value: data.value?.counts.nodes, route: 'nodes' }
+  { label: '实训节点', value: data.value?.counts.nodes, route: 'nodes' }
 ])
 const todayMetrics = computed(() => {
   if (!admin.value) return []
@@ -61,6 +62,22 @@ const overviewMetrics = computed(() => {
     { label: '资源达标率', value: overview.resourcePassRate, unit: '%' }
   ]
 })
+
+const classCount = computed(() => data.value?.counts.classes ?? admin.value?.overview.managedClasses ?? 0)
+const teacherCount = computed(() => data.value?.counts.teachers ?? 0)
+
+const classRankingEmptyTitle = computed(() => (classCount.value ? '暂无班级学习数据' : '还没有教学班级'))
+const classRankingEmptyHint = computed(() =>
+  classCount.value
+    ? '学生加入课堂并开始学习后，将按达标率排序。'
+    : '先在班级管理中创建班级并分配学生，学习数据会出现在这里。'
+)
+const teacherActivityEmptyTitle = computed(() => (teacherCount.value ? '近 30 天暂无教师活跃记录' : '还没有教师档案'))
+const teacherActivityEmptyHint = computed(() =>
+  teacherCount.value
+    ? '教师管理课堂或进行系统操作后，会显示在这里。'
+    : '先在教师管理中创建教师档案，活跃情况会出现在这里。'
+)
 const isFresh = computed(() => {
   const counts = data.value?.counts
   return !!counts && !counts.students && !counts.teachers && !counts.classes && !counts.devices && !counts.professions
@@ -247,7 +264,12 @@ onMounted(load)
           <span class="rank-value">{{ item.passRate }}%</span>
         </div>
       </div>
-      <el-empty v-else description="暂无班级学习数据" :image-size="70" />
+      <el-empty v-else :description="classRankingEmptyTitle" :image-size="70">
+        <p class="empty-hint">{{ classRankingEmptyHint }}</p>
+        <el-button type="primary" plain @click="emit('navigate', classCount ? 'classrooms' : 'classes')">
+          {{ classCount ? '去课堂中心' : '去班级管理' }}
+        </el-button>
+      </el-empty>
     </section>
     <section class="surface">
       <div class="card-heading">
@@ -268,7 +290,10 @@ onMounted(load)
           </div>
         </li>
       </ul>
-      <el-empty v-else description="暂无教师数据" :image-size="70" />
+      <el-empty v-else :description="teacherActivityEmptyTitle" :image-size="70">
+        <p class="empty-hint">{{ teacherActivityEmptyHint }}</p>
+        <el-button type="primary" plain @click="emit('navigate', 'teachers')">去教师管理</el-button>
+      </el-empty>
     </section>
   </div>
   <section v-if="data" class="surface section-gap">
@@ -279,8 +304,15 @@ onMounted(load)
       </div>
       <el-button text type="primary" @click="emit('navigate', 'audits')">全部日志</el-button>
     </div>
-    <el-table :data="data.recentAudits || []" class="recent-table" empty-text="暂无操作记录"
-      ><el-table-column label="时间（北京时间）" width="220"
+    <el-table :data="data.recentAudits || []" class="recent-table" empty-text="">
+      <template #empty>
+        <TableEmpty title="暂无操作记录" hint="账号、资源和系统配置的关键操作发生后，会显示在这里。">
+          <template #action>
+            <el-button type="primary" plain @click="emit('navigate', 'audits')">查看全部日志</el-button>
+          </template>
+        </TableEmpty>
+      </template>
+      <el-table-column label="时间（北京时间）" width="220"
         ><template #default="{ row }">{{ dateTime(row.at) }}</template></el-table-column
       ><el-table-column prop="userName" label="账号" min-width="130" /><el-table-column
         prop="action"
@@ -525,6 +557,15 @@ onMounted(load)
 
 .scroll-hint {
   display: none;
+}
+
+.empty-hint {
+  max-width: 36ch;
+  margin: 0 auto 12px;
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 .start-guide {
   display: grid;
