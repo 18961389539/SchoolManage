@@ -2,7 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, Download, CircleCheck, Warning, Delete } from '@element-plus/icons-vue'
-import { api, post, messageOf, passwordIssue, ApiError, limits, maxUploadMegabytes, type Row } from '../api'
+import { api, post, messageOf, passwordIssue, ApiError, type Row } from '../api'
+import { appState, maxUploadMegabytes } from '../store'
 import type { ImportIssue, ImportJobState, ImportPreviewResponse, ImportRow, ImportStatusResponse } from '../types'
 const props = defineProps<{ modelValue: boolean; kind: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; committed: [] }>()
@@ -82,7 +83,7 @@ watch([removedInvalid, onlyInvalid], () => {
 async function chooseFile(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
-  if (file.size > limits.maxUploadBytes) {
+  if (file.size > appState.maxUploadBytes) {
     ElMessage.error(`文件大小不能超过 ${maxUploadMegabytes()} MB`)
     if (fileInput.value) fileInput.value.value = ''
     return

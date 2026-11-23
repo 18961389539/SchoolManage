@@ -1,3 +1,4 @@
+import { onScopeDispose, watch } from 'vue'
 import { normalizePageSize } from './paging'
 
 /**
@@ -58,7 +59,7 @@ export function readListState(
   }
 }
 
-export function writeListState(key: string, state: ListState, storage: WritableStorage = sessionStorage) {
+export function writeListState(key: string, state: Partial<ListState>, storage: WritableStorage = sessionStorage) {
   try {
     storage.setItem(storageKey(key), JSON.stringify(state))
   } catch {
@@ -76,4 +77,43 @@ export function clearListStates(storage: ClearableStorage = sessionStorage) {
   } catch {
     // Private browsing can deny storage access entirely.
   }
+}
+
+/**
+ * Keeps a list's search, filters and paging in session storage while the operator works.
+ * Writes are coalesced so typing does not hit storage per keystroke, and the last state is
+ * flushed when the page unmounts — otherwise a search typed just before navigating is lost.
+ * `key` may be a getter for pages that switch lists in place (entity tables, operations).
+ */
+export function useListPersist(
+  key: string | { value: string } | (() => string),
+  snapshot: () => Partial<ListState>,
+  delay = 250
+): () => void {
+  const currentKey = typeof key === 'string' ? () => key : typeof key === 'function' ? key : () => key.value
+  // A pending write keeps the key it was captured under: switching entity tables or
+  // operations screens must not file the previous list's filters under the new one.
+  const pending = new Map<string, Partial<ListState>>()
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  function flush() {
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      timer = undefined
+    }
+    for (const [pendingKey, state] of pending) writeListState(pendingKey, state)
+    pending.clear()
+  }
+
+  watch(snapshot, () => {
+    pending.set(currentKey(), snapshot())
+    if (timer !== undefined) clearTimeout(timer)
+    timer = setTimeout(flush, delay)
+  })
+
+  onScopeDispose(() => {
+    flush()
+    writeListState(currentKey(), snapshot())
+  })
+  return flush
 }

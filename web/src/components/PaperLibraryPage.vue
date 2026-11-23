@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Delete, EditPen, Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { examQuestionTypeLabel, examQuestionTypeOptions, optionLetters, selectedText, typeCountText } from '../exam'
 import type { ExamPaperDetail, ExamPaperQuestion, ExamPaperSummary, ExamQuestionSummary, Paged } from '../types'
 import QuestionBankSelect from './QuestionBankSelect.vue'
 import { focusFirstField } from '../focusField'
+import { useDiscardGuard } from '../discardGuard'
 
 const items = ref<ExamPaperSummary[]>([])
 const total = ref(0)
@@ -45,9 +46,12 @@ const editing = ref<ExamPaperSummary | null>(null)
 const saving = ref(false)
 const formError = ref('')
 const form = reactive({ name: '', description: '', remark: '' })
-const formBaseline = ref('')
-const formDirty = computed(() => JSON.stringify(form) !== formBaseline.value)
-
+const guard = useDiscardGuard({
+  visible: dialogVisible,
+  snapshot: () => form,
+  message: '试卷信息还没有保存，关闭后不会保留。',
+  busy: () => saving.value
+})
 const editorVisible = ref(false)
 const editorLoading = ref(false)
 const paper = ref<ExamPaperDetail | null>(null)
@@ -99,18 +103,15 @@ async function load() {
   }
 }
 
-function saveListState() {
-  writeListState(listKey, {
-    search: search.value,
-    filters: {},
-    page: page.value,
-    pageSize: pageSize.value
-  })
-}
+useListPersist(listKey, () => ({
+  search: search.value,
+  filters: {},
+  page: page.value,
+  pageSize: pageSize.value
+}))
 
 function applyFilters() {
   page.value = 1
-  saveListState()
   void load()
 }
 
@@ -119,15 +120,13 @@ function resetFilters() {
   applyFilters()
 }
 
-watch([page, pageSize], saveListState)
-
 function openCreate() {
   editing.value = null
   form.name = ''
   form.description = ''
   form.remark = ''
   formError.value = ''
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   dialogVisible.value = true
 }
 
@@ -137,31 +136,8 @@ function openEdit(item: ExamPaperSummary) {
   form.description = item.description
   form.remark = item.remark
   formError.value = ''
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   dialogVisible.value = true
-}
-
-async function confirmDiscardPaper() {
-  if (saving.value) return false
-  if (!formDirty.value) return true
-  try {
-    await ElMessageBox.confirm('试卷信息还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
-      type: 'warning',
-      confirmButtonText: '放弃修改',
-      cancelButtonText: '继续编辑'
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function handlePaperBeforeClose(done: () => void) {
-  if (await confirmDiscardPaper()) done()
-}
-
-async function cancelPaper() {
-  if (await confirmDiscardPaper()) dialogVisible.value = false
 }
 
 async function savePaper() {
@@ -438,7 +414,7 @@ onMounted(load)
     v-model="dialogVisible"
     :title="editing ? '编辑试卷' : '新建试卷'"
     width="min(620px, 94vw)"
-    :before-close="handlePaperBeforeClose"
+    :before-close="guard.beforeClose"
     @opened="focusPaperName"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
@@ -467,7 +443,7 @@ onMounted(load)
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="cancelPaper">取消</el-button>
+      <el-button @click="guard.cancel">取消</el-button>
       <el-button type="primary" :loading="saving" @click="savePaper">
         {{ editing ? '保存修改' : '创建试卷' }}
       </el-button>

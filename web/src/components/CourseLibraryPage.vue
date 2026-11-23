@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
+import { confirmReload, isStale } from '../stale'
 import { courseStatusOptions, courseTypeOptions, durationText, labelOf } from '../teaching'
-import type { CoreCourseSeries, CourseSummary, Paged } from '../types'
+import type { CoreCourseSeries, CourseDetail, CourseSummary, Paged } from '../types'
 import CourseTreeEditor from './CourseTreeEditor.vue'
 import TableEmpty from './TableEmpty.vue'
 import { focusFirstField } from '../focusField'
+import { useDiscardGuard } from '../discardGuard'
 
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>]; 'activation-changed': [] }>()
 
@@ -36,8 +38,12 @@ const editing = ref<CourseSummary | null>(null)
 const saving = ref(false)
 const formError = ref('')
 const form = reactive({ name: '', type: 'general', description: '', remark: '', seriesId: '' })
-const formBaseline = ref('')
-const formDirty = computed(() => JSON.stringify(form) !== formBaseline.value)
+const guard = useDiscardGuard({
+  visible: dialogVisible,
+  snapshot: () => form,
+  message: '课程信息还没有保存，关闭后不会保留。',
+  busy: () => saving.value
+})
 const series = ref<CoreCourseSeries[]>([])
 const seriesVisible = ref(false)
 const seriesForm = reactive({ id: '', name: '', description: '' })
@@ -123,18 +129,15 @@ async function load() {
   }
 }
 
-function saveListState() {
-  writeListState(listKey, {
-    search: search.value,
-    filters: { status: statusFilter.value, type: typeFilter.value },
-    page: page.value,
-    pageSize: pageSize.value
-  })
-}
+useListPersist(listKey, () => ({
+  search: search.value,
+  filters: { status: statusFilter.value, type: typeFilter.value },
+  page: page.value,
+  pageSize: pageSize.value
+}))
 
 function applyFilters() {
   page.value = 1
-  saveListState()
   void load()
 }
 
@@ -144,8 +147,6 @@ function resetFilters() {
   typeFilter.value = ''
   applyFilters()
 }
-
-watch([page, pageSize], saveListState)
 
 const filtering = computed(() => !!search.value.trim() || !!statusFilter.value || !!typeFilter.value)
 
@@ -157,7 +158,7 @@ function openCreate() {
   form.remark = ''
   form.seriesId = ''
   formError.value = ''
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   dialogVisible.value = true
 }
 
@@ -169,31 +170,8 @@ function openEdit(course: CourseSummary) {
   form.remark = course.remark
   form.seriesId = course.seriesId || ''
   formError.value = ''
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   dialogVisible.value = true
-}
-
-async function confirmDiscardCourse() {
-  if (saving.value) return false
-  if (!formDirty.value) return true
-  try {
-    await ElMessageBox.confirm('课程信息还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
-      type: 'warning',
-      confirmButtonText: '放弃修改',
-      cancelButtonText: '继续编辑'
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function handleCourseBeforeClose(done: () => void) {
-  if (await confirmDiscardCourse()) done()
-}
-
-async function cancelCourse() {
-  if (await confirmDiscardCourse()) dialogVisible.value = false
 }
 
 async function saveCourse() {
@@ -211,15 +189,31 @@ async function saveCourse() {
       remark: form.remark.trim(),
       seriesId: form.type === 'core' ? form.seriesId || null : null
     }
-    if (editing.value) await put(`/courses/${editing.value.id}`, payload)
+    if (editing.value) await put(`/courses/${editing.value.id}`, { ...payload, version: editing.value.version })
     else await post('/courses', payload)
     ElMessage.success(editing.value ? '课程已更新' : '课程已创建')
     dialogVisible.value = false
     await load()
   } catch (failure) {
     formError.value = messageOf(failure)
+    if (editing.value && isStale(failure)) {
+      const id = editing.value.id
+      saving.value = false
+      if (!(await confirmReload('课程'))) return
+      await reloadCourse(id)
+    }
   } finally {
     saving.value = false
+  }
+}
+
+/** Pulls the server copy back into the dialog after a 409, so a retry writes on a fresh base. */
+async function reloadCourse(id: string) {
+  try {
+    openEdit(await api<CourseDetail>(`/courses/${id}`))
+  } catch {
+    dialogVisible.value = false
+    ElMessage.warning('这门课程已被删除')
   }
 }
 
@@ -427,7 +421,7 @@ onMounted(() => {
     v-model="dialogVisible"
     :title="editing ? '编辑课程' : '新建课程'"
     width="min(620px, 94vw)"
-    :before-close="handleCourseBeforeClose"
+    :before-close="guard.beforeClose"
     @opened="focusNameInput"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
@@ -473,7 +467,7 @@ onMounted(() => {
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="cancelCourse">取消</el-button>
+      <el-button @click="guard.cancel">取消</el-button>
       <el-button type="primary" :loading="saving" @click="saveCourse">{{
         editing ? '保存修改' : '创建课程'
       }}</el-button>

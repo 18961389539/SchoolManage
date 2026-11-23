@@ -2,58 +2,31 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { ElMessage } from 'element-plus'
-import { api, messageOf, post, setLimits, setToken, type Row } from './api'
+import { api, messageOf, post, type Row } from './api'
 import { createAuthForm } from './auth'
-import { entities } from './entities'
 import { canLeave, hasLeaveGuard } from './leaveGuard'
-import { lazyPage } from './lazyPage'
-import { clearListStates } from './listState'
-import { findNavGroup, findNavItem, homeRoute, navigationFor } from './navigation'
+import { homeRoute, navigationFor } from './navigation'
+import { cancelPageReads } from './requestScope'
+import { createRoutes } from './routes'
 import { probeSession } from './session'
-import type { SessionResponse, SessionUser, StatusResponse } from './types'
+import { appState, applyServerInfo, applySession, signOut } from './store'
+import type { SessionResponse, StatusResponse } from './types'
 import AppSidebar from './components/AppSidebar.vue'
 import AuthView from './components/AuthView.vue'
 import ChangePasswordDialog from './components/ChangePasswordDialog.vue'
 import HelpDialog from './components/HelpDialog.vue'
+import RouteNotice from './components/RouteNotice.vue'
 import WorkspaceHeader from './components/WorkspaceHeader.vue'
-
-const EntityPage = lazyPage(() => import('./components/EntityPage.vue'))
-const DashboardPage = lazyPage(() => import('./components/DashboardPage.vue'))
-const OperationsPage = lazyPage(() => import('./components/OperationsPage.vue'))
-const MyResourcesPage = lazyPage(() => import('./components/MyResourcesPage.vue'))
-const CourseLibraryPage = lazyPage(() => import('./components/CourseLibraryPage.vue'))
-const ClassroomCenterPage = lazyPage(() => import('./components/ClassroomCenterPage.vue'))
-const MyClassroomsPage = lazyPage(() => import('./components/MyClassroomsPage.vue'))
-const ClassroomContentPage = lazyPage(() => import('./components/ClassroomContentPage.vue'))
-const StudentHomePage = lazyPage(() => import('./components/StudentHomePage.vue'))
-const TeacherHomePage = lazyPage(() => import('./components/TeacherHomePage.vue'))
-const SkillGraphPage = lazyPage(() => import('./components/SkillGraphPage.vue'))
-const StudentClassroomStatisticsPage = lazyPage(() => import('./components/StudentClassroomStatisticsPage.vue'))
-const ResourcesOverviewPage = lazyPage(() => import('./components/ResourcesOverviewPage.vue'))
-const ExamQuestionBanksPage = lazyPage(() => import('./components/ExamQuestionBanksPage.vue'))
-const PaperLibraryPage = lazyPage(() => import('./components/PaperLibraryPage.vue'))
-const ExamCenterPage = lazyPage(() => import('./components/ExamCenterPage.vue'))
-const MyExamsPage = lazyPage(() => import('./components/MyExamsPage.vue'))
-const ExamTakingPage = lazyPage(() => import('./components/ExamTakingPage.vue'))
-const ExamRecordsPage = lazyPage(() => import('./components/ExamRecordsPage.vue'))
-const CoursePreviewPage = lazyPage(() => import('./components/CoursePreviewPage.vue'))
-const CampPositionsPage = lazyPage(() => import('./components/CampPositionsPage.vue'))
-const MyCampPage = lazyPage(() => import('./components/MyCampPage.vue'))
-const CampTakingPage = lazyPage(() => import('./components/CampTakingPage.vue'))
-const CampHistoryPage = lazyPage(() => import('./components/CampHistoryPage.vue'))
-const CampReportsPage = lazyPage(() => import('./components/CampReportsPage.vue'))
-const CampRecordsPage = lazyPage(() => import('./components/CampRecordsPage.vue'))
-const CampMonitorPage = lazyPage(() => import('./components/CampMonitorPage.vue'))
-const ProfilePage = lazyPage(() => import('./components/ProfilePage.vue'))
 
 const startup = ref(true)
 const startupError = ref('')
-const user = ref<SessionUser | null>(null)
+const user = computed(() => appState.user)
 const initialized = ref(true)
 const busy = ref(false)
 const authError = ref('')
-const version = ref('')
-const schoolName = ref('校内实训资源平台')
+const authNotice = computed(() => authError.value || appState.authNotice)
+const version = computed(() => appState.version)
+const schoolName = computed(() => appState.schoolName)
 const route = ref('dashboard')
 const routeParams = ref<Row>({})
 const sidebarOpen = ref(false)
@@ -66,8 +39,6 @@ const initialCurrentPassword = ref('')
 const authForm = reactive(createAuthForm())
 
 const isAdmin = computed(() => user.value?.role === 'Admin')
-const isTeacher = computed(() => user.value?.role === 'Teacher')
-const isStudent = computed(() => user.value?.role === 'Student')
 const classroomsEnabled = ref(false)
 let classroomsRequest = 0
 const roleNavGroups = computed(() => navigationFor(user.value?.role))
@@ -80,48 +51,34 @@ const navGroups = computed(() =>
     .filter(group => group.items.length)
 )
 const homeKey = computed(() => homeRoute(user.value?.role))
-const sidebarActiveKey = computed(() => {
-  if (route.value === 'classroom-content') return isStudent.value ? 'my-classrooms' : 'classrooms'
-  if (route.value === 'classroom-statistics') return 'my-classrooms'
-  if (route.value === 'exam-taking') return 'my-exams'
-  if (route.value === 'course-preview') return 'resources-overview'
-  if (route.value === 'camp-taking') return 'my-camp'
-  return route.value
-})
-const availableRoutes = computed(
-  () =>
-    new Set([
-      ...roleNavGroups.value.flatMap(group => group.items.map(item => item.key)),
-      'classroom-content',
-      'classroom-statistics',
-      'exam-taking',
-      'course-preview',
-      'camp-taking',
-      'profile'
-    ])
+/**
+ * Every page is described once in routes.ts — component, roles, title, sidebar entry, group.
+ * Adding one is a single entry there, not a branch in this file.
+ */
+const routes = createRoutes({ navigate, openPassword, refreshClassrooms })
+/**
+ * A key that is not a page at all is a 404; a page this role cannot open is a 403. Neither
+ * falls back to the home page, because a silent redirect leaves the operator guessing.
+ */
+const access = computed(() => routes.access(route.value, user.value?.role))
+const noticeKind = computed(() => (access.value === 'forbidden' ? 'forbidden' : 'missing'))
+const view = computed(() =>
+  routes.view(route.value, {
+    key: route.value,
+    params: routeParams.value,
+    role: user.value?.role,
+    admin: isAdmin.value,
+    version: version.value
+  })
 )
+const routeLabel = computed(() => routes.label(route.value, user.value?.role))
 const currentTitle = computed(() => {
-  if (route.value === 'classroom-content') return '课堂学习'
-  if (route.value === 'classroom-statistics') return '课堂统计'
-  if (route.value === 'exam-taking') return '在线考试'
-  if (route.value === 'course-preview') return '课程预览'
-  if (route.value === 'camp-taking') return '岗位测评'
-  if (route.value === 'profile') return '个人中心'
-  return findNavItem(route.value, user.value?.role)?.label || '控制台'
+  if (access.value === 'missing') return '页面不存在'
+  if (access.value === 'forbidden') return '无权访问'
+  return routeLabel.value
 })
-function resolveGroup(key: string, role?: string): string {
-  const classroomGroup = findNavGroup(role === 'Student' ? 'my-classrooms' : 'classrooms', role)?.label || '教学中心'
-  const specialGroups: Record<string, string> = {
-    profile: '个人空间',
-    'classroom-content': classroomGroup,
-    'classroom-statistics': classroomGroup,
-    'exam-taking': findNavGroup('my-exams', role)?.label || '学习空间',
-    'course-preview': findNavGroup('resources-overview', role)?.label || '教学中心',
-    'camp-taking': findNavGroup('my-camp', role)?.label || '岗位训练营'
-  }
-  return specialGroups[key] || findNavGroup(key, role)?.label || '工作空间'
-}
-const currentGroup = computed(() => resolveGroup(route.value, user.value?.role))
+const sidebarActiveKey = computed(() => routes.navKey(route.value, user.value?.role))
+const currentGroup = computed(() => routes.group(route.value, user.value?.role))
 
 let committedHash = location.hash
 let approvedHash = ''
@@ -129,7 +86,7 @@ let approvedHash = ''
 function readRoute() {
   const wasOpen = sidebarOpen.value
   const [path, query] = location.hash.replace(/^#\/?/, '').split('?')
-  route.value = availableRoutes.value.has(path || '') ? path! : homeKey.value
+  route.value = path || homeKey.value
   routeParams.value = Object.fromEntries(new URLSearchParams(query || ''))
   sidebarOpen.value = false
   void nextTick(() => {
@@ -167,6 +124,10 @@ async function onHashChange() {
     return
   }
   committedHash = target
+  // Only a real page change abandons the previous page's reads. Re-entering the same page
+  // (sign-in lands on the hash it already rendered) must not cancel the load that just began.
+  const nextKey = target.replace(/^#\/?/, '').split('?')[0] || homeKey.value
+  if (nextKey !== route.value) cancelPageReads()
   readRoute()
 }
 
@@ -199,16 +160,14 @@ function resetDesktopNavigation(event: MediaQueryListEvent) {
 }
 
 function setSession(session: SessionResponse) {
-  if (user.value?.id !== session.user.id) classroomsEnabled.value = false
-  user.value = session.user
-  setToken(session.csrfToken || '')
+  if (appState.user?.id !== session.user.id) classroomsEnabled.value = false
+  applySession(session)
   passwordError.value = ''
   readRoute()
-  if (user.value?.mustChangePassword) {
+  if (session.user.mustChangePassword) {
     initialCurrentPassword.value = authForm.password
     passwordVisible.value = true
-  }
-  if (!user.value?.mustChangePassword) void refreshClassrooms()
+  } else void refreshClassrooms()
 }
 
 async function refreshClassrooms() {
@@ -216,7 +175,7 @@ async function refreshClassrooms() {
   const currentUserId = user.value?.id
   if (!currentUserId) return
   try {
-    const availability = await api<{ classrooms: boolean }>('/teaching/availability')
+    const availability = await api<{ classrooms: boolean }>('/teaching/availability', { pageScoped: false })
     if (request === classroomsRequest && user.value?.id === currentUserId)
       classroomsEnabled.value = availability.classrooms
   } catch {
@@ -230,9 +189,7 @@ async function boot() {
   try {
     const status = await api<StatusResponse>('/status')
     initialized.value = status.initialized
-    version.value = String(status.version || '未知')
-    setLimits(status)
-    if (status.schoolName) schoolName.value = status.schoolName
+    applyServerInfo(status)
     if (!status.initialized) return
     const outcome = await probeSession(() => api<SessionResponse>('/auth/me'))
     if (outcome.kind === 'authenticated') setSession(outcome.session)
@@ -244,9 +201,14 @@ async function boot() {
   }
 }
 
+function clearAuthNotice() {
+  authError.value = ''
+  appState.authNotice = ''
+}
+
 async function authenticate() {
   if (busy.value) return
-  authError.value = ''
+  clearAuthNotice()
   busy.value = true
   try {
     const result = await post<SessionResponse>(
@@ -261,7 +223,7 @@ async function authenticate() {
           }
     )
     setSession(result)
-    if (!initialized.value) schoolName.value = authForm.schoolName
+    if (!initialized.value) appState.schoolName = authForm.schoolName
     initialized.value = true
     authForm.password = ''
     authForm.confirmation = ''
@@ -277,9 +239,7 @@ async function logout() {
   if (hasLeaveGuard() && !(await canLeave())) return
   try {
     await post('/auth/logout')
-    user.value = null
-    setToken('')
-    clearListStates()
+    signOut()
     passwordVisible.value = false
     initialCurrentPassword.value = ''
     authForm.password = ''
@@ -310,23 +270,16 @@ async function changePassword(payload: { currentPassword: string; newPassword: s
   }
 }
 
-const onExpired = () => {
-  if (!user.value) return
-  user.value = null
-  setToken('')
-  clearListStates()
-  passwordVisible.value = false
-  passwordError.value = ''
-  initialCurrentPassword.value = ''
-  authError.value = '登录状态已失效，请重新登录。'
-}
-const onSchoolChanged = (event: Event) => {
-  schoolName.value = (event as CustomEvent).detail || schoolName.value
-}
-const onProfileUpdated = (event: Event) => {
-  const detail = (event as CustomEvent).detail
-  if (user.value && detail?.displayName) user.value.displayName = detail.displayName
-}
+/** The shell reacts to the store, not to window events a page had to remember to dispatch. */
+watch(
+  () => appState.user,
+  user => {
+    if (user) return
+    passwordVisible.value = false
+    passwordError.value = ''
+    initialCurrentPassword.value = ''
+  }
+)
 function dropdown(command: string) {
   if (command === 'profile') navigate('profile')
   else if (command === 'password') openPassword()
@@ -351,17 +304,11 @@ onMounted(() => {
   readRoute()
   mobileLayout.addEventListener('change', resetDesktopNavigation)
   window.addEventListener('hashchange', onHashChange)
-  window.addEventListener('session-expired', onExpired)
-  window.addEventListener('school-name-changed', onSchoolChanged)
-  window.addEventListener('profile-updated', onProfileUpdated)
   void boot()
 })
 onBeforeUnmount(() => {
   mobileLayout.removeEventListener('change', resetDesktopNavigation)
   window.removeEventListener('hashchange', onHashChange)
-  window.removeEventListener('session-expired', onExpired)
-  window.removeEventListener('school-name-changed', onSchoolChanged)
-  window.removeEventListener('profile-updated', onProfileUpdated)
 })
 </script>
 
@@ -388,9 +335,9 @@ onBeforeUnmount(() => {
       :school-name="schoolName"
       :version="version"
       :busy="busy"
-      :error="authError"
+      :error="authNotice"
       @submit="authenticate"
-      @edit="authError = ''"
+      @edit="clearAuthNotice"
     />
     <div v-else class="app-layout">
       <a class="skip-link" href="#main-content" :inert="sidebarOpen" @click.prevent="focusMain">跳到主要内容</a>
@@ -418,88 +365,8 @@ onBeforeUnmount(() => {
         />
         <main id="main-content" class="main-content" tabindex="-1">
           <template v-if="!user.mustChangePassword">
-            <DashboardPage v-if="route === 'dashboard' && isAdmin" @navigate="navigate" />
-            <StudentHomePage v-else-if="route === 'student-home' && isStudent" @navigate="navigate" />
-            <TeacherHomePage v-else-if="route === 'teacher-home' && isTeacher" @navigate="navigate" />
-            <SkillGraphPage
-              v-else-if="route === 'skill-graph' && (isStudent || isTeacher)"
-              :role="user.role"
-              :initial-student-id="routeParams.studentId"
-              @navigate="navigate"
-            />
-            <CourseLibraryPage
-              v-else-if="route === 'courses' && isAdmin"
-              @navigate="navigate"
-              @activation-changed="refreshClassrooms"
-            />
-            <CoursePreviewPage
-              v-else-if="route === 'course-preview'"
-              :key="routeParams.courseId || ''"
-              :course-id="routeParams.courseId || ''"
-              :back-key="routeParams.backKey || 'resources-overview'"
-              @navigate="navigate"
-            />
-            <ClassroomCenterPage
-              v-else-if="route === 'classrooms' && (isAdmin || isTeacher)"
-              :admin="isAdmin"
-              :initial-statistics-id="routeParams.statistics"
-              @navigate="navigate"
-            />
-            <MyClassroomsPage v-else-if="route === 'my-classrooms' && isStudent" @navigate="navigate" />
-            <ClassroomContentPage
-              v-else-if="route === 'classroom-content'"
-              :key="`${routeParams.classroomId || ''}-${routeParams.resourceId || ''}`"
-              :classroom-id="routeParams.classroomId || ''"
-              :resource-id="routeParams.resourceId"
-              :back-key="routeParams.backKey || (isStudent ? 'my-classrooms' : 'classrooms')"
-              @navigate="navigate"
-            />
-            <StudentClassroomStatisticsPage
-              v-else-if="route === 'classroom-statistics' && isStudent"
-              :key="routeParams.classroomId || ''"
-              :classroom-id="routeParams.classroomId || ''"
-              :back-key="routeParams.backKey || 'my-classrooms'"
-              @navigate="navigate"
-            />
-            <ExamQuestionBanksPage v-else-if="route === 'exam-questions' && isAdmin" />
-            <PaperLibraryPage v-else-if="route === 'exam-papers' && isAdmin" />
-            <ExamCenterPage v-else-if="route === 'exams' && (isAdmin || isTeacher)" :admin="isAdmin" />
-            <MyExamsPage v-else-if="route === 'my-exams' && isStudent" @navigate="navigate" />
-            <ExamTakingPage
-              v-else-if="route === 'exam-taking' && isStudent"
-              :key="routeParams.examId || ''"
-              :exam-id="routeParams.examId || ''"
-              @navigate="navigate"
-            />
-            <ExamRecordsPage
-              v-else-if="route === 'exam-records' && isStudent"
-              :key="routeParams.search || ''"
-              :initial-search="routeParams.search"
-              @navigate="navigate"
-            />
-            <ResourcesOverviewPage v-else-if="route === 'resources-overview'" :role="user.role" @navigate="navigate" />
-            <CampPositionsPage v-else-if="route === 'camp-positions' && isAdmin" />
-            <MyCampPage v-else-if="route === 'my-camp' && isStudent" @navigate="navigate" />
-            <CampTakingPage
-              v-else-if="route === 'camp-taking' && isStudent"
-              :key="routeParams.positionId || ''"
-              :position-id="routeParams.positionId || ''"
-              @navigate="navigate"
-            />
-            <CampHistoryPage v-else-if="route === 'camp-history' && isStudent" @navigate="navigate" />
-            <CampReportsPage v-else-if="route === 'camp-reports' && (isAdmin || isTeacher)" />
-            <CampRecordsPage v-else-if="route === 'camp-records' && (isAdmin || isTeacher)" />
-            <CampMonitorPage v-else-if="route === 'camp-monitor' && (isAdmin || isTeacher)" />
-            <ProfilePage v-else-if="route === 'profile'" @password="openPassword" />
-            <MyResourcesPage v-else-if="route === 'my-resources'" />
-            <EntityPage
-              v-else-if="isAdmin && entities[route]"
-              :entity-key="route"
-              :cabinet-id="routeParams.cabinetId"
-              @navigate="navigate"
-            />
-            <OperationsPage v-else-if="isAdmin" :page-key="route" :product-version="version" />
-            <el-empty v-else description="页面不存在或无权访问" />
+            <component :is="view.component" v-if="view" :key="view.mountKey" v-bind="view.props" v-on="view.on" />
+            <RouteNotice v-else :kind="noticeKind" :label="routeLabel" :requested="route" @home="navigate(homeKey)" />
           </template>
           <el-alert v-else title="请先修改初始密码，再访问平台功能。" type="info" show-icon :closable="false" />
         </main>

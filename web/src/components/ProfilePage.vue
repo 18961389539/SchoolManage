@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { Key, Refresh, UserFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api, messageOf, put } from '../api'
+import { appState } from '../store'
 import type { ProfileResponse } from '../types'
 
 const emit = defineEmits<{ password: [] }>()
@@ -62,9 +63,7 @@ async function save() {
     form.gender = data.gender
     form.phone = data.phone
     form.email = data.email
-    window.dispatchEvent(
-      new CustomEvent('profile-updated', { detail: { displayName: data.displayName, name: data.name } })
-    )
+    if (appState.user) appState.user.displayName = data.displayName
     ElMessage.success('个人信息已保存')
   } catch (failure) {
     error.value = messageOf(failure)

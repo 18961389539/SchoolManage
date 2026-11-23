@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Clock, Refresh, Search, Trophy } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import { campAttemptLabel, campAttemptStatusType } from '../camp'
 import { countdownText } from '../exam'
 import { durationText } from '../teaching'
@@ -18,9 +18,7 @@ const loading = ref(false)
 const error = ref('')
 const search = ref(readListState('my-camp').search)
 const now = ref(Date.now())
-watch(search, value => {
-  writeListState('my-camp', { search: value, filters: {}, page: 1, pageSize: 20 })
-})
+useListPersist('my-camp', () => ({ search: search.value, filters: {} }))
 const reportVisible = ref(false)
 const recordVisible = ref(false)
 const activeAttemptId = ref('')

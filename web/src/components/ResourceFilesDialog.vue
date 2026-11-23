@@ -2,7 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { Delete, Download, Files, Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, bytes, dateTime, del, limits, maxUploadMegabytes, messageOf, post, put } from '../api'
+import { api, bytes, dateTime, del, messageOf, post, put } from '../api'
+import { appState, maxUploadMegabytes } from '../store'
 import { downloadFile } from '../exam'
 import type { CourseResourceDetail, CourseResourceFile } from '../types'
 
@@ -50,7 +51,7 @@ async function uploadFile(event: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  if (file.size > limits.maxUploadBytes) {
+  if (file.size > appState.maxUploadBytes) {
     error.value = `附件不能超过 ${maxMegabytes}MB`
     return
   }

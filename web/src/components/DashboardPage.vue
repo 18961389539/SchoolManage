@@ -15,6 +15,7 @@ import {
   UserFilled
 } from '@element-plus/icons-vue'
 import { api, post, messageOf, dateTime } from '../api'
+import { appState } from '../store'
 import type { AdminHomeResponse } from '../analytics'
 import type { BootstrapResult, DashboardResponse } from '../types'
 const emit = defineEmits<{ navigate: [key: string] }>()
@@ -76,8 +77,7 @@ async function load() {
     data.value = dashboard
     admin.value = home
     updatedAt.value = new Date().toISOString()
-    if (data.value.schoolName)
-      window.dispatchEvent(new CustomEvent('school-name-changed', { detail: data.value.schoolName }))
+    if (data.value.schoolName) appState.schoolName = data.value.schoolName
   } catch (err) {
     error.value = messageOf(err)
   } finally {

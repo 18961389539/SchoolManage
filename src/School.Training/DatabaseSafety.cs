@@ -8,7 +8,7 @@ namespace School.Training;
 public static class DatabaseSafety
 {
     public const int ApplicationId = 0x5354524E;
-    public const int SchemaVersion = 16;
+    public const int SchemaVersion = 17;
 
     public static async Task ValidateBackup(string path, string keysDirectory)
     {
@@ -122,6 +122,8 @@ public static class DatabaseSafety
         if (version < 15 && (table, column) is ("ExamPracticalEnvironments", "VmUuid" or "DeploymentStatus" or "DeploymentMessage")) return false;
         if (version < 15 && (table == "CaseTopologyTemplates" || (table, column) is
             ("CourseResources" or "ClassroomCaseSessions", "TopologyBlueprintJson"))) return false;
+        // Pre-v17 backups and snapshots predate optimistic locking on the course tree.
+        if (version < 17 && column == "Version" && table is ("Courses" or "CourseChapters" or "CourseSections" or "CourseResources")) return false;
         if (table == "Devices" && column == "NodeId") return version >= 5;
         if (table == "ImportBatches" && column is "Status" or "RemoveInvalidRows" or "TotalCount" or "ProcessedCount"
             or "ImportedCount" or "RemovedCount" or "FailureMessage" or "QueuedAt" or "StartedAt" or "CompletedAt") return version >= 3;

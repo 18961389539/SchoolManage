@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import type { CampStaffReportRow, Paged } from '../types'
 import CampReportDrawer from './CampReportDrawer.vue'
@@ -40,29 +40,23 @@ async function load() {
   }
 }
 
-function saveListState() {
-  writeListState('camp-reports', {
-    search: search.value,
-    filters: {},
-    page: page.value,
-    pageSize: pageSize.value
-  })
-}
+useListPersist('camp-reports', () => ({
+  search: search.value,
+  filters: {},
+  page: page.value,
+  pageSize: pageSize.value
+}))
 
 function applySearch() {
   page.value = 1
-  saveListState()
   void load()
 }
 
 function resetSearch() {
   search.value = ''
   page.value = 1
-  saveListState()
   void load()
 }
-
-watch([page, pageSize], saveListState)
 
 function openReport(row: CampStaffReportRow) {
   activeAttemptId.value = row.attemptId

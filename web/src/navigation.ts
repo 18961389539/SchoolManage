@@ -147,3 +147,22 @@ export function findNavItem(key: string, role = 'Admin'): NavItem | undefined {
 export function findNavGroup(key: string, role = 'Admin'): NavGroup | undefined {
   return navigationFor(role).find(group => group.items.some(item => item.key === key))
 }
+
+/** Label lookup that ignores the signed-in role, for headers and routing notices. */
+export function findAnyNavItem(key: string): NavItem | undefined {
+  for (const groups of [navigation, teacherNavigation, studentNavigation])
+    for (const group of groups) {
+      const item = group.items.find(entry => entry.key === key)
+      if (item) return item
+    }
+  return undefined
+}
+
+/** Group lookup that ignores the signed-in role, so a 403 keeps the other role's breadcrumb. */
+export function findAnyNavGroup(key: string): NavGroup | undefined {
+  for (const groups of [navigation, teacherNavigation, studentNavigation]) {
+    const group = groups.find(entry => entry.items.some(item => item.key === key))
+    if (group) return group
+  }
+  return undefined
+}

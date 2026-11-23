@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { clearListStates, readListState, writeListState } from './listState'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { effectScope, nextTick, ref } from 'vue'
+import { clearListStates, readListState, useListPersist, writeListState } from './listState'
 
 class MemoryStorage {
   private data = new Map<string, string>()
@@ -90,5 +91,95 @@ describe('list state', () => {
     expect(readListState('students', storage).search).toBe('')
     expect(readListState('teachers', storage).search).toBe('')
     expect(storage.getItem('school-training:navigation-collapsed')).toBe('{}')
+  })
+})
+
+describe('list state persistence', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  function browserStorage() {
+    const storage = new MemoryStorage()
+    vi.stubGlobal('sessionStorage', storage)
+    return storage
+  }
+
+  function stored(storage: MemoryStorage, key: string) {
+    const raw = storage.getItem(`school-training:list:${key}`)
+    return raw ? JSON.parse(raw) : null
+  }
+
+  it('coalesces a burst of typing into one write', async () => {
+    vi.useFakeTimers()
+    const storage = browserStorage()
+    const search = ref('')
+    const scope = effectScope()
+    scope.run(() => useListPersist('students', () => ({ search: search.value, filters: { classId: 'c1' } })))
+
+    search.value = '张'
+    await nextTick()
+    search.value = '张三'
+    await nextTick()
+    search.value = '张三丰'
+    await nextTick()
+    expect(stored(storage, 'students')).toBeNull()
+
+    vi.advanceTimersByTime(250)
+    expect(stored(storage, 'students')).toEqual({ search: '张三丰', filters: { classId: 'c1' } })
+    scope.stop()
+  })
+
+  it('flushes the last state when the page unmounts', () => {
+    const storage = browserStorage()
+    const scope = effectScope()
+    scope.run(() => useListPersist('courses', () => ({ search: '网络', page: 2 })))
+    expect(stored(storage, 'courses')).toBeNull()
+    scope.stop()
+    expect(stored(storage, 'courses')).toEqual({ search: '网络', page: 2 })
+  })
+
+  it('writes under the key that is current at flush time', () => {
+    const storage = browserStorage()
+    const key = ref('students')
+    const scope = effectScope()
+    scope.run(() =>
+      useListPersist(
+        () => key.value,
+        () => ({ search: '李' })
+      )
+    )
+    key.value = 'teachers'
+    scope.stop()
+    expect(stored(storage, 'classes')).toBeNull()
+    expect(stored(storage, 'teachers')).toEqual({ search: '李' })
+  })
+
+  it('files a pending write under the list that produced it', async () => {
+    vi.useFakeTimers()
+    const storage = browserStorage()
+    const key = ref('students')
+    const search = ref('')
+    const scope = effectScope()
+    scope.run(() =>
+      useListPersist(
+        () => key.value,
+        () => ({ search: search.value })
+      )
+    )
+
+    search.value = '张三'
+    await nextTick()
+    // The operator switches entity tables before the debounce fires, and the incoming list
+    // resets the same refs.
+    key.value = 'teachers'
+    search.value = ''
+    await nextTick()
+
+    vi.advanceTimersByTime(250)
+    expect(stored(storage, 'students')).toEqual({ search: '张三' })
+    expect(stored(storage, 'teachers')).toEqual({ search: '' })
+    scope.stop()
   })
 })

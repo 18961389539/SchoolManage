@@ -27,6 +27,12 @@ public partial class SchoolDbContext
     {
         modelBuilder.Entity<TrainingCourse>().HasIndex(x => x.Name).IsUnique().HasDatabaseName("IX_Courses_Name");
         modelBuilder.Entity<TrainingCourse>().HasIndex(x => new { x.Status, x.Type }).HasDatabaseName("IX_Courses_Status_Type");
+        // Editing surface: the client sends back the version it loaded, and EF adds it to the
+        // UPDATE's WHERE clause so a write built on stale content cannot land.
+        modelBuilder.Entity<TrainingCourse>().Property(x => x.Version).IsConcurrencyToken();
+        modelBuilder.Entity<CourseChapter>().Property(x => x.Version).IsConcurrencyToken();
+        modelBuilder.Entity<CourseSection>().Property(x => x.Version).IsConcurrencyToken();
+        modelBuilder.Entity<CourseResource>().Property(x => x.Version).IsConcurrencyToken();
         modelBuilder.Entity<CoreCourseSeries>().HasIndex(x => x.Name).IsUnique();
         modelBuilder.Entity<CaseTopologyTemplate>().HasIndex(x => new { x.NodeId, x.Name }).IsUnique();
         modelBuilder.Entity<CaseTopologyTemplate>().HasOne<TrainingNode>().WithMany().HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Cascade);
@@ -106,6 +112,7 @@ public class TrainingCourse
     public DateTime? PublishedAt { get; set; }
     public bool IsActive { get; set; }
     public string? SeriesId { get; set; }
+    public int Version { get; set; }
 }
 
 public class CoreCourseSeries
@@ -121,6 +128,7 @@ public class CourseChapter
     public string CourseId { get; set; } = "";
     public string Name { get; set; } = "";
     public int SortOrder { get; set; }
+    public int Version { get; set; }
 }
 
 public class CourseSection
@@ -130,6 +138,7 @@ public class CourseSection
     public string Name { get; set; } = "";
     public int DurationMinutes { get; set; } = 30;
     public int SortOrder { get; set; }
+    public int Version { get; set; }
 }
 
 public class CourseResource
@@ -145,6 +154,7 @@ public class CourseResource
     public string CaseRubricJson { get; set; } = "[]";
     public string? StartupNodeId { get; set; }
     public int SortOrder { get; set; }
+    public int Version { get; set; }
 }
 
 public class CourseQuestion
@@ -218,10 +228,10 @@ public class PracticeAttempt
     public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
 }
 
-public sealed record CourseInput(string Name, string Type, string? Description = null, string? Remark = null, string? SeriesId = null);
-public sealed record ChapterInput(string Name);
-public sealed record SectionInput(string Name, int DurationMinutes = 30);
-public sealed record CourseResourceInput(string Name, string Kind, int DurationMinutes = 15, string? Content = null, string? Topology = null, string? StartupNodeId = null, CourseQuestionInput[]? Questions = null, CaseRubricItem[]? CaseRubric = null, CaseTopologyBlueprint? TopologyBlueprint = null);
+public sealed record CourseInput(string Name, string Type, string? Description = null, string? Remark = null, string? SeriesId = null, int? Version = null);
+public sealed record ChapterInput(string Name, int? Version = null);
+public sealed record SectionInput(string Name, int DurationMinutes = 30, int? Version = null);
+public sealed record CourseResourceInput(string Name, string Kind, int DurationMinutes = 15, string? Content = null, string? Topology = null, string? StartupNodeId = null, CourseQuestionInput[]? Questions = null, CaseRubricItem[]? CaseRubric = null, CaseTopologyBlueprint? TopologyBlueprint = null, int? Version = null);
 public sealed record CourseQuestionInput(string Type, string Stem, string[]? Options, int[]? Answers, int Score = 10, string? Analysis = null);
 public sealed record ClassroomInput(string Name, string CourseId, string? TeacherUserId, DateTime OpenAt, DateTime CloseAt, string[]? ClassIds = null, string[]? ProfessionIds = null, string[]? StudentUserIds = null);
 public sealed record ClassroomEnrollmentInput(string[]? ClassIds = null, string[]? ProfessionIds = null, string[]? StudentUserIds = null);

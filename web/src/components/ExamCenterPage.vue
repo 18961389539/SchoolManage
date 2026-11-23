@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { CircleClose, EditPen, MoreFilled, Plus, Refresh, Search, Tickets, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, del, messageOf, post, put } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { rangeText } from '../time'
 import { examStatusLabel, examStatusOptions, examStatusType } from '../exam'
@@ -17,6 +17,7 @@ import ExamScoresDrawer from './ExamScoresDrawer.vue'
 import ExamStatisticsDrawer from './ExamStatisticsDrawer.vue'
 import TableEmpty from './TableEmpty.vue'
 import { focusFirstField } from '../focusField'
+import { useDiscardGuard } from '../discardGuard'
 
 const props = defineProps<{ admin: boolean }>()
 
@@ -58,9 +59,12 @@ const form = reactive({
   classIds: [] as string[],
   professionIds: [] as string[]
 })
-const formBaseline = ref('')
-const formDirty = computed(() => JSON.stringify(form) !== formBaseline.value)
-
+const guard = useDiscardGuard({
+  visible: dialogVisible,
+  snapshot: () => form,
+  message: '考试信息还没有保存，关闭后不会保留。',
+  busy: () => saving.value
+})
 const activeExam = ref<TrainingExamSummary | null>(null)
 const rosterVisible = ref(false)
 const scoresVisible = ref(false)
@@ -116,18 +120,15 @@ async function loadOptions() {
   }
 }
 
-function saveListState() {
-  writeListState(listKey, {
-    search: search.value,
-    filters: { status: statusFilter.value },
-    page: page.value,
-    pageSize: pageSize.value
-  })
-}
+useListPersist(listKey, () => ({
+  search: search.value,
+  filters: { status: statusFilter.value },
+  page: page.value,
+  pageSize: pageSize.value
+}))
 
 function applyFilters() {
   page.value = 1
-  saveListState()
   void load()
 }
 
@@ -136,8 +137,6 @@ function resetFilters() {
   statusFilter.value = ''
   applyFilters()
 }
-
-watch([page, pageSize], saveListState)
 
 const filtering = computed(() => !!search.value.trim() || !!statusFilter.value)
 
@@ -165,7 +164,7 @@ function openCreate() {
   form.classIds = []
   form.professionIds = []
   formError.value = ''
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   dialogVisible.value = true
 }
 
@@ -197,31 +196,8 @@ function openEdit(item: TrainingExamSummary) {
   form.classIds = []
   form.professionIds = []
   formError.value = ''
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   dialogVisible.value = true
-}
-
-async function confirmDiscardExam() {
-  if (saving.value) return false
-  if (!formDirty.value) return true
-  try {
-    await ElMessageBox.confirm('考试信息还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
-      type: 'warning',
-      confirmButtonText: '放弃修改',
-      cancelButtonText: '继续编辑'
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function handleExamBeforeClose(done: () => void) {
-  if (await confirmDiscardExam()) done()
-}
-
-async function cancelExam() {
-  if (await confirmDiscardExam()) dialogVisible.value = false
 }
 
 async function saveExam() {
@@ -543,7 +519,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     v-model="dialogVisible"
     :title="editing ? '编辑考试' : '新建考试'"
     width="min(720px, 96vw)"
-    :before-close="handleExamBeforeClose"
+    :before-close="guard.beforeClose"
     @opened="focusNameInput"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
@@ -632,7 +608,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       />
     </el-form>
     <template #footer>
-      <el-button @click="cancelExam">取消</el-button>
+      <el-button @click="guard.cancel">取消</el-button>
       <el-button type="primary" :loading="saving" @click="saveExam">
         {{ editing ? '保存修改' : '创建考试' }}
       </el-button>

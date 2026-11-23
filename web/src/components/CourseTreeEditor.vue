@@ -4,6 +4,7 @@ import { Delete, EditPen, Files, Plus, UploadFilled } from '@element-plus/icons-
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, del, messageOf, post, put } from '../api'
 import { courseTypeOptions, durationText, labelOf, resourceKindOptions } from '../teaching'
+import { isStale } from '../stale'
 import type { CourseDetail, CourseResourceSummary } from '../types'
 import ImportResourcesDialog from './ImportResourcesDialog.vue'
 import ResourceEditorDialog from './ResourceEditorDialog.vue'
@@ -34,10 +35,10 @@ const error = ref('')
 
 const chapterDialog = ref(false)
 const chapterSaving = ref(false)
-const chapterForm = reactive({ id: '', name: '' })
+const chapterForm = reactive({ id: '', name: '', version: 0 })
 const sectionDialog = ref(false)
 const sectionSaving = ref(false)
-const sectionForm = reactive({ id: '', chapterId: '', name: '', durationMinutes: 30 })
+const sectionForm = reactive({ id: '', chapterId: '', name: '', durationMinutes: 30, version: 0 })
 const resourceDialog = ref(false)
 const editingSectionId = ref('')
 const editingResourceId = ref<string | undefined>()
@@ -78,12 +79,14 @@ async function reload() {
 function openChapterCreate() {
   chapterForm.id = ''
   chapterForm.name = ''
+  chapterForm.version = 0
   chapterDialog.value = true
 }
 
-function openChapterEdit(id: string, name: string) {
-  chapterForm.id = id
-  chapterForm.name = name
+function openChapterEdit(chapter: { id: string; name: string; version: number }) {
+  chapterForm.id = chapter.id
+  chapterForm.name = chapter.name
+  chapterForm.version = chapter.version
   chapterDialog.value = true
 }
 
@@ -94,16 +97,31 @@ async function saveChapter() {
   }
   chapterSaving.value = true
   try {
-    if (chapterForm.id) await put(`/chapters/${chapterForm.id}`, { name: chapterForm.name.trim() })
+    if (chapterForm.id)
+      await put(`/chapters/${chapterForm.id}`, { name: chapterForm.name.trim(), version: chapterForm.version })
     else await post(`/courses/${props.courseId}/chapters`, { name: chapterForm.name.trim() })
     ElMessage.success(chapterForm.id ? '大章已更新' : '大章已创建')
     chapterDialog.value = false
     await reload()
   } catch (failure) {
-    ElMessage.error(messageOf(failure))
+    if (isStale(failure)) await adoptLatestChapter()
+    else ElMessage.error(messageOf(failure))
   } finally {
     chapterSaving.value = false
   }
+}
+
+/** After a 409: keep the typed name, but rebase the dialog on the revision that won. */
+async function adoptLatestChapter() {
+  await reload()
+  const fresh = course.value?.chapters.find(chapter => chapter.id === chapterForm.id)
+  if (!fresh) {
+    chapterDialog.value = false
+    ElMessage.error('这个大章已被删除')
+    return
+  }
+  chapterForm.version = fresh.version
+  ElMessage.warning('大章已被其他人修改，已载入最新内容，请确认后再保存')
 }
 
 function openSectionCreate(chapterId: string) {
@@ -111,14 +129,19 @@ function openSectionCreate(chapterId: string) {
   sectionForm.chapterId = chapterId
   sectionForm.name = ''
   sectionForm.durationMinutes = 30
+  sectionForm.version = 0
   sectionDialog.value = true
 }
 
-function openSectionEdit(id: string, chapterId: string, name: string, durationMinutes: number) {
-  sectionForm.id = id
+function openSectionEdit(
+  section: { id: string; name: string; durationMinutes: number; version: number },
+  chapterId: string
+) {
+  sectionForm.id = section.id
   sectionForm.chapterId = chapterId
-  sectionForm.name = name
-  sectionForm.durationMinutes = durationMinutes
+  sectionForm.name = section.name
+  sectionForm.durationMinutes = section.durationMinutes
+  sectionForm.version = section.version
   sectionDialog.value = true
 }
 
@@ -129,17 +152,40 @@ async function saveSection() {
   }
   sectionSaving.value = true
   try {
-    const payload = { name: sectionForm.name.trim(), durationMinutes: sectionForm.durationMinutes }
+    const payload = {
+      name: sectionForm.name.trim(),
+      durationMinutes: sectionForm.durationMinutes,
+      version: sectionForm.version
+    }
     if (sectionForm.id) await put(`/sections/${sectionForm.id}`, payload)
-    else await post(`/chapters/${sectionForm.chapterId}/sections`, payload)
+    else
+      await post(`/chapters/${sectionForm.chapterId}/sections`, {
+        name: payload.name,
+        durationMinutes: payload.durationMinutes
+      })
     ElMessage.success(sectionForm.id ? '小节已更新' : '小节已创建')
     sectionDialog.value = false
     await reload()
   } catch (failure) {
-    ElMessage.error(messageOf(failure))
+    if (isStale(failure)) await adoptLatestSection()
+    else ElMessage.error(messageOf(failure))
   } finally {
     sectionSaving.value = false
   }
+}
+
+async function adoptLatestSection() {
+  await reload()
+  const fresh = course.value?.chapters
+    .flatMap(chapter => chapter.sections)
+    .find(section => section.id === sectionForm.id)
+  if (!fresh) {
+    sectionDialog.value = false
+    ElMessage.error('这个小节已被删除')
+    return
+  }
+  sectionForm.version = fresh.version
+  ElMessage.warning('小节已被其他人修改，已载入最新内容，请确认后再保存')
 }
 
 async function confirmDelete(message: string, title: string) {
@@ -249,7 +295,7 @@ async function deleteResource(id: string, name: string) {
             </div>
             <div class="tree-actions">
               <el-button link type="primary" :icon="Plus" @click="openSectionCreate(chapter.id)">新增小节</el-button>
-              <el-button link :icon="EditPen" @click="openChapterEdit(chapter.id, chapter.name)">编辑</el-button>
+              <el-button link :icon="EditPen" @click="openChapterEdit(chapter)">编辑</el-button>
               <el-button link type="danger" :icon="Delete" @click="deleteChapter(chapter.id, chapter.name)"
                 >删除</el-button
               >
@@ -265,13 +311,7 @@ async function deleteResource(id: string, name: string) {
               <div class="tree-actions">
                 <el-button link type="primary" :icon="Plus" @click="openResourceCreate(section.id)">新增资源</el-button>
                 <el-button link :icon="UploadFilled" @click="openImport(section.id, section.name)">导入资源</el-button>
-                <el-button
-                  link
-                  :icon="EditPen"
-                  @click="openSectionEdit(section.id, chapter.id, section.name, section.durationMinutes)"
-                >
-                  编辑
-                </el-button>
+                <el-button link :icon="EditPen" @click="openSectionEdit(section, chapter.id)"> 编辑 </el-button>
                 <el-button link type="danger" :icon="Delete" @click="deleteSection(section.id, section.name)"
                   >删除</el-button
                 >

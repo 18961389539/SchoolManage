@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import {
   ArrowLeft,
   Delete,
@@ -12,8 +12,9 @@ import {
   View
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ApiError, api, dateTime, del, limits, listItems, maxUploadMegabytes, messageOf, post, put } from '../api'
-import { readListState, writeListState } from '../listState'
+import { ApiError, api, dateTime, del, listItems, messageOf, post, put } from '../api'
+import { appState, maxUploadMegabytes } from '../store'
+import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { examQuestionTypeLabel, examQuestionTypeOptions, optionLetters } from '../exam'
 import { focusFirstField } from '../focusField'
@@ -30,6 +31,7 @@ import type { CaseRubricItem } from '../caseWork'
 import CaseRubricEditor from './CaseRubricEditor.vue'
 import QuestionBankSelect from './QuestionBankSelect.vue'
 import { bankAccepts, examQuestionBankLabels } from '../questionBanks'
+import { useDiscardGuard } from '../discardGuard'
 
 interface ImportPreview {
   bankType: ExamQuestionBank['type']
@@ -85,9 +87,12 @@ const form = reactive({
   practicalRubric: [] as CaseRubricItem[],
   practicalResources: ''
 })
-const formBaseline = ref('')
-const formDirty = computed(() => JSON.stringify(form) !== formBaseline.value)
-
+const guard = useDiscardGuard({
+  visible: dialogVisible,
+  snapshot: () => form,
+  message: '题目内容还没有保存，关闭后不会保留。',
+  busy: () => saving.value
+})
 const previewVisible = ref(false)
 const preview = ref<ExamQuestionDetail | null>(null)
 const previewLoading = ref(false)
@@ -146,18 +151,15 @@ async function load() {
   }
 }
 
-function saveListState() {
-  writeListState(listKey, {
-    search: search.value,
-    filters: { type: typeFilter.value },
-    page: page.value,
-    pageSize: pageSize.value
-  })
-}
+useListPersist(listKey, () => ({
+  search: search.value,
+  filters: { type: typeFilter.value },
+  page: page.value,
+  pageSize: pageSize.value
+}))
 
 function applyFilters() {
   page.value = 1
-  saveListState()
   void load()
 }
 
@@ -166,8 +168,6 @@ function resetFilters() {
   typeFilter.value = ''
   applyFilters()
 }
-
-watch([page, pageSize], saveListState)
 
 function resetAnswerState() {
   form.answers = []
@@ -212,7 +212,7 @@ function openCreate() {
   loadingPractical.value = false
   formError.value = ''
   changeType()
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   dialogVisible.value = true
 }
 
@@ -231,7 +231,7 @@ async function openEdit(question: ExamQuestionSummary) {
   form.practicalResources = ''
   loadingPractical.value = false
   formError.value = ''
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   dialogVisible.value = true
   if (question.type !== 'practical') return
   void loadNodes()
@@ -242,36 +242,12 @@ async function openEdit(question: ExamQuestionSummary) {
     form.practicalNodeId = detail.practicalNodeId || null
     form.practicalRubric = detail.practicalRubric
     form.practicalResources = detail.practicalResources
-    formBaseline.value = JSON.stringify(form)
+    guard.capture()
   } catch (failure) {
     if (editing.value?.id === question.id) formError.value = messageOf(failure)
   } finally {
     if (editing.value?.id === question.id) loadingPractical.value = false
   }
-}
-
-async function confirmDiscardQuestion() {
-  if (saving.value) return false
-  if (loadingPractical.value) return true
-  if (!formDirty.value) return true
-  try {
-    await ElMessageBox.confirm('题目内容还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
-      type: 'warning',
-      confirmButtonText: '放弃修改',
-      cancelButtonText: '继续编辑'
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function handleQuestionBeforeClose(done: () => void) {
-  if (await confirmDiscardQuestion()) done()
-}
-
-async function cancelQuestion() {
-  if (await confirmDiscardQuestion()) dialogVisible.value = false
 }
 
 function addOption() {
@@ -417,7 +393,7 @@ function chooseImportFile(event: Event) {
   importPreview.value = null
   previewPage.value = 1
   removedInvalidRows.value = false
-  if (file.size > limits.maxUploadBytes) {
+  if (file.size > appState.maxUploadBytes) {
     importError.value = `文件大小不能超过 ${maxUploadMegabytes()} MB`
     importFile.value = null
     importFileName.value = ''
@@ -618,7 +594,7 @@ onMounted(load)
     v-model="dialogVisible"
     :title="editing ? '编辑题目' : '新建题目'"
     width="min(760px, 96vw)"
-    :before-close="handleQuestionBeforeClose"
+    :before-close="guard.beforeClose"
     destroy-on-close
     @opened="focusQuestionForm"
   >
@@ -734,7 +710,7 @@ onMounted(load)
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="cancelQuestion">取消</el-button>
+      <el-button @click="guard.cancel">取消</el-button>
       <el-button type="primary" :loading="saving" @click="saveQuestion">
         {{ editing ? '保存修改' : '创建题目' }}
       </el-button>

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Delete, EditPen, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, listItems, messageOf, post, put } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import { durationText } from '../teaching'
 import { examQuestionTypeOptions } from '../exam'
 import CaseRubricEditor from './CaseRubricEditor.vue'
@@ -50,9 +50,7 @@ const nodes = ref<NodeRow[]>([])
 const loading = ref(false)
 const error = ref('')
 const search = ref(readListState('camp-positions').search)
-watch(search, value => {
-  writeListState('camp-positions', { search: value, filters: {}, page: 1, pageSize: 20 })
-})
+useListPersist('camp-positions', () => ({ search: search.value, filters: {} }))
 
 const dialogVisible = ref(false)
 const saving = ref(false)

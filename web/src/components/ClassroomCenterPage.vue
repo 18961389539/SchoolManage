@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { MoreFilled, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, del, messageOf, post, put } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { rangeText } from '../time'
 import {
@@ -31,6 +31,7 @@ import ClassroomCaseMonitorDrawer from './ClassroomCaseMonitorDrawer.vue'
 import ClassroomStudentPicker from './ClassroomStudentPicker.vue'
 import TableEmpty from './TableEmpty.vue'
 import { focusFirstField } from '../focusField'
+import { useDiscardGuard } from '../discardGuard'
 
 const props = defineProps<{ admin: boolean; initialStatisticsId?: string }>()
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>] }>()
@@ -75,9 +76,12 @@ const form = reactive({
   professionIds: [] as string[],
   studentUserIds: [] as string[]
 })
-const formBaseline = ref('')
-const formDirty = computed(() => JSON.stringify(form) !== formBaseline.value)
-
+const guard = useDiscardGuard({
+  visible: dialogVisible,
+  snapshot: () => form,
+  message: '课堂信息还没有保存，关闭后不会保留。',
+  busy: () => saving.value
+})
 const rosterVisible = ref(false)
 const rosterLoading = ref(false)
 const rosterError = ref('')
@@ -176,18 +180,15 @@ async function loadTeachingClasses() {
   }
 }
 
-function saveListState() {
-  writeListState('classrooms', {
-    search: search.value,
-    filters: { status: statusFilter.value },
-    page: page.value,
-    pageSize: pageSize.value
-  })
-}
+useListPersist('classrooms', () => ({
+  search: search.value,
+  filters: { status: statusFilter.value },
+  page: page.value,
+  pageSize: pageSize.value
+}))
 
 function applyFilters() {
   page.value = 1
-  saveListState()
   void load()
 }
 
@@ -196,8 +197,6 @@ function resetFilters() {
   statusFilter.value = ''
   applyFilters()
 }
-
-watch([page, pageSize], saveListState)
 
 const filtering = computed(() => !!search.value.trim() || !!statusFilter.value)
 
@@ -225,7 +224,7 @@ function resetForm() {
 function openCreate() {
   editing.value = null
   resetForm()
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   dialogVisible.value = true
 }
 
@@ -249,31 +248,8 @@ function openEdit(item: ClassroomSummary) {
   form.professionIds = []
   form.studentUserIds = []
   formError.value = ''
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   dialogVisible.value = true
-}
-
-async function confirmDiscardClassroom() {
-  if (saving.value) return false
-  if (!formDirty.value) return true
-  try {
-    await ElMessageBox.confirm('课堂信息还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
-      type: 'warning',
-      confirmButtonText: '放弃修改',
-      cancelButtonText: '继续编辑'
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function handleClassroomBeforeClose(done: () => void) {
-  if (await confirmDiscardClassroom()) done()
-}
-
-async function cancelClassroom() {
-  if (await confirmDiscardClassroom()) dialogVisible.value = false
 }
 
 async function saveClassroom() {
@@ -638,7 +614,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     v-model="dialogVisible"
     :title="editing ? '编辑课堂' : '新建课堂'"
     width="min(680px, 94vw)"
-    :before-close="handleClassroomBeforeClose"
+    :before-close="guard.beforeClose"
     @opened="focusNameInput"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
@@ -719,7 +695,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       />
     </el-form>
     <template #footer>
-      <el-button @click="cancelClassroom">取消</el-button>
+      <el-button @click="guard.cancel">取消</el-button>
       <el-button type="primary" :loading="saving" @click="saveClassroom">{{
         editing ? '保存修改' : '创建课堂'
       }}</el-button>

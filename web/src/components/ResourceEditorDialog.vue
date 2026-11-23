@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { Delete, Plus, UploadFilled } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { api, listItems, messageOf, post, put } from '../api'
+import { confirmReload, isStale } from '../stale'
 import { durationText, questionTypeOptions, resourceKindOptions } from '../teaching'
 import type { CourseQuestion, CourseResourceDetail, NodeRow, QuestionType, ResourceKind } from '../types'
 import QuestionImportDialog from './QuestionImportDialog.vue'
@@ -10,6 +11,7 @@ import CaseRubricEditor from './CaseRubricEditor.vue'
 import CaseTopologyEditor from './CaseTopologyEditor.vue'
 import type { CaseRubricItem, CaseTopologyBlueprint } from '../caseWork'
 import { focusFirstField } from '../focusField'
+import { useDiscardGuard } from '../discardGuard'
 
 const visible = defineModel<boolean>({ required: true })
 const props = defineProps<{ sectionId: string; resourceId?: string }>()
@@ -43,8 +45,13 @@ const form = reactive({
 })
 const importVisible = ref(false)
 const selectedQuestions = ref<EditableQuestion[]>([])
-const baseline = ref('')
-const dirty = computed(() => JSON.stringify(form) !== baseline.value)
+const guard = useDiscardGuard({
+  visible: visible,
+  snapshot: () => form,
+  message: '资源内容还没有保存，关闭后这些修改不会保留。',
+  busy: () => saving.value
+})
+const version = ref(0)
 const topologyId = ref('')
 const topologies = ref<{ id: string; name: string; topology: string }[]>([])
 const environmentDevices = ref<{ id: string; name: string; interfaces: string[] }[]>([])
@@ -100,6 +107,7 @@ function newQuestion(): EditableQuestion {
 
 function resetForm() {
   selectedQuestions.value = []
+  version.value = 0
   form.name = ''
   form.kind = 'theory'
   form.durationMinutes = 15
@@ -140,6 +148,7 @@ async function load() {
     void loadNodes()
     if (!props.resourceId) {
       resetForm()
+      guard.capture()
       return
     }
     const detail = await api<CourseResourceDetail>(`/resources/${props.resourceId}`)
@@ -152,37 +161,16 @@ async function load() {
     form.startupNodeId = detail.startupNodeId || null
     form.questions = detail.questions.map(fromQuestion)
     form.caseRubric = detail.caseRubric
+    version.value = detail.version
+    // Captured only after a successful load: a failed request must not file the half-empty
+    // form as the saved state the operator would silently lose.
+    guard.capture()
   } catch (failure) {
     error.value = messageOf(failure)
   } finally {
     loading.value = false
-    baseline.value = JSON.stringify(form)
     if (visible.value) focusResourceForm()
   }
-}
-
-async function confirmDiscard() {
-  if (saving.value) return false
-  if (loading.value) return true
-  if (!dirty.value) return true
-  try {
-    await ElMessageBox.confirm('资源内容还没有保存，关闭后这些修改不会保留。', '放弃未保存的修改？', {
-      type: 'warning',
-      confirmButtonText: '放弃修改',
-      cancelButtonText: '继续编辑'
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function handleBeforeClose(done: () => void) {
-  if (await confirmDiscard()) done()
-}
-
-async function cancel() {
-  if (await confirmDiscard()) visible.value = false
 }
 
 watch(
@@ -344,7 +332,8 @@ async function save() {
             score: question.score,
             analysis: question.analysis.trim()
           }))
-        : []
+        : [],
+      version: version.value
     }
     if (props.resourceId) await put(`/resources/${props.resourceId}`, payload)
     else await post(`/sections/${props.sectionId}/resources`, payload)
@@ -353,6 +342,10 @@ async function save() {
     visible.value = false
   } catch (failure) {
     error.value = messageOf(failure)
+    if (props.resourceId && isStale(failure)) {
+      saving.value = false
+      if (await confirmReload('资源')) await load()
+    }
   } finally {
     saving.value = false
   }
@@ -364,7 +357,7 @@ async function save() {
     v-model="visible"
     :title="title"
     width="min(920px, 96vw)"
-    :before-close="handleBeforeClose"
+    :before-close="guard.beforeClose"
     destroy-on-close
     @opened="focusResourceForm"
   >
@@ -577,7 +570,7 @@ async function save() {
       </template>
     </el-form>
     <template #footer>
-      <el-button @click="cancel">取消</el-button>
+      <el-button @click="guard.cancel">取消</el-button>
       <el-button type="primary" :loading="saving" :disabled="loading" @click="save">
         {{ props.resourceId ? '保存修改' : '创建资源' }}
       </el-button>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Collection, Document, Refresh, Search, View } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { courseTypeOptions, durationText, labelOf, resourceKindOptions } from '../teaching'
 import type { CoreCourseSeries, CourseDetail, CourseSummary, Paged } from '../types'
@@ -86,18 +86,15 @@ function selectSeries(item: CoreCourseSeries | null) {
   resetFilters()
 }
 
-function saveListState() {
-  writeListState(listKey, {
-    search: search.value,
-    filters: { type: typeFilter.value, view: view.value, seriesId: activeSeries.value?.id || '' },
-    page: page.value,
-    pageSize: pageSize.value
-  })
-}
+useListPersist(listKey, () => ({
+  search: search.value,
+  filters: { type: typeFilter.value, view: view.value, seriesId: activeSeries.value?.id || '' },
+  page: page.value,
+  pageSize: pageSize.value
+}))
 
 function applyFilters() {
   page.value = 1
-  saveListState()
   void load()
 }
 
@@ -106,8 +103,6 @@ function resetFilters() {
   typeFilter.value = ''
   applyFilters()
 }
-
-watch([page, pageSize], saveListState)
 
 function enterCourse(course: Pick<CourseSummary, 'id'>) {
   emit('navigate', 'course-preview', { courseId: course.id, backKey: 'resources-overview' })

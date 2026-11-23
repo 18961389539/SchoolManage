@@ -4,6 +4,8 @@ All JSON properties camelCase. Base URL `/api`. Errors use `{message, errors?, t
 
 Every endpoint binds the client disconnect signal (`HttpContext.RequestAborted`) to its database reads, writes, lock waits and file or backup I/O; a browser that cancels a request also stops the server-side work instead of leaving a query or an admin-lock waiter running. Single-row primary-key lookups may omit the token because they are bounded and immediate.
 
+The web client gives a request 60 s — 10 min for uploads — and reports a timeout instead of spinning forever; operations the server may legitimately spend minutes on (backup creation, Hyper-V power) opt out explicitly. Changing page cancels that page's in-flight reads and never its writes, so a form save or an exam answer already on the wire still lands.
+
 Frontend response contracts live in `web/src/types.ts`. `api<T>`, `post<T>` and `put<T>` have no `any` default, so each call site must name the expected payload; `Row` is reserved for runtime-configured entity forms and tables.
 
 ## Setup and session
@@ -65,6 +67,11 @@ Frontend response contracts live in `web/src/types.ts`. `api<T>`, `post<T>` and 
 - GET `/licenses`: signed license metadata, machine code and five quota rows `{code,name,used,limit}`. `limit:null` means the dimension has never been enabled. `limit:0` forbids new allocation for that dimension.
 - POST `/licenses`: multipart `file` accepts 1–20 signed files, atomically. Resource codes `TRAINING.CABINETS`, `TRAINING.DEVICES`, `TRAINING.NODES`, `TRAINING.VMS` and `TRAINING.ASSIGNMENTS` enable corresponding limits. The highest currently valid grant determines the cap. Expired, corrupted or unverifiable grants give no capacity. Administrators can still manage and remove existing records. Legacy records remain readable and can be re-uploaded with the original signature to activate limits.
 - GET `/licenses/guide`: download usage and quota code instructions.
+
+## Editing conflicts (course content)
+- GET `/courses`, `/courses/{id}` and `/resources/{id}` return `version` for the course, every chapter/section/resource node and the resource detail.
+- PUT `/courses/{id}`, `/chapters/{id}`, `/sections/{id}` and `/resources/{id}` require the `version` the client loaded. A missing value is 400; a value that no longer matches — or a save that loses the race at the storage layer — is 409 `{message, code:"stale"}`. A successful write increments `version` by one.
+- The web client reads `code:"stale"` as "someone else saved first" and reloads the server copy instead of overwriting it; any other 409 keeps its business meaning (duplicate name, resource already in use).
 
 ## UI principles
 Chinese UI, navy sidebar / crisp light workspace, accessible text, actual counts and empty states. No fake demo data, misleading connection states, or controls that silently do nothing. Show actionable API errors. Reusable searchable tables, form validation, explicit destructive confirmation. Sensitive inputs blank on edit means unchanged; never repopulate secrets.

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ArrowLeft, Refresh, Search } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { attemptStatusLabel, attemptStatusType } from '../exam'
 import type { ExamRecordSummary, Paged } from '../types'
@@ -63,19 +63,16 @@ async function load(silent = false) {
   }
 }
 
-function saveListState() {
-  writeListState(listKey, {
-    search: appliedSearch.value,
-    filters: {},
-    page: page.value,
-    pageSize: pageSize.value
-  })
-}
+useListPersist(listKey, () => ({
+  search: appliedSearch.value,
+  filters: {},
+  page: page.value,
+  pageSize: pageSize.value
+}))
 
 function applySearch() {
   appliedSearch.value = search.value.trim()
   page.value = 1
-  saveListState()
   void load()
 }
 
@@ -83,8 +80,6 @@ function resetSearch() {
   search.value = ''
   applySearch()
 }
-
-watch([page, pageSize], saveListState)
 
 function scorePercent(record: ExamRecordSummary) {
   return record.maxScore ? Math.round((record.totalScore * 100) / record.maxScore) : 0

@@ -190,6 +190,8 @@ export interface CourseSummary {
   publishedAt: string | null
   isActive: boolean
   seriesId: string | null
+  /** Revision the editor must echo back; a mismatch means someone else saved first. */
+  version: number
   chapterCount: number
   sectionCount: number
   resourceCount: number
@@ -213,6 +215,7 @@ export interface CourseResourceSummary {
   kind: ResourceKind
   durationMinutes: number
   sortOrder: number
+  version: number
   startupNodeId?: string | null
   questionCount: number
   fileCount?: number
@@ -234,6 +237,7 @@ export interface CourseSectionNode {
   name: string
   durationMinutes: number
   sortOrder: number
+  version: number
   resources: CourseResourceSummary[]
 }
 
@@ -241,6 +245,7 @@ export interface CourseChapterNode {
   id: string
   name: string
   sortOrder: number
+  version: number
   sections: CourseSectionNode[]
 }
 
@@ -391,6 +396,7 @@ export interface CourseResourceDetail {
   topologyBlueprint: CaseTopologyBlueprint | null
   startupNodeId: string | null
   sortOrder: number
+  version: number
   questions: CourseQuestion[]
   files: CourseResourceFile[]
   caseRubric: CaseRubricItem[]
@@ -458,7 +464,7 @@ export interface LearningRecord {
   completedAt: string | null
 }
 
-export interface ClassroomResource extends CourseResourceSummary {
+export interface ClassroomResource extends Omit<CourseResourceSummary, 'version'> {
   content: string
   topology: string
   maxScore: number
@@ -467,11 +473,11 @@ export interface ClassroomResource extends CourseResourceSummary {
   questions: CourseQuestion[]
 }
 
-export interface ClassroomSection extends Omit<CourseSectionNode, 'resources'> {
+export interface ClassroomSection extends Omit<CourseSectionNode, 'resources' | 'version'> {
   resources: ClassroomResource[]
 }
 
-export interface ClassroomChapter extends Omit<CourseChapterNode, 'sections'> {
+export interface ClassroomChapter extends Omit<CourseChapterNode, 'sections' | 'version'> {
   sections: ClassroomSection[]
 }
 

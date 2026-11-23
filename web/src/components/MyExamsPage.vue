@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Clock, Document, Monitor, Refresh, Search, Tickets } from '@element-plus/icons-vue'
 import { api, messageOf } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import {
   attemptStatusLabel,
   attemptStatusType,
@@ -77,14 +77,7 @@ function clearFilters() {
   statusFilter.value = ''
 }
 
-watch([search, statusFilter], () => {
-  writeListState('my-exams', {
-    search: search.value,
-    filters: { status: statusFilter.value },
-    page: 1,
-    pageSize: 20
-  })
-})
+useListPersist('my-exams', () => ({ search: search.value, filters: { status: statusFilter.value } }))
 
 const filtering = computed(() => !!search.value.trim() || !!statusFilter.value)
 

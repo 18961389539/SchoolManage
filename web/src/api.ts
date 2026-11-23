@@ -1,19 +1,7 @@
+import { pageLeft, trackPageRead } from './requestScope'
+import { appState, expireSession } from './store'
+
 export type Row = Record<string, any>
-let token = ''
-export const setToken = (value: string) => {
-  token = value || ''
-}
-/**
- * Server-declared limits, read from `/api/status` at boot. The 16 MB default only covers the
- * first render before the status response arrives; the server value always wins so the
- * browser cannot refuse a file the server would accept (or the reverse).
- */
-export const limits = { maxUploadBytes: 16 * 1024 * 1024 }
-export const setLimits = (status: { maxUploadBytes?: number }) => {
-  if (typeof status.maxUploadBytes === 'number' && status.maxUploadBytes > 0)
-    limits.maxUploadBytes = status.maxUploadBytes
-}
-export const maxUploadMegabytes = () => Math.round(limits.maxUploadBytes / (1024 * 1024))
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -23,11 +11,41 @@ export class ApiError extends Error {
     super(message)
   }
 }
+export interface ApiOptions extends RequestInit {
+  /**
+   * Milliseconds before the request is abandoned. 0 waits indefinitely — reserve it for
+   * operations the server may legitimately spend minutes on (backups, VM power, uploads).
+   */
+  timeoutMs?: number
+  /**
+   * Reads are cancelled when the operator changes page; set false for app-level reads whose
+   * result still matters after navigation (menu availability, session probe).
+   */
+  pageScoped?: boolean
+}
+const defaultTimeoutMs = 60_000
+const uploadTimeoutMs = 10 * 60_000
+const timedOut = { reason: 'timeout' }
+
+function requestTimeout(init: RequestInit, override?: number): number {
+  if (override !== undefined) return override
+  const isUpload = typeof FormData !== 'undefined' && init.body instanceof FormData
+  return isUpload ? uploadTimeoutMs : defaultTimeoutMs
+}
+/** Mirror an optional caller signal onto our controller so `fetch` only listens to one. */
+function relayAbort(controller: AbortController, external?: AbortSignal | null): () => void {
+  if (!external) return () => {}
+  const relay = () => controller.abort(external.reason)
+  if (external.aborted) controller.abort(external.reason)
+  else external.addEventListener('abort', relay, { once: true })
+  return () => external.removeEventListener('abort', relay)
+}
+const readMethods = new Set(['GET', 'HEAD'])
 function buildHeaders(options: RequestInit): Headers {
   const headers = new Headers(options.headers)
   if (!(options.body instanceof FormData) && options.body) headers.set('Content-Type', 'application/json')
-  if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase()) && token)
-    headers.set('X-CSRF-TOKEN', token)
+  if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase()) && appState.csrfToken)
+    headers.set('X-CSRF-TOKEN', appState.csrfToken)
   return headers
 }
 async function readBody(response: Response): Promise<any> {
@@ -44,14 +62,40 @@ function describeError(body: any, status: number): string {
   return message
 }
 // T has no `any` default on purpose: callers must name the response contract.
-export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await send(`/api${path}`, { ...options, headers: buildHeaders(options), credentials: 'same-origin' })
-  const body = await readBody(response)
-  if (!response.ok) {
-    if (response.status === 401) window.dispatchEvent(new CustomEvent('session-expired'))
-    throw new ApiError(describeError(body, response.status), response.status, body)
+export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  const { timeoutMs, pageScoped, ...init } = options
+  const isRead = readMethods.has((init.method ?? 'GET').toUpperCase())
+  const limit = requestTimeout(init, timeoutMs)
+  // One controller carries both the caller's cancellation and our deadline.
+  const controller = new AbortController()
+  const detach = isRead && pageScoped !== false ? trackPageRead(controller) : () => {}
+  const release = relayAbort(controller, init.signal)
+  const timer = limit > 0 ? setTimeout(() => controller.abort(timedOut), limit) : undefined
+  try {
+    const response = await send(`/api${path}`, {
+      ...init,
+      headers: buildHeaders(init),
+      credentials: 'same-origin',
+      signal: controller.signal
+    })
+    const body = await readBody(response)
+    if (!response.ok) throw new ApiError(describeError(body, response.status), response.status, body)
+    return body as T
+  } catch (error) {
+    // The page that asked is gone: leave the awaiting caller suspended rather than handing it
+    // an error it would render on the screen that has already replaced it.
+    if (controller.signal.reason === pageLeft) return new Promise<T>(() => {})
+    // A 401 on a live session is handled after that check: the shell is already showing the
+    // sign-in notice, so the page that asked must not also paint an error on the way out.
+    if (error instanceof ApiError && error.status === 401 && expireSession()) return new Promise<T>(() => {})
+    if (controller.signal.reason === timedOut)
+      throw new ApiError(`请求超时（${Math.round(limit / 1000)} 秒），请检查网络后重试`, 0, { code: 'timeout' })
+    throw error
+  } finally {
+    if (timer) clearTimeout(timer)
+    release()
+    detach()
   }
-  return body as T
 }
 async function send(path: string, init: RequestInit) {
   try {
@@ -61,11 +105,11 @@ async function send(path: string, init: RequestInit) {
     throw new ApiError('无法连接本地服务，请确认平台服务正在运行后重新连接', 0)
   }
 }
-export const post = <T = void>(path: string, data?: unknown) =>
-  api<T>(path, { method: 'POST', body: data === undefined ? undefined : JSON.stringify(data) })
-export const put = <T = void>(path: string, data: unknown) =>
-  api<T>(path, { method: 'PUT', body: JSON.stringify(data) })
-export const del = <T = void>(path: string) => api<T>(path, { method: 'DELETE' })
+export const post = <T = void>(path: string, data?: unknown, options: ApiOptions = {}) =>
+  api<T>(path, { ...options, method: 'POST', body: data === undefined ? undefined : JSON.stringify(data) })
+export const put = <T = void>(path: string, data: unknown, options: ApiOptions = {}) =>
+  api<T>(path, { ...options, method: 'PUT', body: JSON.stringify(data) })
+export const del = <T = void>(path: string, options: ApiOptions = {}) => api<T>(path, { ...options, method: 'DELETE' })
 export const listItems = <T = Row>(data: unknown): T[] => {
   if (Array.isArray(data)) return data as T[]
   const items = (data as { items?: unknown } | null | undefined)?.items

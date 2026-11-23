@@ -661,6 +661,15 @@ public static class DatabaseMigrations
                 await AddColumnIfMissingAsync(db, "ExamPaperQuestions", "PracticalResources", "\"PracticalResources\" TEXT NOT NULL DEFAULT ''", cancellationToken);
                 version = 16;
             }
+            if (version == 16)
+            {
+                // Existing content starts at version 0; the first write moves it to 1.
+                await AddColumnIfMissingAsync(db, "Courses", "Version", "\"Version\" INTEGER NOT NULL DEFAULT 0", cancellationToken);
+                await AddColumnIfMissingAsync(db, "CourseChapters", "Version", "\"Version\" INTEGER NOT NULL DEFAULT 0", cancellationToken);
+                await AddColumnIfMissingAsync(db, "CourseSections", "Version", "\"Version\" INTEGER NOT NULL DEFAULT 0", cancellationToken);
+                await AddColumnIfMissingAsync(db, "CourseResources", "Version", "\"Version\" INTEGER NOT NULL DEFAULT 0", cancellationToken);
+                version = 17;
+            }
             await db.Database.ExecuteSqlRawAsync($"PRAGMA user_version={CurrentVersion};", cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }

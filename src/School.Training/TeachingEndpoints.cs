@@ -85,7 +85,7 @@ public static class TeachingEndpoints
         var rows = await q.OrderByDescending(course => course.CreatedAt).ThenBy(course => course.Name)
             .Skip((page - 1) * size).Take(size)
             .Select(course => new { course.Id, course.Name, course.Description, course.Type, course.Status, course.Remark, course.CreatedAt,
-                course.PublishedAt, course.IsActive, course.SeriesId })
+                course.PublishedAt, course.IsActive, course.SeriesId, course.Version })
             .ToListAsync(ct);
         var ids = rows.Select(row => row.Id).ToArray();
         var chapterCounts = await db.CourseChapters.AsNoTracking().Where(chapter => ids.Contains(chapter.CourseId))
@@ -107,6 +107,7 @@ public static class TeachingEndpoints
                 return new
                 {
                     row.Id, row.Name, row.Description, row.Type, row.Status, row.Remark, row.CreatedAt, row.PublishedAt, row.IsActive, row.SeriesId,
+                    row.Version,
                     chapterCount = chapterCounts.GetValueOrDefault(row.Id),
                     sectionCount = sectionCounts.GetValueOrDefault(row.Id),
                     stats.ResourceCount, stats.TheoryCount, stats.TheoryPracticeCount, stats.CaseCount,
@@ -225,13 +226,14 @@ public static class TeachingEndpoints
             .ToDictionaryAsync(item => item.Key, item => item.Count, ct);
         var tree = chapters.Select(chapter => new
         {
-            chapter.Id, chapter.Name, chapter.SortOrder,
+            chapter.Id, chapter.Name, chapter.SortOrder, chapter.Version,
             sections = sections.Where(section => section.ChapterId == chapter.Id).Select(section => new
             {
-                section.Id, section.Name, section.DurationMinutes, section.SortOrder,
+                section.Id, section.Name, section.DurationMinutes, section.SortOrder, section.Version,
                 resources = resources.Where(resource => resource.SectionId == section.Id).Select(resource => new
                 {
-                    resource.Id, resource.Name, resource.Kind, resource.DurationMinutes, resource.SortOrder, resource.StartupNodeId,
+                    resource.Id, resource.Name, resource.Kind, resource.DurationMinutes, resource.SortOrder, resource.Version,
+                    resource.StartupNodeId,
                     questionCount = questionCounts.GetValueOrDefault(resource.Id),
                     fileCount = fileCounts.GetValueOrDefault(resource.Id)
                 })
@@ -240,6 +242,7 @@ public static class TeachingEndpoints
         return Results.Ok(new
         {
             course.Id, course.Name, course.Description, course.Type, course.Status, course.Remark, course.CreatedAt, course.PublishedAt,
+            course.Version,
             chapterCount = chapters.Count, sectionCount = sections.Count, resourceCount = resources.Count,
             theoryCount = resources.Count(item => item.Kind == "theory"),
             theoryPracticeCount = resources.Count(item => item.Kind == "theoryPractice"),
@@ -272,6 +275,8 @@ public static class TeachingEndpoints
     {
         var entity = await db.Courses.FindAsync([id], ct);
         if (entity == null) return NotFound("课程不存在");
+        if (input.Version is not int version) return Concurrency.MissingVersion();
+        if (!Concurrency.Matches(version, entity.Version)) return Concurrency.Conflict("课程");
         var error = TeachingLogic.ValidateCourse(input);
         if (error != null) return Bad(error);
         if (!await ValidSeries(input, db, ct)) return Bad("请选择有效的专业核心课系列");
@@ -282,6 +287,7 @@ public static class TeachingEndpoints
         entity.SeriesId = string.IsNullOrEmpty(input.SeriesId) ? null : input.SeriesId;
         entity.Description = (input.Description ?? "").Trim();
         entity.Remark = (input.Remark ?? "").Trim();
+        entity.Version++;
         Audit.Add(db, ctx, "编辑课程", entity.Name);
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { entity.Id });
@@ -360,9 +366,12 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseChapters.FindAsync([id], ct);
         if (entity == null) return NotFound("大章不存在");
+        if (input.Version is not int version) return Concurrency.MissingVersion();
+        if (!Concurrency.Matches(version, entity.Version)) return Concurrency.Conflict("大章");
         var error = TeachingLogic.ValidateChapterName(input.Name);
         if (error != null) return Bad(error);
         entity.Name = input.Name.Trim();
+        entity.Version++;
         Audit.Add(db, ctx, "编辑大章", entity.Name);
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { entity.Id });
@@ -401,10 +410,13 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseSections.FindAsync([id], ct);
         if (entity == null) return NotFound("小节不存在");
+        if (input.Version is not int version) return Concurrency.MissingVersion();
+        if (!Concurrency.Matches(version, entity.Version)) return Concurrency.Conflict("小节");
         var error = TeachingLogic.ValidateSectionName(input.Name) ?? TeachingLogic.ValidateSectionDuration(input.DurationMinutes);
         if (error != null) return Bad(error);
         entity.Name = input.Name.Trim();
         entity.DurationMinutes = input.DurationMinutes;
+        entity.Version++;
         Audit.Add(db, ctx, "编辑小节", entity.Name);
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { entity.Id });
@@ -450,7 +462,7 @@ public static class TeachingEndpoints
         return Results.Ok(new
         {
             entity.Id, entity.SectionId, entity.Name, entity.Kind, entity.DurationMinutes, entity.Content, entity.Topology,
-            entity.StartupNodeId, entity.SortOrder,
+            entity.StartupNodeId, entity.SortOrder, entity.Version,
             topologyBlueprint = CaseTopology.Read(entity.TopologyBlueprintJson),
             caseRubric = ClassroomCaseScoring.Rubric(entity.CaseRubricJson),
             questions = questions.Select(question => new
@@ -466,6 +478,8 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseResources.FindAsync([id], ct);
         if (entity == null) return NotFound("资源不存在");
+        if (input.Version is not int version) return Concurrency.MissingVersion();
+        if (!Concurrency.Matches(version, entity.Version)) return Concurrency.Conflict("资源");
         var error = TeachingLogic.ValidateResource(input);
         if (error != null) return Bad(error);
         if (!await StartupNodeExists(db, input.StartupNodeId, ct)) return Bad("启动节点不存在");
@@ -484,6 +498,7 @@ public static class TeachingEndpoints
         var existing = await db.CourseQuestions.Where(item => item.ResourceId == id).ToListAsync(ct);
         db.CourseQuestions.RemoveRange(existing);
         AddQuestions(db, id, input.Questions);
+        entity.Version++;
         Audit.Add(db, ctx, "编辑课程资源", entity.Name);
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { entity.Id });

@@ -120,6 +120,13 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
     if (ctx.Request.Path.StartsWithSegments("/api")) ctx.Response.Headers.CacheControl = "no-store";
     try { await next(); }
+    catch (DbUpdateConcurrencyException)
+    {
+        // Someone saved the same record between our version check and SaveChanges.
+        app.Logger.LogInformation("Concurrency conflict: {TraceIdentifier}", ctx.TraceIdentifier);
+        ctx.Response.StatusCode = StatusCodes.Status409Conflict;
+        await ctx.Response.WriteAsJsonAsync(new { message = Concurrency.Message, code = Concurrency.Code });
+    }
     catch (DbUpdateException ex) { await HandleDatabaseFailure(ctx, ex); }
     catch (SqliteException ex) { await HandleDatabaseFailure(ctx, ex); }
     catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)

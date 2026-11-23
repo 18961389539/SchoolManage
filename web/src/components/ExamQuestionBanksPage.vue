@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
+import { defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { Delete, EditPen, Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, messageOf, post, put } from '../api'
-import { readListState, writeListState } from '../listState'
+import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { examQuestionBankLabels } from '../questionBanks'
 import { focusFirstField } from '../focusField'
 import type { ExamQuestionBank, ExamQuestionBankType, Paged } from '../types'
+import { useDiscardGuard } from '../discardGuard'
 
 const QuestionBankPage = defineAsyncComponent(() => import('./QuestionBankPage.vue'))
 const banks = ref<ExamQuestionBank[]>([])
@@ -30,8 +31,12 @@ function focusBankName() {
 }
 const editing = ref<ExamQuestionBank | null>(null)
 const form = reactive({ name: '', type: 'theory' as ExamQuestionBankType })
-const formBaseline = ref('')
-const formDirty = computed(() => JSON.stringify(form) !== formBaseline.value)
+const guard = useDiscardGuard({
+  visible: editor,
+  snapshot: () => form,
+  message: '题库信息还没有保存，关闭后不会保留。',
+  busy: () => saving.value
+})
 const formError = ref('')
 const saving = ref(false)
 const deleting = ref('')
@@ -64,53 +69,25 @@ async function load() {
   }
 }
 
-function saveListState() {
-  writeListState(listKey, {
-    search: search.value,
-    filters: { type: type.value },
-    page: page.value,
-    pageSize: size.value
-  })
-}
+useListPersist(listKey, () => ({
+  search: search.value,
+  filters: { type: type.value },
+  page: page.value,
+  pageSize: size.value
+}))
 
 function filter() {
   page.value = 1
-  saveListState()
   void load()
 }
-
-watch([page, size], saveListState)
 
 function edit(bank: ExamQuestionBank | null = null) {
   editing.value = bank
   form.name = bank?.name ?? ''
   form.type = bank?.type ?? 'theory'
   formError.value = ''
-  formBaseline.value = JSON.stringify(form)
+  guard.capture()
   editor.value = true
-}
-
-async function confirmDiscardBank() {
-  if (saving.value) return false
-  if (!formDirty.value) return true
-  try {
-    await ElMessageBox.confirm('题库信息还没有保存，关闭后不会保留。', '放弃未保存的修改？', {
-      type: 'warning',
-      confirmButtonText: '放弃修改',
-      cancelButtonText: '继续编辑'
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function handleBankBeforeClose(done: () => void) {
-  if (await confirmDiscardBank()) done()
-}
-
-async function cancelBank() {
-  if (await confirmDiscardBank()) editor.value = false
 }
 
 async function save() {
@@ -130,7 +107,6 @@ async function save() {
       page.value = 1
       search.value = ''
       type.value = ''
-      saveListState()
     }
     editor.value = false
     ElMessage.success('题库已保存')
@@ -267,7 +243,7 @@ onMounted(load)
     v-model="editor"
     :title="editing ? '编辑题库' : '新建题库'"
     width="min(510px, 94vw)"
-    :before-close="handleBankBeforeClose"
+    :before-close="guard.beforeClose"
     @opened="focusBankName"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" />
@@ -282,7 +258,7 @@ onMounted(load)
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="cancelBank">取消</el-button>
+      <el-button @click="guard.cancel">取消</el-button>
       <el-button type="primary" :loading="saving" @click="save">{{ editing ? '保存' : '创建题库' }}</el-button>
     </template>
   </el-dialog>

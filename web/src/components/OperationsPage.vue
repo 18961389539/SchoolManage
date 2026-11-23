@@ -17,7 +17,8 @@ import {
   EditPen
 } from '@element-plus/icons-vue'
 import { api, post, put, listItems, messageOf, dateTime, bytes, type Row } from '../api'
-import { readListState, writeListState } from '../listState'
+import { appState } from '../store'
+import { readListState, useListPersist } from '../listState'
 import { focusFirstField } from '../focusField'
 import { downloadFile } from '../exam'
 import type { BackupItem, LicenseUploadResult, NodeRow, Paged } from '../types'
@@ -56,7 +57,6 @@ function syncVmViewport(event: MediaQueryListEvent) {
 }
 onMounted(() => vmViewport.addEventListener('change', syncVmViewport))
 onBeforeUnmount(() => {
-  saveOpsState()
   vmViewport.removeEventListener('change', syncVmViewport)
 })
 let loadVersion = 0,
@@ -124,7 +124,7 @@ async function load() {
 async function createBackup() {
   saving.value = true
   try {
-    const result = await post<BackupItem>('/backups')
+    const result = await post<BackupItem>('/backups', undefined, { timeoutMs: 0 })
     ElMessage.success(`备份已创建：${result.fileName || ''}`)
     await load()
   } catch (err) {
@@ -143,7 +143,7 @@ async function saveSettings() {
     await put('/settings', { schoolName: settings.schoolName })
     settings.schoolName = String(settings.schoolName).trim()
     ElMessage.success('系统设置已保存')
-    window.dispatchEvent(new CustomEvent('school-name-changed', { detail: settings.schoolName }))
+    appState.schoolName = settings.schoolName
     await load()
   } catch (err) {
     ElMessage.error(messageOf(err))
@@ -183,7 +183,8 @@ async function vmAction(row: Row, action: keyof typeof powerActionNames) {
       }
     )
     saving.value = true
-    await post(`${vmActionPath(row)}/${action}`)
+    // Hyper-V start/stop can legitimately take minutes; the 60s default would cut it off.
+    await post(`${vmActionPath(row)}/${action}`, undefined, { timeoutMs: 0 })
     ElMessage.success(`虚拟机已${label}`)
     await load()
   } catch (err) {
@@ -409,10 +410,6 @@ function opsStateKey() {
   return `ops:${props.pageKey}`
 }
 
-function saveOpsState() {
-  writeListState(opsStateKey(), { search: search.value, filters: {}, page: page.value, pageSize: 20 })
-}
-
 watch(
   () => props.pageKey,
   () => {
@@ -433,7 +430,7 @@ watch(
 )
 // Declared after the page switch so restoring the incoming page's state never
 // overwrites it with the previous page's filters.
-watch([search, page], saveOpsState)
+useListPersist(opsStateKey, () => ({ search: search.value, filters: {}, page: page.value }))
 </script>
 <template>
   <section class="page-heading">
