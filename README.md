@@ -21,7 +21,13 @@ $env:SCHOOL_DATA_DIR = Join-Path (Get-Location).Path '.local/data'
 dotnet run --project src/School.Training -- --urls http://127.0.0.1:5080
 ```
 
-打开 `http://127.0.0.1:5080`，在服务器本机完成首次管理员初始化。系统不预置通用管理员口令。初始化完成后通过界面的“创建模拟环境”入口生成模拟资源。
+打开 `http://127.0.0.1:5080`，在服务器本机完成首次管理员初始化。系统不预置通用管理员口令。初始化完成后通过界面的“创建模拟环境”入口生成模拟资源。若还需要一套可演示的专业、班级、师生、课程、课堂、考试和岗位训练营数据，在服务已运行时执行：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/seed-demo-data.ps1
+```
+
+脚本默认只追加尚不存在的演示记录，不会覆盖已有数据，也不会改动管理员账号。账号与导入说明见 [演示数据](docs/demo-data.md)。
 
 数据库结构由 EF Core Migrations 管理。新增结构变更时执行 `dotnet tool restore`，创建迁移并递增 `DatabaseSafety.SchemaVersion`：
 
