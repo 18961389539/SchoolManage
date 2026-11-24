@@ -1,4 +1,4 @@
-# 学校实训资源平台
+﻿# 学校实训资源平台
 
 面向 Windows 11 的校内实训资源管理软件。平台覆盖课堂、理实一体化考试、开放式资源库、技能图谱和岗位训练营。机柜与教学实操可使用内置模拟环境。管理员可配置 Hyper-V 主机进行真实集群查看和实训虚拟机管理。
 
@@ -27,7 +27,7 @@ dotnet run --project src/School.Training -- --urls http://127.0.0.1:5080
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/seed-demo-data.ps1
 ```
 
-脚本默认只追加尚不存在的演示记录，不会覆盖已有数据，也不会改动管理员账号。账号与导入说明见 [演示数据](docs/demo-data.md)。
+脚本默认只追加尚不存在的演示记录，不会覆盖已有数据，也不会改动管理员账号。导入后会包含课堂学习记录、考试作答和岗位训练营作答。账号与导入说明见 [演示数据](docs/demo-data.md)。
 
 数据库结构由 EF Core Migrations 管理。新增结构变更时执行 `dotnet tool restore`，创建迁移并递增 `DatabaseSafety.SchemaVersion`：
 
