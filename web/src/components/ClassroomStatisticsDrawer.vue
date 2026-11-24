@@ -252,7 +252,7 @@ watch(
   <el-drawer
     :model-value="visible"
     size="min(1180px, 100vw)"
-    :title="data ? `${data.classroom.name} · 课堂统计` : '课堂统计'"
+    :title="data ? `${data.classroom.name} · 学情` : '学情'"
     :with-header="false"
     append-to-body
     body-class="classroom-stats-drawer-body"
@@ -261,8 +261,8 @@ watch(
     <div v-loading="loading" class="stats-body">
       <header class="stats-head">
         <div>
-          <div class="eyebrow">课堂统计</div>
-          <h2>{{ data?.classroom.name || '课堂统计' }}</h2>
+          <div class="eyebrow">学情</div>
+          <h2>{{ data?.classroom.name || '学情' }}</h2>
           <p v-if="data">
             {{ data.classroom.courseName }} · {{ data.classroom.teacherName }} ·
             <el-tag size="small" :type="data.classroom.status === 'open' ? 'success' : 'info'">
@@ -586,14 +586,14 @@ watch(
           </el-tab-pane>
         </el-tabs>
       </template>
-      <el-empty v-else-if="!loading && !error" description="暂无课堂统计数据">
+      <el-empty v-else-if="!loading && !error" description="暂无课堂学情数据">
         <p class="empty-hint">课堂数据加载后，将在这里展示章节、资源与学生的学情。</p>
       </el-empty>
     </div>
 
     <el-dialog
       v-model="detailVisible"
-      :title="detail ? `${detail.student.name} · 学习统计` : '学生学习统计'"
+      :title="detail ? `${detail.student.name} · 学情` : '学生学情'"
       width="min(1080px, 96vw)"
       append-to-body
     >

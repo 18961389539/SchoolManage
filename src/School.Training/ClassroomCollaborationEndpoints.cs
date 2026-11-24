@@ -28,6 +28,7 @@ public static class ClassroomCollaborationEndpoints
 
         staff.MapGet("/classrooms/{id}/case-sessions", ListCaseSessions);
         staff.MapPost("/classrooms/case-sessions/{id}/restart", RestartCaseSession);
+        staff.MapPost("/classrooms/case-sessions/{id}/end-keeping-grade", EndCaseSessionKeepingGrade);
         staff.MapGet("/classrooms/case-sessions/{id}/environment", CaseEnvironment);
         staff.MapGet("/classrooms/case-sessions/{id}/evidences", ListEvidences);
         staff.MapPost("/classrooms/case-sessions/{id}/evidences", UploadEvidence);
@@ -343,6 +344,10 @@ public static class ClassroomCollaborationEndpoints
         var evidenceCounts = await db.CaseSessionEvidences.AsNoTracking().Where(item => sessionIds.Contains(item.SessionId))
             .GroupBy(item => item.SessionId).Select(group => new { group.Key, Count = group.Count() })
             .ToDictionaryAsync(item => item.Key, item => item.Count, ct);
+        var finalGradeCounts = await db.ClassroomCaseGrades.AsNoTracking()
+            .Where(item => sessionIds.Contains(item.SessionId) && item.IsFinal)
+            .GroupBy(item => item.SessionId).Select(group => new { group.Key, Count = group.Count() })
+            .ToDictionaryAsync(item => item.Key, item => item.Count, ct);
         var activeCount = await db.ClassroomCaseSessions.CountAsync(item => item.ClassroomId == id && item.Status == "active", ct);
         return Results.Ok(new
         {
@@ -355,7 +360,10 @@ public static class ClassroomCollaborationEndpoints
                 item.StartedAt, item.EndedAt, item.Status, item.RestartCount,
                 item.VirtualMachineId, item.virtualMachineName, item.virtualMachineStatus, item.NodeId, item.nodeName,
                 evidenceCount = evidenceCounts.GetValueOrDefault(item.SessionId),
-                canRestart = item.Status == "active" && (item.VirtualMachineId != null || item.startupNodeId != null)
+                hasFinalGrade = finalGradeCounts.GetValueOrDefault(item.SessionId) > 0,
+                canRestart = item.Status == "active" && (item.VirtualMachineId != null || item.startupNodeId != null),
+                canEndKeepingGrade = (item.Status == "active" || item.Status == "saved")
+                    && finalGradeCounts.GetValueOrDefault(item.SessionId) > 0
             })
         });
     }
@@ -381,6 +389,39 @@ public static class ClassroomCollaborationEndpoints
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return Results.Ok(new { virtualMachineId = vm.Id, virtualMachineName = vm.Name, virtualMachineStatus = vm.Status, restartedAt = now });
+    }
+
+    static async Task<IResult> EndCaseSessionKeepingGrade(string id, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var session = await db.ClassroomCaseSessions.FirstOrDefaultAsync(item => item.Id == id, ct);
+        if (session == null) return NotFound("实操会话不存在");
+        var classroom = await db.Classrooms.FirstOrDefaultAsync(item => item.Id == session.ClassroomId, ct);
+        if (classroom == null) return NotFound("课堂不存在");
+        if (!CanManage(ctx, classroom)) return Forbidden("无权管理该课堂实操会话");
+        if (session.Status is not ("active" or "saved"))
+            return Conflict("该实操会话已经结束");
+        var finalGrade = await db.ClassroomCaseGrades.AsNoTracking()
+            .Where(item => item.SessionId == session.Id && item.IsFinal)
+            .OrderByDescending(item => item.ScoredAt)
+            .FirstOrDefaultAsync(ct);
+        if (finalGrade == null)
+            return Conflict("该会话还没有终评，不能在不评分的情况下结束。请由学生提交终评并回收环境。");
+        var now = DateTime.UtcNow;
+        ClassroomCaseScoring.Discard(session, now);
+        var record = await db.LearningRecords.FirstOrDefaultAsync(item => item.Id == session.LearningRecordId, ct);
+        if (record != null && record.Status != "completed")
+        {
+            record.Status = "completed";
+            record.CompletedAt = finalGrade.ScoredAt;
+            record.BestScore = Math.Max(record.BestScore, finalGrade.Percent);
+        }
+        var student = await db.Users.AsNoTracking().Where(item => item.Id == session.UserId)
+            .Select(item => item.DisplayName).FirstOrDefaultAsync(ct);
+        Audit.Add(db, ctx, "结束课堂实操会话（保留终评）", classroom.Name, student ?? "学生");
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Results.Ok(new { status = session.Status, endedAt = session.EndedAt });
     }
 
     static async Task<IResult> CaseEnvironment(string id, HttpContext ctx, SchoolDbContext db, CancellationToken ct)

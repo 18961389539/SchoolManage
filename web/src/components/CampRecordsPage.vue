@@ -101,7 +101,7 @@ onMounted(load)
   <section class="surface staff-table">
     <el-table v-loading="loading" :data="items" row-key="attemptId">
       <template #empty>
-        <TableEmpty title="暂无测评记录" hint="学生完成岗位测评后，作答记录会显示在这里。" />
+        <TableEmpty title="暂无测评记录" hint="岗位需由管理员先发布。学生完成岗位测评后，作答记录会显示在这里。" />
       </template>
       <el-table-column label="学生" min-width="150">
         <template #default="{ row }">

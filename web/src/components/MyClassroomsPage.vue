@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
           ><el-icon><School /></el-icon>{{ item.studentCount }} 名同学</span
         >
         <div class="classroom-card-actions">
-          <el-button @click="openStatistics(item)">课堂统计</el-button>
+          <el-button @click="openStatistics(item)">学情</el-button>
           <el-button type="primary" :plain="item.status !== 'open'" @click="openClassroom(item)">
             {{ actionLabel(item.status) }}
           </el-button>

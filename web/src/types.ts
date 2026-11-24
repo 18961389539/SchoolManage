@@ -650,6 +650,9 @@ export interface TrainingExamSummary {
   attemptCount: number
   submittedCount: number
   gradedCount: number
+  requiresPracticalEnvironment?: boolean
+  deployedCount?: number
+  pendingDeployCount?: number
 }
 
 export interface TrainingExamDetail extends TrainingExamSummary {
@@ -1499,7 +1502,7 @@ export interface ClassroomCaseSession {
   resourceName: string
   startedAt: string
   endedAt: string | null
-  status: 'active' | 'ended'
+  status: 'active' | 'saved' | 'ended'
   restartCount: number
   virtualMachineId: string | null
   virtualMachineName: string
@@ -1507,7 +1510,9 @@ export interface ClassroomCaseSession {
   nodeId: string | null
   nodeName: string
   evidenceCount: number
+  hasFinalGrade?: boolean
   canRestart: boolean
+  canEndKeepingGrade?: boolean
 }
 
 export interface ClassroomCaseSessionList {

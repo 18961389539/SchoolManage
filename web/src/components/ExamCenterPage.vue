@@ -276,11 +276,19 @@ async function toggleExam(item: TrainingExamSummary) {
       await post(`/exams/${item.id}/close`)
       ElMessage.success('考试已结束')
     } else if (item.status === 'scheduled') {
-      await ElMessageBox.confirm('确认后锁定考试信息，考生可在设定的开始时间后进入。', '开始考试', {
-        type: 'warning',
-        confirmButtonText: '开考',
-        cancelButtonText: '取消'
-      })
+      const pending = item.pendingDeployCount ?? 0
+      const undeployed = !!item.requiresPracticalEnvironment && pending > 0
+      await ElMessageBox.confirm(
+        undeployed
+          ? `本场考试含模拟实操题，名单中还有 ${pending} 名学生尚未部署实操环境。未部署的学生开考后将无法作答。确认仍要开考吗？`
+          : '确认后锁定考试信息，考生可在设定的开始时间后进入。',
+        undeployed ? '尚未完成实操环境部署' : '开始考试',
+        {
+          type: 'warning',
+          confirmButtonText: undeployed ? '仍要开考' : '开考',
+          cancelButtonText: '取消'
+        }
+      )
       await post(`/exams/${item.id}/open`)
       ElMessage.success(Date.parse(item.startAt) > Date.now() ? '考试将在设定时间开放' : '考试已开始')
     }
@@ -454,8 +462,11 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       <el-table-column label="参考情况" min-width="190">
         <template #default="{ row }">
           <span class="exam-counts">
-            应考 {{ row.studentCount }} · 开考 {{ row.attemptCount }}<br />
+            应考 {{ row.studentCount }} · 已进入 {{ row.attemptCount }}<br />
             提交 {{ row.submittedCount }} · 已阅 {{ row.gradedCount }}
+            <template v-if="row.requiresPracticalEnvironment">
+              <br />已部署 {{ row.deployedCount ?? 0 }} / {{ row.studentCount }}
+            </template>
           </span>
         </template>
       </el-table-column>
@@ -472,6 +483,13 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
             >
               {{ row.storedStatus === 'scheduled' ? '开考' : '结考' }}
             </el-button>
+            <el-button
+              v-if="row.requiresPracticalEnvironment"
+              link
+              type="primary"
+              @click="openRoster(row as TrainingExamSummary)"
+              >部署环境</el-button
+            >
             <el-button link type="primary" :icon="Tickets" @click="openRoster(row as TrainingExamSummary)"
               >名单</el-button
             >

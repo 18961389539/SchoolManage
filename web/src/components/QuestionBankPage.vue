@@ -719,7 +719,11 @@ onMounted(load)
       </el-form-item>
       <el-alert
         v-else
-        title="实操题不设置选项与标准答案，交卷后由教师在成绩管理中人工评分。"
+        :title="
+          form.practicalMode === 'automatic'
+            ? '模拟实操题在交卷时按评分表自动给分。开考前需在考试名单中部署实操环境，否则学生将无法作答。考试结束后教师可覆盖异常自动分并填写原因。'
+            : '文字作答的实操题不设置选项与标准答案，交卷后由教师在成绩管理中人工评分。'
+        "
         type="info"
         show-icon
         :closable="false"
@@ -764,7 +768,13 @@ onMounted(load)
             <el-icon v-if="preview.answers.includes(index)"><Document /></el-icon>
           </div>
         </div>
-        <p v-else class="muted-text">实操题：由教师依据作答质量评分。</p>
+        <p v-else class="muted-text">
+          {{
+            preview.automaticPractical
+              ? '模拟实操题：交卷时按评分表自动评分，考试结束后教师可覆盖异常分数。'
+              : '文字作答实操题：交卷后由教师依据作答质量评分。'
+          }}
+        </p>
         <div class="preview-block">
           <span>题目解析</span>
           <p>{{ preview.analysis || '暂无解析' }}</p>

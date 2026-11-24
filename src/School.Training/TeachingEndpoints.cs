@@ -875,8 +875,9 @@ public static class TeachingEndpoints
         if (resource == null) return NotFound("资源不属于该课堂课程");
         var record = await GetOrCreateRecord(db, id, userId!, resourceId, ct);
         var now = DateTime.UtcNow;
-        var restartCase = resource.Kind == "casePractice" && record.Status == "completed";
-        if (record.Status == "notStarted" || restartCase)
+        // Keep a completed case-practice record as completed until a new final grade is submitted,
+        // so classroom learning stats do not lose the previous result during a retry.
+        if (record.Status == "notStarted")
         {
             record.Status = "inProgress";
             record.StartedAt = now;
@@ -902,7 +903,7 @@ public static class TeachingEndpoints
         var resource = await FindCourseResource(db, classroom.CourseId, resourceId, ct);
         if (resource == null) return NotFound("资源不属于该课堂课程");
         if (resource.Kind == "theoryPractice") return Conflict("理论练习请提交答案后自动完成");
-        if (resource.Kind == "casePractice") return Conflict("案例实操请通过销毁评分完成。");
+        if (resource.Kind == "casePractice") return Conflict("案例实操请通过「提交终评并回收环境」完成。");
         var record = await GetOrCreateRecord(db, id, userId!, resourceId, ct);
         var now = DateTime.UtcNow;
         record.Status = "completed";

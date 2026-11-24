@@ -9,7 +9,7 @@
 | 1.1.6、1.6.10 | 按确认范围使用模拟机柜。课堂分组分配、批量测试、取消分配和回收已验证。 |
 | 1.2.2 | 模拟节点可配置时间、IP、掩码和网关。Win11 管理主机按确认范围只读。 |
 | 1.3.1 至 1.3.3 | 模拟虚拟机搜索、连接、重启及销毁通过回归。现已增加 Hyper-V 主机状态采集和受管虚拟机搜索、电源操作与 RDP 连接入口，通过本机 PowerShell 测试替身验证。真实主机联调待安排。 |
-| 1.6.4、1.7.3 | 已回归课堂实操保存、恢复、尝试评分、销毁评分和重启后的历史记录。评分过程显示阶段，记录按分值汇总平均分与最高分。 |
+| 1.6.4、1.7.3 | 已回归课堂实操保存、恢复、尝试评分、提交终评并回收环境和重启后的历史记录。评分过程显示阶段，记录按分值汇总平均分与最高分。 |
 | 1.6.8 | 已验证模拟机监控、连接、重启与学生授权后的画面共享及助教协作。教师在真实 Hyper-V 来宾系统中的同屏控制尚缺环境接入。 |
 | 2.3.10、2.4.2、2.5.2 | 已验证模拟考试环境批量部署、作答连接、重启、到时交卷、评分和回顾。实操题可编辑文本参考资料并随试卷快照保存。真实 Hyper-V 考试环境部署尚缺接入。 |
 | 第 3 节 | 已回归课程激活、核心课系列、课程目录、文件预览和课堂资源访问。 |
@@ -29,7 +29,7 @@
 | 1.3.1 集群信息 | `screenshots/p10-cluster-information.jpg` |
 | 1.3.2 集群配置 | `screenshots/p10-cluster-configuration.jpg` |
 | 1.3.3 虚拟机信息 | `screenshots/virtual-machine-information.png` |
-| 1.6.5 课堂统计 | `screenshots/classroom-statistics.png` |
+| 1.6.5 课堂统计（界面名称：学情） | `screenshots/classroom-statistics.png` |
 | 1.6.8 实操监控 | `screenshots/classroom-practical-monitoring.png` |
 | 1.6.10 分配机柜 | `videos/classroom-cabinet-assignment.webm` |
 | 2.3.8 考试统计 | `screenshots/exam-statistics.png` |

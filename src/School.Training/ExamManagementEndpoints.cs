@@ -89,10 +89,15 @@ public static class ExamManagementEndpoints
         var papers = await db.ExamPapers.AsNoTracking().Where(item => paperIds.Contains(item.Id))
             .Select(item => new { item.Id, item.Name }).ToDictionaryAsync(item => item.Id, item => item.Name, ct);
         var paperQuestions = await db.ExamPaperQuestions.AsNoTracking().Where(item => paperIds.Contains(item.PaperId))
-            .Select(item => new { item.PaperId, item.Score }).ToListAsync(ct);
+            .Select(item => new { item.PaperId, item.Score, item.Type, item.PracticalNodeId }).ToListAsync(ct);
         var studentCounts = await db.ExamStudents.AsNoTracking().Where(item => ids.Contains(item.ExamId))
-            .GroupBy(item => item.ExamId).Select(group => new { group.Key, Count = group.Count() })
-            .ToDictionaryAsync(item => item.Key, item => item.Count, ct);
+            .GroupBy(item => item.ExamId).Select(group => new
+            {
+                group.Key,
+                Count = group.Count(),
+                Deployed = group.Count(item => item.DeploymentStatus == "deployed")
+            })
+            .ToDictionaryAsync(item => item.Key, ct);
         var attemptCounts = await db.ExamAttempts.AsNoTracking().Where(item => ids.Contains(item.ExamId))
             .GroupBy(item => item.ExamId).Select(group => new
             {
@@ -108,6 +113,10 @@ public static class ExamManagementEndpoints
             {
                 var counts = attemptCounts.GetValueOrDefault(exam.Id);
                 var questions = paperQuestions.Where(item => item.PaperId == exam.PaperId).ToArray();
+                var roster = studentCounts.GetValueOrDefault(exam.Id);
+                var studentCount = roster?.Count ?? 0;
+                var requiresPractical = questions.Any(item => item.Type == "practical" && item.PracticalNodeId != "");
+                var deployedCount = requiresPractical ? roster?.Deployed ?? 0 : 0;
                 return new
                 {
                     exam.Id, exam.Name, exam.PaperId, exam.Description, exam.StartAt, exam.EndAt, exam.DurationMinutes,
@@ -116,10 +125,13 @@ public static class ExamManagementEndpoints
                     paperName = papers.GetValueOrDefault(exam.PaperId, ""),
                     questionCount = questions.Length,
                     totalScore = questions.Sum(item => item.Score),
-                    studentCount = studentCounts.GetValueOrDefault(exam.Id),
+                    studentCount,
                     attemptCount = counts?.Started ?? 0,
                     submittedCount = counts?.Submitted ?? 0,
-                    gradedCount = counts?.Graded ?? 0
+                    gradedCount = counts?.Graded ?? 0,
+                    requiresPracticalEnvironment = requiresPractical,
+                    deployedCount,
+                    pendingDeployCount = requiresPractical ? Math.Max(0, studentCount - deployedCount) : 0
                 };
             })
         });
@@ -132,9 +144,12 @@ public static class ExamManagementEndpoints
         if (exam == null) return NotFound("考试不存在");
         var paper = await db.ExamPapers.AsNoTracking().FirstOrDefaultAsync(item => item.Id == exam.PaperId, ct);
         var questions = await db.ExamPaperQuestions.AsNoTracking().Where(item => item.PaperId == exam.PaperId)
-            .Select(item => item.Score).ToListAsync(ct);
+            .Select(item => new { item.Score, item.Type, item.PracticalNodeId }).ToListAsync(ct);
         var studentCount = await db.ExamStudents.CountAsync(item => item.ExamId == id, ct);
+        var deployedCount = await db.ExamStudents.CountAsync(item => item.ExamId == id && item.DeploymentStatus == "deployed", ct);
         var attempts = await db.ExamAttempts.AsNoTracking().Where(item => item.ExamId == id).ToListAsync(ct);
+        var requiresPractical = questions.Any(item => item.Type == "practical" && item.PracticalNodeId != "");
+        var deployed = requiresPractical ? deployedCount : 0;
         return Results.Ok(new
         {
             exam.Id, exam.Name, exam.PaperId, exam.Description, exam.StartAt, exam.EndAt, exam.DurationMinutes,
@@ -142,12 +157,15 @@ public static class ExamManagementEndpoints
             exam.CreatedAt, exam.UpdatedAt,
             paperName = paper?.Name ?? "",
             questionCount = questions.Count,
-            totalScore = questions.Sum(),
+            totalScore = questions.Sum(item => item.Score),
             studentCount,
             attemptCount = attempts.Count,
             submittedCount = attempts.Count(item => item.Status != "inProgress"),
             gradedCount = attempts.Count(item => item.Status == "graded"),
-            canEdit = exam.Status == "scheduled" && attempts.Count == 0
+            canEdit = exam.Status == "scheduled" && attempts.Count == 0,
+            requiresPracticalEnvironment = requiresPractical,
+            deployedCount = deployed,
+            pendingDeployCount = requiresPractical ? Math.Max(0, studentCount - deployed) : 0
         });
     }
 
@@ -446,8 +464,11 @@ public static class ExamManagementEndpoints
         var answers = await db.ExamAnswers.Where(item => item.AttemptId == attemptId).ToDictionaryAsync(item => item.PaperQuestionId, StringComparer.Ordinal, ct);
         foreach (var grade in grades.GroupBy(item => item.PaperQuestionId).Select(group => group.Last()))
         {
-            if (!questions.TryGetValue(grade.PaperQuestionId, out var question) || question.Type != "practical" || question.PracticalNodeId != "")
-                return Bad("只能批阅人工评分的实操题，请刷新后重试");
+            if (!questions.TryGetValue(grade.PaperQuestionId, out var question) || question.Type != "practical")
+                return Bad("只能批阅实操题，请刷新后重试");
+            var automatic = question.PracticalNodeId != "";
+            if (automatic && string.IsNullOrWhiteSpace(grade.Comment))
+                return Bad("覆盖自动评分时请填写原因");
             if (grade.Score < 0 || grade.Score > question.Score) return Bad($"分数应在 0–{question.Score} 之间");
             if ((grade.Comment ?? "").Length > 500) return Bad("评语不能超过 500 个字符");
             if (!answers.TryGetValue(grade.PaperQuestionId, out var answer))
@@ -471,7 +492,9 @@ public static class ExamManagementEndpoints
             attempt.GradedAt = DateTime.UtcNow;
             attempt.GradedByUserId = CurrentUserId(ctx) ?? "";
         }
-        Audit.Add(db, ctx, "批阅考试", "考试", $"{exam.Name}：{attempt.StudentName} {attempt.TotalScore}/{attempt.MaxScore}");
+        var overridden = grades.Any(item => questions.TryGetValue(item.PaperQuestionId, out var question) && question.PracticalNodeId != "");
+        Audit.Add(db, ctx, overridden ? "覆盖自动实操评分" : "批阅考试", "考试",
+            $"{exam.Name}：{attempt.StudentName} {attempt.TotalScore}/{attempt.MaxScore}");
         await db.SaveChangesAsync(ct);
         return Results.Ok(await ExamReview.BuildAsync(db, exam, attempt, ct));
     }

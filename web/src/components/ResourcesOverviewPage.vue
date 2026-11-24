@@ -133,7 +133,7 @@ onMounted(load)
 <template>
   <section class="page-heading">
     <div>
-      <h1>资源概览</h1>
+      <h1>课程目录</h1>
       <p>浏览已发布课程的章节、小节与资源。这里是课程预览，练习和实操不计入学习成绩；正式学习请进入「我的课堂」。</p>
     </div>
     <el-button :icon="Refresh" :loading="loading" @click="load">刷新目录</el-button>

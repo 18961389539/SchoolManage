@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { DataAnalysis, Refresh, School, Tickets } from '@element-plus/icons-vue'
+import { DataAnalysis, Refresh, School, Suitcase, Tickets } from '@element-plus/icons-vue'
 import { api, messageOf } from '../api'
 import type { TeacherHomeResponse } from '../analytics'
 import HomeClassroomsPanel from './HomeClassroomsPanel.vue'
@@ -49,6 +49,7 @@ onMounted(load)
     <div class="heading-actions">
       <el-button type="primary" :icon="School" @click="emit('navigate', 'classrooms')">我的课堂</el-button>
       <el-button :icon="Tickets" @click="emit('navigate', 'exams')">考试管理</el-button>
+      <el-button :icon="Suitcase" @click="emit('navigate', 'camp-reports')">岗位训练营</el-button>
       <el-button :icon="DataAnalysis" @click="emit('navigate', 'skill-graph')">技能图谱</el-button>
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新数据</el-button>
     </div>

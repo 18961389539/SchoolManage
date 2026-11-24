@@ -376,7 +376,7 @@ const backLabels: Record<string, string> = {
   'skill-graph': '返回技能图谱',
   'student-home': '返回学习首页',
   'teacher-home': '返回教学首页',
-  'classroom-statistics': '返回课堂统计'
+  'classroom-statistics': '返回学情'
 }
 const backLabel = computed(() => backLabels[props.backKey] || '返回课堂列表')
 
@@ -415,7 +415,7 @@ onMounted(() => load())
           {{ labelOf(classroomStatusOptions, data.classroom.status) }}
         </el-tag>
         <el-tag v-if="preview" type="info" effect="plain">教师预览</el-tag>
-        <el-button v-if="!preview" size="small" :icon="DataAnalysis" @click="openStatistics">课堂统计</el-button>
+        <el-button v-if="!preview" size="small" :icon="DataAnalysis" @click="openStatistics">学情</el-button>
       </div>
     </div>
     <div v-if="data" class="content-time">

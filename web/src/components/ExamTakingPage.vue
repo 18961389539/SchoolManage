@@ -798,6 +798,16 @@ function goRecords() {
             开始考试
           </el-button>
           <el-button v-else-if="detail.status === 'scheduled'" disabled size="large">开考后可进入</el-button>
+          <el-button
+            v-else-if="
+              detail.status === 'open' &&
+              detail.deploymentStatus !== 'notRequired' &&
+              detail.deploymentStatus !== 'deployed'
+            "
+            disabled
+            size="large"
+            >等待部署实操环境</el-button
+          >
           <el-button v-else disabled size="large">当前不可作答</el-button>
         </div>
       </section>

@@ -28,7 +28,7 @@ public static class ClassroomStatisticsEndpoints
     {
         var classroom = await db.Classrooms.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (classroom == null) return Results.NotFound(new { message = "课堂不存在" });
-        if (!CanManage(ctx, classroom)) return Results.Json(new { message = "无权查看该课堂统计" }, statusCode: 403);
+        if (!CanManage(ctx, classroom)) return Results.Json(new { message = "无权查看该课堂学情" }, statusCode: 403);
         var data = await LoadAsync(db, classroom, ct);
         if (data == null) return Results.NotFound(new { message = "课堂关联课程不存在" });
         return Results.Ok(BuildStatistics(data, request.Query["chapterId"].ToString()));
@@ -52,8 +52,8 @@ public static class ClassroomStatisticsEndpoints
         if (classroom == null) return Results.NotFound(new { message = "课堂不存在" });
         var self = CurrentUserId(ctx);
         var studentRequest = ctx.User.IsInRole("Student");
-        if (studentRequest && userId != self) return Results.Json(new { message = "只能查看自己的课堂统计" }, statusCode: 403);
-        if (!studentRequest && !CanManage(ctx, classroom)) return Results.Json(new { message = "无权查看该课堂统计" }, statusCode: 403);
+        if (studentRequest && userId != self) return Results.Json(new { message = "只能查看自己的课堂学情" }, statusCode: 403);
+        if (!studentRequest && !CanManage(ctx, classroom)) return Results.Json(new { message = "无权查看该课堂学情" }, statusCode: 403);
         var data = await LoadAsync(db, classroom, ct);
         if (data == null) return Results.NotFound(new { message = "课堂关联课程不存在" });
         var student = data.Students.FirstOrDefault(item => item.UserId == userId);
@@ -65,7 +65,7 @@ public static class ClassroomStatisticsEndpoints
     {
         var classroom = await db.Classrooms.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (classroom == null) return Results.NotFound(new { message = "课堂不存在" });
-        if (!CanManage(ctx, classroom)) return Results.Json(new { message = "无权查看该课堂统计" }, statusCode: 403);
+        if (!CanManage(ctx, classroom)) return Results.Json(new { message = "无权查看该课堂学情" }, statusCode: 403);
         var data = await LoadAsync(db, classroom, ct);
         if (data == null) return Results.NotFound(new { message = "课堂关联课程不存在" });
         var resource = data.Resources.FirstOrDefault(item => item.Id == resourceId);
@@ -191,7 +191,7 @@ public static class ClassroomStatisticsEndpoints
     {
         var classroom = await db.Classrooms.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (classroom == null) return Results.NotFound(new { message = "课堂不存在" });
-        if (!CanManage(ctx, classroom)) return Results.Json(new { message = "无权导出该课堂统计" }, statusCode: 403);
+        if (!CanManage(ctx, classroom)) return Results.Json(new { message = "无权导出该课堂学情" }, statusCode: 403);
         var data = await LoadAsync(db, classroom, ct);
         if (data == null) return Results.NotFound(new { message = "课堂关联课程不存在" });
         var chapterId = request.Query["chapterId"].ToString();
@@ -224,7 +224,7 @@ public static class ClassroomStatisticsEndpoints
     {
         var classroom = await db.Classrooms.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (classroom == null) return Results.NotFound(new { message = "课堂不存在" });
-        if (!CanManage(ctx, classroom)) return Results.Json(new { message = "无权导出该课堂统计" }, statusCode: 403);
+        if (!CanManage(ctx, classroom)) return Results.Json(new { message = "无权导出该课堂学情" }, statusCode: 403);
         var data = await LoadAsync(db, classroom, ct);
         if (data == null) return Results.NotFound(new { message = "课堂关联课程不存在" });
         var chapterId = request.Query["chapterId"].ToString();
@@ -543,7 +543,7 @@ public static class ClassroomStatisticsEndpoints
     {
         var invalid = Path.GetInvalidFileNameChars();
         var safe = new string(name.Select(character => invalid.Contains(character) ? '_' : character).ToArray()).Trim();
-        if (safe.Length == 0) safe = "课堂统计";
+        if (safe.Length == 0) safe = "课堂学情";
         return safe.Length > 100 ? safe[..100] + ".csv" : safe;
     }
 

@@ -281,7 +281,7 @@ export function createRoutes(host: RouteHost) {
     }),
     page('classroom-statistics', StudentClassroomStatisticsPage, {
       roles: ['Student'],
-      title: '课堂统计',
+      title: '学情',
       navKey: 'my-classrooms',
       on: go,
       mountKey: context => context.params.classroomId || '',
@@ -339,9 +339,9 @@ export function createRoutes(host: RouteHost) {
       on: go,
       props: context => ({ role: context.role }),
       nav: {
-        Admin: nav('教学中心', 6, '资源概览', Document),
-        Teacher: nav('教学空间', 8, '资源概览', Document),
-        Student: nav('学习空间', 7, '资源概览', Document)
+        Admin: nav('教学中心', 6, '课程目录', Document),
+        Teacher: nav('教学空间', 8, '课程目录', Document),
+        Student: nav('学习空间', 7, '课程目录', Document)
       }
     }),
     page('camp-positions', CampPositionsPage, {
@@ -386,8 +386,8 @@ export function createRoutes(host: RouteHost) {
     page('my-resources', MyResourcesPage, {
       roles: ['Teacher', 'Student'],
       nav: {
-        Teacher: nav('教学空间', 3, '我的实训资源', Monitor),
-        Student: nav('学习空间', 3, '我的实训资源', Monitor)
+        Teacher: nav('教学空间', 3, '我的实训设备', Monitor),
+        Student: nav('学习空间', 3, '我的实训设备', Monitor)
       }
     }),
     ...Object.keys(entities).map(key =>

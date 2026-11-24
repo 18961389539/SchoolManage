@@ -224,7 +224,7 @@ async function reloadCourse(id: string) {
 async function togglePublish(course: CourseSummary) {
   try {
     if (course.status === 'published') {
-      await ElMessageBox.confirm('下线后学生将无法在资源概览中看到该课程，已结课的课堂仍保留历史内容。', '下线课程', {
+      await ElMessageBox.confirm('下线后学生将无法在课程目录中看到该课程，已结课的课堂仍保留历史内容。', '下线课程', {
         type: 'warning',
         confirmButtonText: '下线',
         cancelButtonText: '取消'
@@ -296,7 +296,7 @@ onMounted(() => {
   <section class="page-heading">
     <div>
       <h1>课程管理</h1>
-      <p>课程发布后进入资源概览，激活后可用于开设课堂。</p>
+      <p>课程发布后进入课程目录，激活后可用于开设课堂。</p>
     </div>
     <div class="heading-actions">
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>

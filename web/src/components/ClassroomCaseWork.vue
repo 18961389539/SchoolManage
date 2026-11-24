@@ -68,8 +68,19 @@ async function run(name: string, operation: () => Promise<void>) {
   }
 }
 
-function start() {
+async function start() {
   if (!props.startUrl) return
+  if (work.value?.status === 'ended') {
+    try {
+      await ElMessageBox.confirm(
+        '将重新创建实操环境，开始新的一次尝试。此前的终评和完成记录会保留，直到这次提交新的终评。',
+        '再次实操',
+        { type: 'warning', confirmButtonText: '开始再次实操', cancelButtonText: '取消' }
+      )
+    } catch {
+      return
+    }
+  }
   const url = props.startUrl
   void run('start', async () => {
     emit('started', await post<LearningRecord>(url))
@@ -108,9 +119,9 @@ function save() {
 async function score(final: boolean) {
   if (final) {
     try {
-      await ElMessageBox.confirm('提交后将销毁本次实操环境，并保留评分结果。', '销毁评分', {
+      await ElMessageBox.confirm('提交后将回收本次实操环境，已评定的分数会保留。', '提交终评并回收环境', {
         type: 'warning',
-        confirmButtonText: '销毁并评分',
+        confirmButtonText: '提交终评',
         cancelButtonText: '继续实操'
       })
     } catch {
@@ -231,7 +242,7 @@ onUnmounted(() => window.clearInterval(refreshTimer))
       <template v-if="!readOnly">
         <el-button :disabled="!!action" @click="save">保存退出</el-button>
         <el-button :disabled="!!action" @click="score(false)">尝试评分</el-button>
-        <el-button type="primary" :disabled="!!action" @click="score(true)">销毁评分</el-button>
+        <el-button type="primary" :disabled="!!action" @click="score(true)">提交终评并回收环境</el-button>
       </template>
     </div>
     <div v-if="grading" role="status">

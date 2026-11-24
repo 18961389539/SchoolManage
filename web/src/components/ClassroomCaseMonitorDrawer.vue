@@ -20,6 +20,7 @@ const search = ref('')
 const statusFilter = ref<'active' | 'all'>('active')
 const autoRefresh = ref(true)
 const restartingId = ref('')
+const endingId = ref('')
 
 const environmentVisible = ref(false)
 const environmentSession = ref<ClassroomCaseSession | null>(null)
@@ -107,6 +108,27 @@ async function restart(row: ClassroomCaseSession) {
     if (failure !== 'cancel' && failure !== 'close') ElMessage.error(messageOf(failure))
   } finally {
     restartingId.value = ''
+  }
+}
+
+async function endKeepingGrade(row: ClassroomCaseSession) {
+  try {
+    await ElMessageBox.confirm(
+      `将结束“${row.studentName}”的“${row.resourceName}”实操会话并回收环境。已有终评会保留，不会重新评分。`,
+      '结束会话并保留已有终评',
+      { type: 'warning', confirmButtonText: '结束并保留终评', cancelButtonText: '取消' }
+    )
+    endingId.value = row.sessionId
+    await post(`/classrooms/case-sessions/${row.sessionId}/end-keeping-grade`)
+    ElMessage.success('已结束会话并保留终评')
+    await load()
+    if (environmentVisible.value && environmentSession.value?.sessionId === row.sessionId) {
+      environmentVisible.value = false
+    }
+  } catch (failure) {
+    if (failure !== 'cancel' && failure !== 'close') ElMessage.error(messageOf(failure))
+  } finally {
+    endingId.value = ''
   }
 }
 
@@ -369,6 +391,14 @@ onUnmounted(stopTimer)
                   @click="restart(row)"
                 >
                   重启
+                </el-button>
+                <el-button
+                  v-if="row.canEndKeepingGrade"
+                  link
+                  :loading="endingId === row.sessionId"
+                  @click="endKeepingGrade(row)"
+                >
+                  结束并保留终评
                 </el-button>
               </div>
             </td>

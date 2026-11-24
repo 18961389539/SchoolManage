@@ -84,23 +84,23 @@ onBeforeUnmount(() => request?.abort())
 <template>
   <section class="page-heading">
     <div>
-      <h1>我的实训资源</h1>
+      <h1>我的实训设备</h1>
       <p>查看已分配的模拟节点、设备和虚拟机。</p>
     </div>
-    <el-button :icon="Refresh" :loading="loading" @click="load">刷新资源</el-button>
+    <el-button :icon="Refresh" :loading="loading" @click="load">刷新设备</el-button>
   </section>
 
   <section v-if="error" class="surface resource-empty">
-    <el-result icon="error" title="实训资源加载失败" :sub-title="error">
+    <el-result icon="error" title="实训设备加载失败" :sub-title="error">
       <template #extra><el-button type="primary" @click="load">重试</el-button></template>
     </el-result>
   </section>
   <section v-else-if="!resources && loading" class="surface resource-empty" aria-live="polite">
-    <p>正在加载实训资源…</p>
+    <p>正在加载实训设备…</p>
     <el-skeleton :rows="3" animated aria-hidden="true" />
   </section>
   <section v-else-if="!resources?.nodes.length" class="surface resource-empty">
-    <el-empty description="暂未分配实训资源">
+    <el-empty description="暂未分配实训设备">
       <p>请联系平台管理员，将你的账号分配到实训节点。</p>
     </el-empty>
   </section>

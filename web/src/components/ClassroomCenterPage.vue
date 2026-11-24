@@ -580,9 +580,9 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       <el-table-column label="操作" :width="narrowTable ? 175 : 215" :fixed="narrowTable ? false : 'right'">
         <template #default="{ row }">
           <div class="management-actions">
-            <el-button link type="primary" @click="openContent(row as ClassroomSummary)">预览课程</el-button>
+            <el-button link type="primary" @click="openContent(row as ClassroomSummary)">预览课堂内容</el-button>
             <el-button link @click="openRoster(row as ClassroomSummary)">学生</el-button>
-            <el-button link @click="openStatistics(row as ClassroomSummary)">统计</el-button>
+            <el-button link @click="openStatistics(row as ClassroomSummary)">学情</el-button>
             <el-dropdown trigger="click" @command="command => classroomCommand(command, row as ClassroomSummary)">
               <el-button link :icon="MoreFilled">更多</el-button>
               <template #dropdown>

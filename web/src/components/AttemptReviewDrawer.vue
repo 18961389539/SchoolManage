@@ -31,19 +31,15 @@ let loadRequest = 0
 const gradeForm = reactive<Record<string, { score: number | null; comment: string }>>({})
 
 const practicalQuestions = computed(() =>
-  (review.value?.questions || []).filter(question => question.type === 'practical' && !question.automaticPractical)
+  (review.value?.questions || []).filter(question => question.type === 'practical')
 )
 const canGrade = computed(
   () => !!props.gradePath && practicalQuestions.value.length > 0 && review.value?.status !== 'inProgress'
 )
 const projectedTotal = computed(() => {
   if (!review.value) return 0
-  const automaticScore = review.value.questions
-    .filter(item => item.automaticPractical)
-    .reduce((total, item) => total + (item.scoreAwarded ?? 0), 0)
   return (
     review.value.objectiveScore +
-    automaticScore +
     practicalQuestions.value.reduce((sum, question) => sum + Number(gradeForm[question.paperQuestionId]?.score ?? 0), 0)
   )
 })
@@ -57,7 +53,7 @@ async function load() {
     if (request !== loadRequest) return
     review.value = data
     Object.keys(gradeForm).forEach(key => delete gradeForm[key])
-    for (const question of data.questions.filter(item => item.type === 'practical' && !item.automaticPractical)) {
+    for (const question of data.questions.filter(item => item.type === 'practical')) {
       gradeForm[question.paperQuestionId] = {
         score: question.scoreAwarded ?? null,
         comment: question.comment || ''
@@ -99,22 +95,42 @@ function configurationValue(value: string | null, field: CaseField) {
   return value || '（空）'
 }
 
+function automaticOverrideDecision(question: AttemptReviewQuestion, score: number, comment: string) {
+  const reason = comment.trim()
+  if (question.scoreAwarded !== null && score === question.scoreAwarded && !reason) return 'skip'
+  return reason ? 'include' : 'need-reason'
+}
+
 function gradeAnswers() {
   const answers: { paperQuestionId: string; score: number; comment: string }[] = []
   for (const question of practicalQuestions.value) {
     const entry = gradeForm[question.paperQuestionId]
     const score = Number(entry?.score ?? NaN)
+    const comment = entry?.comment || ''
     if (!Number.isFinite(score) || score < 0 || score > question.maxScore) {
       ElMessage.warning(`“${question.stem.slice(0, 20)}”的评分应在 0–${question.maxScore} 分之间`)
       focusGrade(question.paperQuestionId, 'score')
       return
     }
-    if ((entry?.comment || '').length > 500) {
+    if (comment.length > 500) {
       ElMessage.warning('评语不能超过 500 个字符')
       focusGrade(question.paperQuestionId, 'comment')
       return
     }
-    answers.push({ paperQuestionId: question.paperQuestionId, score, comment: entry?.comment || '' })
+    if (question.automaticPractical) {
+      const decision = automaticOverrideDecision(question, score, comment)
+      if (decision === 'skip') continue
+      if (decision === 'need-reason') {
+        ElMessage.warning('覆盖自动评分时请填写原因')
+        focusGrade(question.paperQuestionId, 'comment')
+        return
+      }
+    }
+    answers.push({ paperQuestionId: question.paperQuestionId, score, comment })
+  }
+  if (!answers.length) {
+    ElMessage.warning('请先调整自动评分并填写原因')
+    return
   }
   return answers
 }
@@ -309,11 +325,11 @@ watch(
             <span>题目解析</span>
             <p>{{ question.analysis }}</p>
           </div>
-          <div v-if="canGrade && question.type === 'practical' && !question.automaticPractical" class="grading-box">
+          <div v-if="canGrade && question.type === 'practical'" class="grading-box">
             <div class="grading-score">
-              <label :for="`${questionPrefix}-${question.paperQuestionId}-score`"
-                >评分（0–{{ question.maxScore }}）</label
-              >
+              <label :for="`${questionPrefix}-${question.paperQuestionId}-score`">{{
+                question.automaticPractical ? '覆盖分（0–' + question.maxScore + '）' : `评分（0–${question.maxScore}）`
+              }}</label>
               <el-input-number
                 :id="`${questionPrefix}-${question.paperQuestionId}-score`"
                 v-model="gradeForm[question.paperQuestionId].score"
@@ -325,7 +341,9 @@ watch(
               />
             </div>
             <div class="grading-comment">
-              <label :for="`${questionPrefix}-${question.paperQuestionId}-comment`">评语（可选）</label>
+              <label :for="`${questionPrefix}-${question.paperQuestionId}-comment`">{{
+                question.automaticPractical ? '覆盖原因（必填）' : '评语（可选）'
+              }}</label>
               <el-input
                 :id="`${questionPrefix}-${question.paperQuestionId}-comment`"
                 v-model="gradeForm[question.paperQuestionId].comment"
@@ -334,7 +352,7 @@ watch(
                 :rows="2"
                 maxlength="500"
                 show-word-limit
-                placeholder="评语会展示给学生（可选）"
+                :placeholder="question.automaticPractical ? '说明为何调整自动评分' : '评语会展示给学生（可选）'"
               />
             </div>
           </div>

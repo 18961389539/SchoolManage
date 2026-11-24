@@ -46,7 +46,7 @@ onMounted(load)
 <template>
   <section class="page-heading">
     <div>
-      <h1>{{ detail ? detail.classroom.name : '我的课堂统计' }}</h1>
+      <h1>{{ detail ? detail.classroom.name : '我的课堂学情' }}</h1>
       <p>
         {{
           detail ? `${detail.classroom.courseName} · 学习进度与练习记录` : '查看本课堂的学习进度、成绩单与练习历史。'
@@ -64,7 +64,7 @@ onMounted(load)
 
   <div v-loading="loading" class="stats-page-body">
     <StudentStatsDetailView v-if="detail" :detail="detail" />
-    <el-empty v-else-if="!loading && !error" description="暂无可查看的课堂统计">
+    <el-empty v-else-if="!loading && !error" description="暂无可查看的课堂学情">
       <p class="empty-hint">打开课堂并开始学习后，这里会显示进度、成绩单与练习记录。</p>
       <el-button @click="back">{{ backKey === 'classroom-content' ? '返回课堂' : '返回课堂列表' }}</el-button>
     </el-empty>
