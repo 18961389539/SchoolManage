@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1",
+    "start": "node scripts/serve.mjs",
+    "preview": "vite preview --host 0.0.0.0",
     "check:time": "node scripts/check-time.mjs",
     "check:sizes": "node scripts/check-file-sizes.mjs",
     "lint": "eslint . --max-warnings 0",
