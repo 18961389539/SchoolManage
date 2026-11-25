@@ -194,7 +194,9 @@ watch(
           </fieldset>
         </form>
 
-        <p v-if="initialized" class="auth-support">忘记密码请联系平台管理员。</p>
+        <p v-if="initialized" class="auth-support">
+          忘记密码请联系平台管理员重置。管理员可在人员管理中为你设置新密码，登录后需要再修改。
+        </p>
       </section>
     </div>
   </main>

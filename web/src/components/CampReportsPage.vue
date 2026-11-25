@@ -5,7 +5,7 @@ import { api, dateTime, messageOf } from '../api'
 import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { useRequestGeneration } from '../requestGeneration'
-import type { CampStaffReportRow, Paged } from '../types'
+import type { CampPositionLearnerSummary, CampStaffReportRow, Paged } from '../types'
 import CampReportDrawer from './CampReportDrawer.vue'
 import TableEmpty from './TableEmpty.vue'
 
@@ -20,6 +20,23 @@ const error = ref('')
 const listRequests = useRequestGeneration()
 const reportVisible = ref(false)
 const activeAttemptId = ref('')
+const positions = ref<CampPositionLearnerSummary[]>([])
+const positionsLoading = ref(false)
+const positionsError = ref('')
+
+async function loadPositions() {
+  positionsLoading.value = true
+  positionsError.value = ''
+  try {
+    const data = await api<{ items?: CampPositionLearnerSummary[] }>('/camp/positions')
+    positions.value = data.items || []
+  } catch (failure) {
+    positionsError.value = messageOf(failure)
+    positions.value = []
+  } finally {
+    positionsLoading.value = false
+  }
+}
 
 async function load() {
   const token = listRequests.begin()
@@ -67,16 +84,65 @@ function openReport(row: CampStaffReportRow) {
   reportVisible.value = true
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void loadPositions()
+})
 </script>
 
 <template>
   <section class="page-heading">
     <div>
       <h1>能力报告</h1>
-      <p>查看学生岗位测评的成绩、技能维度表现与能力雷达。</p>
+      <p>查看已发布岗位（只读）以及学生岗位测评的成绩、技能维度表现与能力雷达。岗位由管理员发布，不按人单独分配。</p>
     </div>
-    <el-button :icon="Refresh" :loading="loading" @click="load">刷新报告</el-button>
+    <el-button
+      :icon="Refresh"
+      :loading="loading || positionsLoading"
+      @click="
+        () => {
+          void load()
+          void loadPositions()
+        }
+      "
+      >刷新</el-button
+    >
+  </section>
+
+  <section class="surface camp-positions-catalog" v-loading="positionsLoading">
+    <header class="card-heading">
+      <div>
+        <h2>已发布岗位</h2>
+        <p>学生交卷前可在这里确认当前对外发布了哪些岗位。如需调整发布，请联系管理员。</p>
+      </div>
+    </header>
+    <el-alert
+      v-if="positionsError"
+      :title="positionsError"
+      type="error"
+      show-icon
+      :closable="false"
+      class="section-notice"
+    />
+    <el-table v-else :data="positions" row-key="id" empty-text="">
+      <template #empty>
+        <TableEmpty
+          title="当前没有已发布的岗位"
+          hint="岗位需由管理员先发布。取消发布后，尚未开始的学生将不再看到该岗位。"
+        />
+      </template>
+      <el-table-column prop="name" label="岗位" min-width="160" show-overflow-tooltip />
+      <el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip />
+      <el-table-column label="时长" width="100">
+        <template #default="{ row }">{{ row.durationMinutes }} 分钟</template>
+      </el-table-column>
+      <el-table-column label="题目" width="160">
+        <template #default="{ row }">{{ row.questionCount }} 题 · 实操 {{ row.practicalCount }}</template>
+      </el-table-column>
+      <el-table-column label="满分" width="90">
+        <template #default="{ row }">{{ row.maxScore }}</template>
+      </el-table-column>
+    </el-table>
   </section>
 
   <section class="surface staff-toolbar">
@@ -205,6 +271,11 @@ onMounted(load)
   margin-right: 8px;
   color: #22685a;
   font-weight: 600;
+}
+
+.camp-positions-catalog {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
 }
 
 .staff-pager {

@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { DataAnalysis, Download, Refresh, Search, User } from '@element-plus/icons-vue'
 import { api, dateTime, downloadFile, messageOf } from '../api'
-import { remainingText } from '../analytics'
+import { remainingText, resourceProgressText } from '../analytics'
 import type {
   ClassroomStatisticsResponse,
   ClassroomStatsStudentRow,
@@ -258,6 +258,9 @@ watch(
     body-class="classroom-stats-drawer-body"
     @update:model-value="emit('update:visible', $event)"
   >
+    <p class="empty-hint">
+      理论练习达标与技能进度按提交时保存的得分率计算，不随当前题目满分变化。缺少可靠历史满分的旧记录保留原始成绩，但暂不计为已达标；得分显示“—”，请联系管理员核实。
+    </p>
     <div v-loading="loading" class="stats-body">
       <header class="stats-head">
         <div>
@@ -648,7 +651,7 @@ watch(
             </el-table-column>
             <el-table-column label="成绩" width="90">
               <template #default="{ row }">{{
-                row.maxScore > 0 ? `${row.bestScore} / ${row.maxScore}` : '—'
+                resourceProgressText(row.bestScore, row.maxScore, resourceDetail.resource.kind, row.attemptCount)
               }}</template>
             </el-table-column>
             <el-table-column prop="attemptCount" label="练习次数" width="90" />

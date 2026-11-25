@@ -53,6 +53,8 @@ let dirty = false
 let autoTriggered = false
 let ticker: number | undefined
 let autosaveTimer: number | undefined
+let deployPoll: number | undefined
+const refreshingStatus = ref(false)
 let debounceTimer: number | undefined
 let serverOffset = 0
 let activeSave: Promise<void> | undefined
@@ -127,22 +129,64 @@ function questionNumber(question: ExamTakingQuestion): number {
   return questionNumbers.value.get(question.paperQuestionId) ?? 0
 }
 
-async function load() {
-  loading.value = true
-  error.value = ''
+function waitingForDeploy(item = detail.value) {
+  return (
+    !!item &&
+    item.status === 'open' &&
+    item.deploymentStatus !== 'notRequired' &&
+    item.deploymentStatus !== 'deployed' &&
+    !item.canStart
+  )
+}
+
+function stopDeployPoll() {
+  if (deployPoll !== undefined) {
+    window.clearInterval(deployPoll)
+    deployPoll = undefined
+  }
+}
+
+function syncDeployPoll() {
+  stopDeployPoll()
+  if (!disposed && waitingForDeploy()) {
+    deployPoll = window.setInterval(() => {
+      void refreshHall(true).catch(() => {})
+    }, 15000)
+  }
+}
+
+async function refreshHall(silent = false) {
+  if (!silent) refreshingStatus.value = true
+  const wasWaiting = waitingForDeploy()
   try {
     const data = await api<ExamHallDetail>(`/exam-hall/${props.examId}`)
     if (disposed) return
     serverOffset = parseApiDate(data.serverNow).getTime() - Date.now()
     detail.value = data
-    stopClocks()
     if (data.attempt?.status === 'inProgress' && data.questions) {
+      stopClocks()
       await hydrate(data.questions)
       syncRemaining()
       if (!disposed) startClocks()
     } else if (data.attempt) {
       remaining.value = 0
     }
+    if (wasWaiting && data.canStart) ElMessage.success('实操环境已就绪，可以开始作答')
+  } catch (failure) {
+    if (!silent) error.value = messageOf(failure)
+    else throw failure
+  } finally {
+    if (!silent) refreshingStatus.value = false
+    syncDeployPoll()
+  }
+}
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    await refreshHall(true)
+    if (disposed) return
   } catch (failure) {
     error.value = messageOf(failure)
     detail.value = null
@@ -459,6 +503,7 @@ onBeforeUnmount(() => {
   // Last-chance write for paths that bypass the guard (session expiry, forced sign-out).
   if (dirty && inProgress.value && !submitting.value) void persistAnswers()
   disposed = true
+  stopDeployPoll()
   stopClocks()
   window.removeEventListener('beforeunload', beforeUnload)
 })
@@ -808,7 +853,29 @@ function goRecords() {
             size="large"
             >等待部署实操环境</el-button
           >
-          <el-button v-else disabled size="large">当前不可作答</el-button>
+          <el-button
+            v-if="
+              detail.status === 'open' &&
+              detail.deploymentStatus !== 'notRequired' &&
+              detail.deploymentStatus !== 'deployed'
+            "
+            :loading="refreshingStatus"
+            @click="refreshHall(false)"
+          >
+            刷新状态
+          </el-button>
+          <el-button
+            v-if="
+              !detail.canStart &&
+              detail.status !== 'scheduled' &&
+              (detail.status !== 'open' ||
+                detail.deploymentStatus === 'notRequired' ||
+                detail.deploymentStatus === 'deployed')
+            "
+            disabled
+            size="large"
+            >当前不可作答</el-button
+          >
         </div>
       </section>
     </template>

@@ -60,7 +60,7 @@ async function restart(row: CampMonitorRow) {
   if (restarting.value) return
   try {
     await ElMessageBox.confirm(
-      `将为 ${row.studentName} 重启测评虚拟机并重新计时环境，学生作答不会被清空。确认重启吗？`,
+      `将为 ${row.studentName} 仅重启环境，不清空已保存答案，也不延长测评时间。当前剩余 ${Math.max(0, Math.ceil(row.remainingSeconds / 60))} 分钟（截止时间不变）。确认重启吗？`,
       '重启测评环境',
       { type: 'warning', confirmButtonText: '重启', cancelButtonText: '取消' }
     )

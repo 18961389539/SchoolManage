@@ -361,6 +361,14 @@ async function save() {
     destroy-on-close
     @opened="focusResourceForm"
   >
+    <el-alert
+      v-if="resourceId"
+      title="修改课程内容会影响后续学习。已提交练习保留原题快照与提交时得分率；正在作答的旧题答案可能需要刷新后重答，请先通知授课教师。"
+      type="info"
+      show-icon
+      :closable="false"
+      class="section-notice"
+    />
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
     <div v-if="loading" class="resource-skeleton" aria-live="polite">
       <el-skeleton :rows="6" animated />

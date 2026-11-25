@@ -656,7 +656,7 @@ public static class TeachingEndpoints
         var teacherUserId = entity.TeacherUserId;
         if (ctx.User.IsInRole("Admin"))
         {
-            var (teacherError, resolvedTeacherId) = await ResolveTeacher(input.TeacherUserId ?? entity.TeacherUserId, ctx, db, ct);
+            var (teacherError, resolvedTeacherId) = await ResolveTeacher(input.TeacherUserId, ctx, db, ct);
             if (teacherError != null) return teacherError;
             teacherUserId = resolvedTeacherId;
         }
@@ -676,6 +676,11 @@ public static class TeachingEndpoints
         var entity = await db.Classrooms.FindAsync([id], ct);
         if (entity == null) return NotFound("课堂不存在");
         if (!CanManage(ctx, entity)) return Forbidden("无权管理该课堂");
+        if (TeachingLogic.EffectiveStatus(entity, DateTime.UtcNow) == "open")
+            return Conflict("课堂正在开放，请先结课再删除");
+        if (await db.LearningRecords.AnyAsync(item => item.ClassroomId == id, ct)
+            || await db.ClassroomCaseSessions.AnyAsync(item => item.ClassroomId == id, ct))
+            return Conflict("课堂已有学习或实操记录，不能删除；请保留课堂作为历史记录");
         db.Classrooms.Remove(entity);
         Audit.Add(db, ctx, "删除课堂", entity.Name);
         await db.SaveChangesAsync(ct);
@@ -768,14 +773,18 @@ public static class TeachingEndpoints
                                select new { resource.Id, resource.Name, resource.Kind }).ToListAsync(ct);
         var records = await db.LearningRecords.AsNoTracking()
             .Where(item => item.ClassroomId == id)
-            .Select(item => new { item.UserId, item.ResourceId, item.Status, item.AttemptCount, item.BestScore, item.CompletedAt, item.StartedAt })
             .ToListAsync(ct);
+        await PracticeHistory.LoadAsync(db, records, ct);
         var byUser = records.GroupBy(item => item.UserId).ToDictionary(group => group.Key, group => group.ToList());
         var completedRecords = records.Count(item => item.Status == "completed");
         var items = students.Select(student =>
         {
             var own = byUser.GetValueOrDefault(student.UserId) ?? [];
-            var scores = own.Where(item => item.AttemptCount > 0).Select(item => item.BestScore).ToArray();
+            var kinds = resources.ToDictionary(item => item.Id, item => item.Kind);
+            var scores = own.Where(item => item.AttemptCount > 0)
+                .Select(item => kinds.GetValueOrDefault(item.ResourceId) == "theoryPractice"
+                    ? PracticeHistory.Percent(item) : (decimal?)item.BestScore)
+                .Where(item => item.HasValue).Select(item => item!.Value).ToArray();
             var lastActivity = own.Select(item => (DateTime?)(item.CompletedAt ?? item.StartedAt)).Max();
             return new
             {
@@ -823,6 +832,7 @@ public static class TeachingEndpoints
         var records = isStudent
             ? await db.LearningRecords.AsNoTracking().Where(item => item.ClassroomId == id && item.UserId == CurrentUserId(ctx)).ToListAsync(ct)
             : new List<LearningRecord>();
+        await PracticeHistory.LoadAsync(db, records, ct);
         var completionCounts = await db.LearningRecords.AsNoTracking().Where(item => item.ClassroomId == id && item.Status == "completed")
             .GroupBy(item => item.ResourceId).Select(group => new { group.Key, Count = group.Count() })
             .ToDictionaryAsync(item => item.Key, item => item.Count, ct);
@@ -930,6 +940,8 @@ public static class TeachingEndpoints
         var answers = (input.Answers ?? []).Where(answer => !string.IsNullOrWhiteSpace(answer.QuestionId))
             .GroupBy(answer => answer.QuestionId)
             .ToDictionary(group => group.Key, group => TeachingLogic.NormalizeSelection(group.Last().Selected));
+        if (answers.Keys.Any(key => !questions.Any(question => question.Id == key)))
+            return Conflict("课程练习内容已更新，本次答案未计分、未覆盖原成绩。请刷新课堂后重新核对题目再提交。");
         var (score, maxScore) = TeachingLogic.ScoreAttempt(questions, answers);
         var now = DateTime.UtcNow;
         var record = await GetOrCreateRecord(db, id, userId!, resourceId, ct);
@@ -947,14 +959,16 @@ public static class TeachingEndpoints
         record.PracticeStartedAt = null;
         db.PracticeAttempts.Add(attempt);
         await db.SaveChangesAsync(ct);
-        var averageScore = await db.PracticeAttempts.Where(item => item.LearningRecordId == record.Id)
-            .AverageAsync(item => (double)item.Score, ct);
+        var history = await db.PracticeAttempts.Where(item => item.LearningRecordId == record.Id).ToListAsync(ct);
+        PracticeHistory.Apply([record], history);
         await transaction.CommitAsync(ct);
         return Results.Ok(new
         {
-            score, maxScore, passed = maxScore > 0 && (long)score * 100 >= (long)maxScore * 60,
+            score, maxScore, passed = maxScore > 0 && (long)score * 100 >= (long)maxScore * AnalyticsLogic.PassScorePercent,
             attempt.StartedAt, attempt.SubmittedAt, record.AttemptCount, record.BestScore,
-            averageScore = Math.Round(averageScore, 1),
+            record.PracticeBestScore, record.PracticeMaxScore, practicePercent = PracticeHistory.Percent(record),
+            averagePercent = PracticeHistory.AveragePercent(history),
+            bestPercent = PracticeHistory.BestPercent(history),
             questions = questionResults
         });
     }
@@ -980,7 +994,9 @@ public static class TeachingEndpoints
             };
 
     static object RecordView(LearningRecord record)
-        => new { record.Id, record.ResourceId, record.Status, record.BestScore, record.AttemptCount, record.StartedAt, record.CompletedAt };
+        => new { record.Id, record.ResourceId, record.Status, record.BestScore,
+            record.PracticeBestScore, record.PracticeMaxScore, practicePercent = PracticeHistory.Percent(record),
+            record.AttemptCount, record.StartedAt, record.CompletedAt };
 
     static string? CurrentUserId(HttpContext ctx) => ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -998,11 +1014,21 @@ public static class TeachingEndpoints
 
     static async Task<(IResult? Error, string TeacherUserId)> ResolveTeacher(string? requestedTeacherId, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
-        var teacherUserId = string.IsNullOrWhiteSpace(requestedTeacherId) ? CurrentUserId(ctx) ?? "" : requestedTeacherId;
-        if (!ctx.User.IsInRole("Admin") && teacherUserId != CurrentUserId(ctx)) return (Forbidden("教师只能创建自己的课堂"), "");
-        var teacher = await db.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == teacherUserId, ct);
+        if (ctx.User.IsInRole("Teacher"))
+        {
+            var self = CurrentUserId(ctx) ?? "";
+            if (!string.IsNullOrWhiteSpace(requestedTeacherId) && requestedTeacherId != self)
+                return (Forbidden("教师只能创建自己的课堂"), "");
+            var selfUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == self, ct);
+            if (selfUser == null || selfUser.Role is not ("Admin" or "Teacher")) return (Bad("请选择有效的授课教师"), "");
+            return (null, self);
+        }
+
+        if (string.IsNullOrWhiteSpace(requestedTeacherId))
+            return (Bad("请选择授课教师。不选择时，这个课堂不会出现在教师端。"), "");
+        var teacher = await db.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == requestedTeacherId, ct);
         if (teacher == null || teacher.Role is not ("Admin" or "Teacher")) return (Bad("请选择有效的授课教师"), "");
-        return (null, teacherUserId);
+        return (null, teacher.Id);
     }
 
     static async Task<(int Count, string? Error)> AddStudentsAsync(

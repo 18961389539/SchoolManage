@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { DataAnalysis, Refresh, School, Suitcase, Tickets } from '@element-plus/icons-vue'
 import { api, messageOf } from '../api'
 import type { TeacherHomeResponse } from '../analytics'
+import HomeTodos from './HomeTodos.vue'
 import HomeClassroomsPanel from './HomeClassroomsPanel.vue'
 import HomeLeaderboard from './HomeLeaderboard.vue'
 import '../role-home.css'
@@ -58,10 +59,18 @@ onMounted(load)
   <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
   <el-skeleton v-if="loading && !data" :rows="5" animated class="surface role-home-loading" />
 
+  <HomeTodos
+    v-if="data"
+    :todos="data.todos || []"
+    empty-hint="暂时没有待办。待批阅答卷、待部署的实操环境，以及即将开考或结考的安排，都会出现在这里。"
+    @navigate="(route, params) => emit('navigate', route, params)"
+  />
+
   <div v-if="data" v-loading="loading" class="role-home-grid">
     <HomeClassroomsPanel
       :classrooms="data.classrooms"
       teacher
+      :can-create-classroom="data.canCreateClassroom"
       @all="emit('navigate', 'classrooms')"
       @enter="enterClassroom"
       @statistics="openStatistics"

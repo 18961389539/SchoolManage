@@ -184,6 +184,9 @@ onUnmounted(() => window.clearInterval(refreshTimer))
       >连接虚拟机</el-button
     >
   </div>
+  <p class="case-alloc-hint">
+    课堂实操使用教师为小组分配的机柜，不会出现在“我的实训设备”里。那一页只显示管理员把账号分配到节点后的个人设备。
+  </p>
   <ClassroomLiveShare
     v-if="work && (readOnly || active)"
     :key="`${work.sessionId}:${work.workId}`"
@@ -275,6 +278,15 @@ onUnmounted(() => window.clearInterval(refreshTimer))
 }
 .case-port :deep(.el-input) {
   flex: 1 1 200px;
+}
+
+.case-alloc-hint,
+.case-empty-hint {
+  max-width: 52ch;
+  margin: 8px 0 0;
+  color: #56697c;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .case-empty-hint {

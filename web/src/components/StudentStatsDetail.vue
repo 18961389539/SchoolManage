@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { View } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
-import { remainingText } from '../analytics'
+import { attemptPassLabel, rateText, remainingText, resourceProgressText } from '../analytics'
 import type {
   CaseRecordDetail,
   ClassroomStatsPracticeRow,
@@ -81,6 +81,13 @@ function letters(indexes: number[]) {
 
 <template>
   <div class="student-stats-detail">
+    <el-alert
+      title="理论练习达标按提交时保存的得分率计算，不随当前题目满分变化。缺少可靠历史满分的旧记录保留完成记录，但暂不判定达标。"
+      type="info"
+      show-icon
+      :closable="false"
+      class="section-notice"
+    />
     <div class="detail-summary">
       <article class="summary-main">
         <span>资源达标率</span>
@@ -140,7 +147,7 @@ function letters(indexes: number[]) {
           </el-table-column>
           <el-table-column label="成绩" width="100">
             <template #default="{ row }">
-              {{ row.maxScore > 0 ? `${row.bestScore} / ${row.maxScore}` : '—' }}
+              {{ resourceProgressText(row.bestScore, row.maxScore, row.kind, row.attemptCount) }}
             </template>
           </el-table-column>
           <el-table-column prop="attemptCount" label="练习次数" width="90" />
@@ -234,20 +241,31 @@ function letters(indexes: number[]) {
             </p>
           </div>
           <div class="attempt-score">
-            <strong>{{ attempt.score }} / {{ attempt.maxScore }}</strong>
-            <el-tag :type="attempt.passed ? 'success' : 'danger'" size="small">{{
-              attempt.passed ? '达标' : '未达标'
+            <strong>{{ attempt.maxScore > 0 ? `${attempt.score} / ${attempt.maxScore}` : '—' }}</strong>
+            <el-tag :type="attempt.maxScore > 0 ? (attempt.passed ? 'success' : 'danger') : 'info'" size="small">{{
+              attemptPassLabel(attempt)
             }}</el-tag>
           </div>
         </div>
+        <el-alert
+          v-if="attempt.snapshotUnavailable"
+          :title="attempt.snapshotMessage || '缺少原题快照，只展示原始成绩与时间，不使用当前课程题目重新判分。'"
+          type="warning"
+          show-icon
+          :closable="false"
+          class="section-notice"
+        />
         <el-descriptions :column="2" size="small" border>
           <el-descriptions-item label="开始时间">{{ dateTime(attempt.startedAt) }}</el-descriptions-item>
           <el-descriptions-item label="结束时间">{{ dateTime(attempt.submittedAt) }}</el-descriptions-item>
           <el-descriptions-item label="练习次数">{{ attempt.attemptCount }}</el-descriptions-item>
-          <el-descriptions-item label="平均分">{{ attempt.averageScore }}</el-descriptions-item>
-          <el-descriptions-item label="最高得分">{{ attempt.bestScore }}</el-descriptions-item>
+          <el-descriptions-item label="平均得分率">{{ rateText(attempt.averagePercent) }}</el-descriptions-item>
+          <el-descriptions-item label="最高得分率">{{ rateText(attempt.bestPercent) }}</el-descriptions-item>
         </el-descriptions>
-        <div class="attempt-questions">
+        <div v-if="attempt.snapshotUnavailable && !attempt.questions.length" class="attempt-questions">
+          <p class="empty-hint">缺少原题快照，题目详情不可复原。</p>
+        </div>
+        <div v-else class="attempt-questions">
           <article v-for="(question, index) in attempt.questions" :key="question.questionId" class="attempt-question">
             <div class="question-title">
               <span :class="question.correct ? 'correct' : 'wrong'">{{ question.correct ? '答对' : '答错' }}</span>

@@ -199,8 +199,9 @@ public record ExamDeviceUpdate(int Revision, SimulatedDeviceState Configuration)
 public record ExamPaperInput(string Name, string? Description, string? Remark);
 public record TrainingExamInput(
     string Name, string PaperId, string? Description, DateTime StartAt, DateTime EndAt,
-    int DurationMinutes, string[]? ClassIds = null, string[]? ProfessionIds = null);
-public record ExamStudentAdjustInput(string[]? ClassIds = null, string[]? ProfessionIds = null, string[]? StudentUserIds = null);
+    int DurationMinutes, string[]? ClassIds = null, string[]? ProfessionIds = null, string[]? ClassroomIds = null);
+public record ExamStudentAdjustInput(string[]? ClassIds = null, string[]? ProfessionIds = null, string[]? StudentUserIds = null,
+    string[]? ClassroomIds = null);
 public record ExamPaperQuestionInput(string QuestionId, int? Score = null);
 public record ExamPaperQuestionAddInput(ExamPaperQuestionInput[]? Items);
 public record ExamPaperQuestionScoreInput(int Score);

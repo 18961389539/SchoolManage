@@ -221,6 +221,21 @@ async function reloadCourse(id: string) {
   }
 }
 
+async function publishCourse(course: CourseSummary, activate: boolean) {
+  try {
+    await post(`/courses/${course.id}/publish?activate=${activate}`)
+    ElMessage.success(
+      activate
+        ? '课程已发布并激活，教师可以用来开设课堂。'
+        : '课程已发布，尚未激活，教师还不能用来开课。可在本页再点击“激活”。'
+    )
+    await load()
+    emit('activation-changed')
+  } catch (failure) {
+    ElMessage.error(messageOf(failure))
+  }
+}
+
 async function togglePublish(course: CourseSummary) {
   try {
     if (course.status === 'published') {
@@ -232,8 +247,8 @@ async function togglePublish(course: CourseSummary) {
       await post(`/courses/${course.id}/unpublish`)
       ElMessage.success('课程已下线')
     } else {
-      await post(`/courses/${course.id}/publish?activate=false`)
-      ElMessage.success('课程已发布')
+      await publishCourse(course, false)
+      return
     }
     await load()
     emit('activation-changed')
@@ -397,9 +412,23 @@ onMounted(() => {
           <el-button link type="primary" :icon="View" @click="openTree(row as CourseSummary)">管理目录</el-button>
           <el-button link type="primary" @click="previewCourse(row as CourseSummary)">预览</el-button>
           <el-button link @click="openEdit(row as CourseSummary)">编辑</el-button>
-          <el-button link type="warning" @click="togglePublish(row as CourseSummary)">
-            {{ row.status === 'published' ? '下线' : '发布' }}
+          <el-button
+            v-if="row.status !== 'published'"
+            link
+            type="warning"
+            @click="publishCourse(row as CourseSummary, false)"
+          >
+            发布
           </el-button>
+          <el-button
+            v-if="row.status !== 'published'"
+            link
+            type="primary"
+            @click="publishCourse(row as CourseSummary, true)"
+          >
+            发布并激活
+          </el-button>
+          <el-button v-else link type="warning" @click="togglePublish(row as CourseSummary)">下线</el-button>
           <el-button
             v-if="row.status === 'published'"
             link

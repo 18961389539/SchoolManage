@@ -16,6 +16,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api, dateTime, downloadFile, messageOf, post } from '../api'
+import { appState } from '../store'
 import {
   classroomStatusOptions,
   classroomStatusType,
@@ -41,6 +42,7 @@ import ClassroomCaseWork from './ClassroomCaseWork.vue'
 const TerminalDialog = defineAsyncComponent(() => import('./TerminalDialog.vue'))
 
 const props = defineProps<{ classroomId: string; resourceId?: string; backKey: string }>()
+const role = computed(() => appState.user?.role)
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>] }>()
 
 const data = ref<ClassroomContentResponse | null>(null)
@@ -145,7 +147,11 @@ const chapterProgress = computed(
     )
 )
 const averageScore = computed(() => {
-  const scores = (data.value?.records || []).filter(record => record.attemptCount > 0).map(record => record.bestScore)
+  const kinds = new Map(allResources.value.map(resource => [resource.id, resource.kind]))
+  const scores = (data.value?.records || [])
+    .filter(record => record.attemptCount > 0)
+    .map(record => (kinds.get(record.resourceId) === 'theoryPractice' ? record.practicePercent : record.bestScore))
+    .filter((score): score is number => score != null)
   if (!scores.length) return null
   return Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 10) / 10
 })
@@ -468,13 +474,17 @@ onMounted(() => load())
         aria-label="已完成的课堂资源比例"
       />
       <div class="study-progress-score">
-        <span>练习最佳均分</span><strong>{{ averageScore ?? '—' }}</strong>
+        <span>练习最佳得分率均值（%）</span><strong>{{ averageScore ?? '—' }}</strong>
       </div>
     </section>
 
     <div v-if="!resourceCount" class="surface content-loading">
       <el-empty description="课程暂未配置学习资源">
-        <p class="empty-hint">请联系管理员在课程管理中补充章节、小节和资源。</p>
+        <p class="empty-hint">
+          {{
+            role === 'Admin' ? '请先在课程管理中补充章节、小节和资源。' : '请联系管理员修改课程，补充章节、小节和资源。'
+          }}
+        </p>
       </el-empty>
     </div>
 
@@ -690,12 +700,12 @@ onMounted(() => load())
               <dd>{{ result.attemptCount }}</dd>
             </div>
             <div>
-              <dt>平均分</dt>
-              <dd>{{ result.averageScore }}</dd>
+              <dt>平均得分率</dt>
+              <dd>{{ result.averagePercent == null ? '—' : result.averagePercent + '%' }}</dd>
             </div>
             <div>
-              <dt>最高得分</dt>
-              <dd>{{ result.bestScore }}</dd>
+              <dt>最高得分率</dt>
+              <dd>{{ result.bestPercent == null ? '—' : result.bestPercent + '%' }}</dd>
             </div>
           </dl>
 
@@ -810,7 +820,12 @@ onMounted(() => load())
           >
           <el-button v-if="isPractice && result" type="primary" @click="retryPractice">再练一次</el-button>
           <span v-if="selectedRecord?.attemptCount" class="record-hint">
-            已作答 {{ selectedRecord.attemptCount }} 次，最佳 {{ selectedRecord.bestScore }} 分
+            已作答 {{ selectedRecord.attemptCount }} 次，最佳
+            {{
+              selectedRecord.practiceMaxScore
+                ? `${selectedRecord.practiceBestScore} / ${selectedRecord.practiceMaxScore}`
+                : '历史满分未知，暂不判定达标'
+            }}
           </span>
         </footer>
         <nav v-if="resourceCount > 1" class="resource-pagination" aria-label="切换学习资源">

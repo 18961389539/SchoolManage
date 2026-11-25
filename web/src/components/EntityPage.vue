@@ -14,6 +14,7 @@ import EntityToolbar from './EntityToolbar.vue'
 import NodeAccountsDialog from './NodeAccountsDialog.vue'
 import NodeConfigurationDialog from './NodeConfigurationDialog.vue'
 import ResetPasswordDialog from './ResetPasswordDialog.vue'
+import PasswordReceiptDialog from './PasswordReceiptDialog.vue'
 const ImportDialog = defineAsyncComponent(() => import('./ImportDialog.vue'))
 const TerminalDialog = defineAsyncComponent(() => import('./TerminalDialog.vue'))
 const DeviceWebConsole = defineAsyncComponent(() => import('./DeviceWebConsole.vue'))
@@ -50,6 +51,14 @@ const cabinetProbeResults = ref<ConnectionProbe[] | null>(null)
 const actionLoading = ref('')
 const resetVisible = ref(false)
 const resetPerson = ref<Row | null>(null)
+const receiptVisible = ref(false)
+const receipt = ref({ title: '', account: '', password: '', note: '' })
+
+function showPasswordReceipt(account: string, password: string, title: string) {
+  receipt.value = { title, account, password, note: '' }
+  receiptVisible.value = true
+}
+
 const configurationVisible = ref(false)
 const configurationNode = ref<Row | null>(null)
 const configuration = reactive<Row>({})
@@ -218,7 +227,12 @@ async function save(payload: Row) {
     optionCache.clear()
     if (context !== contextVersion) return
     formVisible.value = false
+    const createdPassword = !editing.value && typeof payload.password === 'string' ? payload.password : ''
+    const createdAccount = typeof payload.userName === 'string' ? payload.userName : ''
     ElMessage.success(`${singular}已保存`)
+    if (createdPassword) {
+      showPasswordReceipt(createdAccount, createdPassword, `${singular}已创建，请立即抄写初始密码`)
+    }
     await load()
   } catch (err) {
     if (context === contextVersion) ElMessage.error(messageOf(err))
@@ -232,7 +246,7 @@ async function remove(row: Row) {
   const { endpoint, singular } = entity.value
   try {
     await ElMessageBox.confirm(
-      `确认删除${singular}“${row.name || row.userName}”？关联记录存在时系统会阻止删除。`,
+      `确认删除${singular}“${row.name || row.userName}”？${['students', 'teachers', 'admins'].includes(props.entityKey) ? '将同时删除其登录账号；有学习、实操、考试或岗位测评历史时会拒绝删除并说明数量。无历史的删除不可恢复。' : '有关联资源时请先解除关联，删除不可恢复。'}`,
       '删除确认',
       { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
     )
@@ -252,11 +266,15 @@ async function batchDelete() {
   const context = contextVersion
   const ids = selected.value.map(row => row.id)
   try {
-    await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 名${entity.value.singular}及其登录账号？`, '批量删除', {
-      type: 'warning',
-      confirmButtonText: '确认删除',
-      cancelButtonText: '取消'
-    })
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${ids.length} 名${entity.value.singular}及其登录账号？有学习、实操、考试或岗位测评历史时整批拒绝删除，不会只删一部分；无历史的删除不可恢复。`,
+      '批量删除',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消'
+      }
+    )
     if (context !== contextVersion) return
     await post('/people/batch-delete', { ids })
     if (context !== contextVersion) return
@@ -374,8 +392,13 @@ async function doReset(password: string) {
   try {
     await post(`/people/${resetPerson.value?.id}/reset-password`, { newPassword: password })
     if (context !== contextVersion) return
-    ElMessage.success('密码已重置，请单独告知本人；下次登录需修改密码。')
+    ElMessage.success('密码已重置，请立即抄写并单独告知本人；关闭后无法再查看。下次登录需修改密码。')
     resetVisible.value = false
+    showPasswordReceipt(
+      String(resetPerson.value?.userName || resetPerson.value?.name || ''),
+      password,
+      '密码已重置，请立即抄写新密码'
+    )
   } catch (err) {
     if (context === contextVersion) ElMessage.error(messageOf(err))
   } finally {
@@ -463,6 +486,7 @@ function resetOverlays() {
   cabinetProbeResults.value = null
   resetVisible.value = false
   resetPerson.value = null
+  receiptVisible.value = false
   configurationVisible.value = false
   configurationNode.value = null
   for (const key of Object.keys(configuration)) delete configuration[key]
@@ -546,6 +570,13 @@ watch(
     @submit="save"
   />
   <ResetPasswordDialog v-model="resetVisible" :person="resetPerson" :busy="saving" @submit="doReset" />
+  <PasswordReceiptDialog
+    v-model="receiptVisible"
+    :title="receipt.title"
+    :account="receipt.account"
+    :password="receipt.password"
+    :note="receipt.note"
+  />
   <NodeConfigurationDialog
     v-model="configurationVisible"
     :node="configurationNode"

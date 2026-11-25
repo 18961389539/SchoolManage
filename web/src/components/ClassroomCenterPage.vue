@@ -212,7 +212,7 @@ function resetForm() {
   const window = defaultWindow()
   form.name = ''
   form.courseId = courseOptions.value[0]?.id || ''
-  form.teacherUserId = props.admin ? teachers.value[0]?.id || '' : ''
+  form.teacherUserId = ''
   form.openAt = window.openAt
   form.closeAt = window.closeAt
   form.classIds = []
@@ -252,25 +252,24 @@ function openEdit(item: ClassroomSummary) {
   dialogVisible.value = true
 }
 
-async function saveClassroom() {
-  if (!form.name.trim()) {
-    formError.value = '请填写课堂名称'
-    return
-  }
-  if (!form.courseId) {
-    formError.value = '请选择已发布的课程'
-    return
-  }
+function classroomFormError(): string | undefined {
+  if (!form.name.trim()) return '请填写课堂名称'
+  if (!form.courseId) return '请选择已发布并激活的课程'
+  if (props.admin && !form.teacherUserId) return '请选择授课教师。不选择时，这个课堂不会出现在教师端。'
   const openAt = shanghaiInputToIso(form.openAt)
   const closeAt = shanghaiInputToIso(form.closeAt)
-  if (!openAt || !closeAt) {
-    formError.value = '请选择有效的开课和结课时间'
+  if (!openAt || !closeAt) return '请选择有效的开课和结课时间'
+  if (new Date(closeAt) <= new Date(openAt)) return '结课时间必须晚于开课时间'
+}
+
+async function saveClassroom() {
+  const invalid = classroomFormError()
+  if (invalid) {
+    formError.value = invalid
     return
   }
-  if (new Date(closeAt) <= new Date(openAt)) {
-    formError.value = '结课时间必须晚于开课时间'
-    return
-  }
+  const openAt = shanghaiInputToIso(form.openAt)!
+  const closeAt = shanghaiInputToIso(form.closeAt)!
   saving.value = true
   formError.value = ''
   try {
@@ -323,11 +322,11 @@ async function toggleOpen(item: ClassroomSummary) {
 
 async function removeClassroom(item: ClassroomSummary) {
   try {
-    await ElMessageBox.confirm(`删除课堂“${item.name}”会同时删除学生名单和学习记录，是否继续？`, '删除课堂', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消'
-    })
+    await ElMessageBox.confirm(
+      `删除课堂“${item.name}”会同时删除学生名单和配置。仅未产生学习或实操历史、且已结课的课堂可删除，是否继续？`,
+      '删除课堂',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
     await del(`/classrooms/${item.id}`)
     ElMessage.success('课堂已删除')
     if (items.value.length === 1 && page.value > 1) page.value--
@@ -469,7 +468,11 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     </div>
     <div class="heading-actions">
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      <el-tooltip :disabled="courseOptions.length > 0" content="请先在课程管理中发布并激活课程" placement="bottom">
+      <el-tooltip
+        :disabled="courseOptions.length > 0"
+        :content="admin ? '请先在课程管理中发布并激活课程' : '请联系管理员发布并激活课程后再新建课堂'"
+        placement="bottom"
+      >
         <span class="disabled-action-wrap">
           <el-button type="primary" :icon="Plus" :disabled="!courseOptions.length" @click="openCreate"
             >新建课堂</el-button
@@ -481,7 +484,11 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
 
   <el-alert
     v-if="!courseOptions.length && !loading"
-    title="尚无可组课的课程，请先在课程管理中发布并激活课程。"
+    :title="
+      admin
+        ? '尚无可组课的课程，请先在课程管理中发布并激活课程。'
+        : '尚无可组课的课程，请联系管理员发布并激活课程后再新建课堂。'
+    "
     type="info"
     show-icon
     :closable="false"
@@ -535,7 +542,9 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
                 ? '试试调整关键词或状态筛选，也可清除后查看全部课堂。'
                 : courseOptions.length
                   ? '点击右上角「新建课堂」，选择已激活课程与班级。'
-                  : '请先在课程管理中发布并激活课程，再来新建课堂。'
+                  : admin
+                    ? '请先在课程管理中发布并激活课程，再来新建课堂。'
+                    : '请先联系管理员发布并激活课程，然后再新建课堂。'
           "
         >
           <template v-if="!error && filtering" #action>
@@ -641,16 +650,16 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
           <small v-if="selectedCourse">{{ classroomResourceCounts(selectedCourse) }}</small>
         </el-form-item>
       </div>
-      <el-form-item v-if="admin" label="授课教师">
-        <el-select v-model="form.teacherUserId" filterable placeholder="选择教师">
+      <el-form-item v-if="admin" label="授课教师" required>
+        <el-select v-model="form.teacherUserId" filterable clearable placeholder="请选择授课教师（可选自己）">
           <el-option
             v-for="teacher in teachers"
             :key="teacher.id"
-            :label="`${teacher.displayName}（${teacher.userName}）`"
+            :label="`${teacher.displayName}（${teacher.userName}${teacher.role === 'Admin' ? ' · 管理员' : ''}）`"
             :value="teacher.id"
           />
         </el-select>
-        <p class="field-help">不选择时由当前管理员账号担任授课教师。</p>
+        <p class="field-help">必选。管理员也可以选择自己；不选择时教师端不会出现这个课堂。</p>
       </el-form-item>
       <div class="classroom-form-grid">
         <el-form-item label="开课时间" required>
@@ -802,6 +811,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     v-model:visible="cabinetsVisible"
     :classroom-id="collaborationClassroom?.id || ''"
     :classroom-name="collaborationClassroom?.name || ''"
+    :admin="admin"
   />
   <ClassroomCaseMonitorDrawer
     v-model:visible="monitorVisible"

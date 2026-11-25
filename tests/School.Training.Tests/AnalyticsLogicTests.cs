@@ -2,8 +2,15 @@ namespace School.Training.Tests;
 
 public class AnalyticsLogicTests
 {
-    static LearningRecord Record(string status, int bestScore = 0, int attemptCount = 0)
-        => new() { Status = status, BestScore = bestScore, AttemptCount = attemptCount };
+    static LearningRecord Record(string status, int bestScore = 0, int attemptCount = 0, int? practiceMaxScore = null)
+        => new()
+        {
+            Status = status,
+            BestScore = bestScore,
+            AttemptCount = attemptCount,
+            PracticeBestScore = practiceMaxScore is null ? null : bestScore,
+            PracticeMaxScore = practiceMaxScore
+        };
 
     static AnalyticsResource Resource(string id, string kind = "theory", int maxScore = 0)
         => new(id, id, kind, "course", "课程", "chapter", "章节", "section", "小节", 1, 1, 1, 30, maxScore);
@@ -34,7 +41,10 @@ public class AnalyticsLogicTests
     public void Passed_uses_completion_or_sixty_percent_on_practice(
         string kind, string status, int bestScore, int attempts, int maxScore, bool expected)
     {
-        Assert.Equal(expected, AnalyticsLogic.IsPassed(kind, Record(status, bestScore, attempts), maxScore));
+        var record = kind == "theoryPractice"
+            ? Record(status, bestScore, attempts, maxScore)
+            : Record(status, bestScore, attempts);
+        Assert.Equal(expected, AnalyticsLogic.IsPassed(kind, record, maxScore));
     }
 
     [Fact]
@@ -62,7 +72,7 @@ public class AnalyticsLogicTests
         {
             ["a"] = Record("completed"),
             ["b"] = Record("inProgress"),
-            ["c"] = Record("completed", 60, 1)
+            ["c"] = Record("completed", 60, 1, 100)
         };
         var resources = new[]
         {
@@ -132,5 +142,23 @@ public class AnalyticsLogicTests
         Assert.Equal(2, AnalyticsLogic.ActiveDays(timestamps));
         Assert.Equal(new DateTime(2026, 11, 20, 17, 0, 0, DateTimeKind.Utc), AnalyticsLogic.LastActivity(timestamps));
         Assert.Null(AnalyticsLogic.LastActivity([]));
+    }
+
+    [Fact]
+    public void Theory_practice_pass_stays_stable_when_current_maximum_changes()
+    {
+        var record = Record("completed", 60, 1, 100);
+        Assert.True(AnalyticsLogic.IsPassed("theoryPractice", record, 200));
+        Assert.True(AnalyticsLogic.IsPassed("theoryPractice", record, 50));
+        Assert.Equal(60, PracticeHistory.Percent(record));
+    }
+
+    [Fact]
+    public void Theory_practice_without_historical_maximum_is_not_inferred_as_passed()
+    {
+        var record = Record("completed", 80, 1);
+        Assert.False(AnalyticsLogic.IsPassed("theoryPractice", record, 100));
+        Assert.Null(PracticeHistory.Percent(record));
+        Assert.Equal(0, PracticeHistory.Maximum("theoryPractice", record, 100));
     }
 }

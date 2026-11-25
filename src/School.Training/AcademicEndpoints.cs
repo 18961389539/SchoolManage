@@ -142,7 +142,11 @@ public static class AcademicEndpoints
         var admins = users.Count(x => x.Role == "Admin"); if (admins > 0 && await db.Users.CountAsync(x => x.Role == "Admin", ctx.RequestAborted) <= admins) return Results.Conflict(new { message = "必须保留至少一个管理员" });
         var ownedClassrooms = await db.Classrooms.CountAsync(x => userIds.Contains(x.TeacherUserId), ctx.RequestAborted);
         if (ownedClassrooms > 0) return Results.Conflict(new { message = "所选教师仍负责课堂，请先转移或删除相关课堂" });
+        await using var transaction = await db.Database.BeginTransactionAsync(ctx.RequestAborted);
+        var history = await AccountHistoryProtection.CountAsync(db, userIds, ctx.RequestAborted);
+        if (history.HasHistory) return Results.Conflict(new { message = history.Message, history });
         db.People.RemoveRange(people); db.Users.RemoveRange(users); Audit.Add(db, ctx, "删除师生", string.Join(",", people.Select(x => x.Name))); await db.SaveChangesAsync(ctx.RequestAborted);
+        await transaction.CommitAsync(ctx.RequestAborted);
         foreach (var id in userIds) ctx.RequestServices.GetRequiredService<SimulationSessions>().RevokeUser(id);
         return Results.Ok(new { deletedCount = people.Count });
     }, ctx.RequestAborted);

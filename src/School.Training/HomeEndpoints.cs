@@ -30,6 +30,7 @@ public static class HomeEndpoints
         var learnedToday = todayActivities.Where(item => item.IsCompletion).Select(item => item.ResourceId).Distinct().Count();
         var practicesToday = todayActivities.Count(item => item.IsPractice);
         var leaderboard = BuildLeaderboard(context, profile.ClassId, userId);
+        var todos = await HomeTodoLogic.StudentTodosAsync(db, userId, classrooms, ct);
         return Results.Ok(new
         {
             student = new { profile.UserId, profile.Name, profile.UserName, profile.Number, profile.ClassName, profile.ProfessionName },
@@ -38,6 +39,7 @@ public static class HomeEndpoints
             kinds = KindsView(summary),
             classrooms = BuildClassroomCards(context, userId),
             classLeaderboard = leaderboard,
+            todos,
             serverNow = DateTime.UtcNow
         });
     }
@@ -55,6 +57,7 @@ public static class HomeEndpoints
         var activeStudents = context.Data.Activities.Where(item => InRange(item.At, today)).Select(item => item.UserId).Distinct().Count();
         var passedToday = TodayPassedStudents(context, today);
         var aggregate = Aggregate(summaries.Select(item => item.Summary));
+        var (todos, canCreateClassroom) = await HomeTodoLogic.TeacherTodosAsync(db, userId, ct);
         return Results.Ok(new
         {
             teacher = new { user.Id, user.DisplayName, user.UserName },
@@ -69,11 +72,14 @@ public static class HomeEndpoints
                 resourcePassRate = aggregate.PassRate
             },
             classrooms = BuildClassroomCards(context, null),
-            leaderboard = BuildLeaderboard(context, null, null)
+            leaderboard = BuildLeaderboard(context, null, null),
+            todos,
+            canCreateClassroom,
+            serverNow = DateTime.UtcNow
         });
     }
 
-    static async Task<IResult> GetAdminHome(SchoolDbContext db, CancellationToken ct)
+    static async Task<IResult> GetAdminHome(SchoolDbContext db, LicenseQuotaPolicy licenses, CancellationToken ct)
     {
         var classrooms = await db.Classrooms.AsNoTracking().ToListAsync(ct);
         var context = await HomeContext.LoadAsync(db, classrooms, ct);
@@ -145,6 +151,7 @@ public static class HomeEndpoints
             },
             classRanking,
             teacherActivity,
+            todos = await HomeTodoLogic.AdminTodosAsync(db, licenses, ct),
             serverNow = DateTime.UtcNow
         });
     }

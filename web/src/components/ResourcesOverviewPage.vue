@@ -142,7 +142,7 @@ onMounted(load)
   <el-radio-group v-model="view" class="catalog-sections" @change="selectSeries(null)">
     <el-radio-button value="all">课程汇总</el-radio-button>
     <el-radio-button value="core">专业核心课</el-radio-button>
-    <el-radio-button value="open">开放式资源库</el-radio-button>
+    <el-radio-button value="open">开放课程</el-radio-button>
   </el-radio-group>
 
   <section v-if="view === 'core' && !activeSeries" v-loading="loading" class="surface">
@@ -246,7 +246,9 @@ onMounted(load)
         {{
           isStudent
             ? '老师发布课程后会显示在这里，加入课堂后即可开始学习。'
-            : '课程发布后会出现在这里；如需组课，请先在课程管理中创建并发布课程。'
+            : role === 'Admin'
+              ? '课程发布后会出现在这里；如需组课，请先在课程管理中创建、发布并激活课程。'
+              : '课程发布后会出现在这里。教师组课需要管理员先发布并激活课程，发现课程有误请联系管理员修改。'
         }}
       </p>
     </el-empty>
@@ -284,7 +286,7 @@ onMounted(load)
                 ? '教师配置课程目录后，将在这里展示章节和资源。'
                 : role === 'Admin'
                   ? '请先在课程管理中配置大章、小节和资源。'
-                  : '课程目录由管理员在课程管理中配置，完成后会显示在这里。'
+                  : '请联系管理员修改课程，配置大章、小节和资源后会显示在这里。'
             }}
           </p>
           <el-button v-if="role === 'Admin'" type="primary" plain @click="goCourseLibrary">去课程管理</el-button>

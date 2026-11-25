@@ -181,7 +181,8 @@ onUnmounted(() => {
       </div>
       <div class="learner-record-aside">
         <div>
-          <span class="learner-record-label">{{ record.status === 'submitted' ? '当前得分' : '总分' }}</span>
+          <span class="learner-record-label">{{ record.status === 'submitted' ? '暂定得分' : '总分' }}</span>
+          <span v-if="record.status === 'submitted'" class="learner-record-pending">待教师批阅，不是最终成绩</span>
           <strong class="learner-record-score"
             >{{ record.totalScore }} <small>/ {{ record.maxScore }}</small></strong
           >
@@ -212,6 +213,14 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.learner-record-pending {
+  display: block;
+  margin-top: 4px;
+  color: #b8821a;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .records-pagination {
   display: flex;
   justify-content: flex-end;

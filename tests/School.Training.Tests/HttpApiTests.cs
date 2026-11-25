@@ -387,6 +387,65 @@ public sealed class HttpApiTests(ApiScenario scenario) : IClassFixture<ApiScenar
     }
 
     [Fact]
+    public async Task Classroom_deletion_requires_closed_state_and_no_history()
+    {
+        string blockedId = "", openId = "", removableId = "";
+        await scenario.WithDb(async db =>
+        {
+            var admin = await db.Users.SingleAsync(x => x.UserName == "admin");
+            var student = await db.Users.SingleAsync(x => x.UserName == "student01");
+            var course = new TrainingCourse { Name = "课堂删除保护课程", Type = "general", Status = "published" };
+            var chapter = new CourseChapter { CourseId = course.Id, Name = "第一章", SortOrder = 1 };
+            var section = new CourseSection { ChapterId = chapter.Id, Name = "第一节", SortOrder = 1 };
+            var resource = new CourseResource { SectionId = section.Id, Name = "理论资源", Kind = "theory", Content = "正文", SortOrder = 1 };
+            var blocked = new Classroom
+            {
+                Name = "有历史课堂", CourseId = course.Id, TeacherUserId = admin.Id, Status = "closed",
+                OpenAt = DateTime.UtcNow.AddHours(-2), CloseAt = DateTime.UtcNow.AddHours(-1)
+            };
+            var open = new Classroom
+            {
+                Name = "开放中课堂", CourseId = course.Id, TeacherUserId = admin.Id, Status = "open",
+                OpenAt = DateTime.UtcNow.AddHours(-1), CloseAt = DateTime.UtcNow.AddHours(1)
+            };
+            var removable = new Classroom
+            {
+                Name = "无历史课堂", CourseId = course.Id, TeacherUserId = admin.Id, Status = "scheduled",
+                OpenAt = DateTime.UtcNow.AddHours(1), CloseAt = DateTime.UtcNow.AddHours(2)
+            };
+            db.AddRange(course, chapter, section, resource, blocked, open, removable);
+            db.ClassroomStudents.Add(new ClassroomStudent { ClassroomId = blocked.Id, StudentUserId = student.Id });
+            db.LearningRecords.Add(new LearningRecord
+            {
+                ClassroomId = blocked.Id, UserId = student.Id, ResourceId = resource.Id, Status = "completed"
+            });
+            await db.SaveChangesAsync();
+            blockedId = blocked.Id;
+            openId = open.Id;
+            removableId = removable.Id;
+        });
+
+        var openBlocked = await Http.Delete(scenario.Admin, $"/api/classrooms/{openId}", scenario.AdminCsrf);
+        Assert.Equal(HttpStatusCode.Conflict, openBlocked.Status);
+        Assert.Contains("先结课", openBlocked.Message);
+
+        var historyBlocked = await Http.Delete(scenario.Admin, $"/api/classrooms/{blockedId}", scenario.AdminCsrf);
+        Assert.Equal(HttpStatusCode.Conflict, historyBlocked.Status);
+        Assert.Contains("历史记录", historyBlocked.Message);
+
+        var removed = await Http.Delete(scenario.Admin, $"/api/classrooms/{removableId}", scenario.AdminCsrf);
+        Assert.Equal(HttpStatusCode.OK, removed.Status);
+
+        await scenario.WithDb(async db =>
+        {
+            Assert.NotNull(await db.Classrooms.FindAsync(blockedId));
+            Assert.NotNull(await db.Classrooms.FindAsync(openId));
+            Assert.Null(await db.Classrooms.FindAsync(removableId));
+            Assert.Equal(1, await db.LearningRecords.CountAsync(x => x.ClassroomId == blockedId));
+        });
+    }
+
+    [Fact]
     public async Task Diagnostics_zip_writer_produces_a_readable_archive()
     {
         using var buffer = new MemoryStream();

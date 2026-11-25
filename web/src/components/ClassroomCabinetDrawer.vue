@@ -11,7 +11,7 @@ import type {
   ClassroomCollaborationOptions
 } from '../types'
 
-const props = defineProps<{ visible: boolean; classroomId: string; classroomName: string }>()
+const props = defineProps<{ visible: boolean; classroomId: string; classroomName: string; admin?: boolean }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
 
 const options = ref<ClassroomCollaborationOptions>({ groups: [], resources: [], cabinets: [] })
@@ -35,11 +35,17 @@ function focusAssignForm() {
   focusFirstField(assignForm.value?.$el)
 }
 function assignCabinetReason(): string | undefined {
+  const practiceHint = props.admin
+    ? '请先在课程管理中配置案例实操题目后再分配机柜'
+    : '请联系管理员在课程中配置案例实操题目后再分配机柜'
   if (!options.value.groups.length && !options.value.resources.length) {
-    return '请先创建课堂小组，并在课程中配置案例实操题目后再分配机柜'
+    return (
+      '请先创建课堂小组，并' +
+      (props.admin ? '在课程管理中配置案例实操题目后再分配机柜' : '联系管理员配置案例实操题目后再分配机柜')
+    )
   }
   if (!options.value.groups.length) return '请先在“小组管理”中创建小组后再分配机柜'
-  if (!options.value.resources.length) return '请先在课程中配置案例实操题目后再分配机柜'
+  if (!options.value.resources.length) return practiceHint
 }
 function cabinetSelectionReason(action: string): string | undefined {
   if (!selected.value.length) return `请先勾选要${action}的机柜`
@@ -247,8 +253,19 @@ watch(
       <span class="record-count">共 {{ total }} 个机柜</span>
     </div>
     <el-alert
+      title="这里分配的是课堂小组机柜，供案例实操使用。它与学生在“我的实训设备”中看到的、由管理员分配到节点的个人设备不是同一套。"
+      type="info"
+      show-icon
+      :closable="false"
+      class="section-notice"
+    />
+    <el-alert
       v-if="!options.groups.length || !options.resources.length"
-      title="请先在“小组管理”创建小组，并在课程中配置案例实操题目后再分配机柜。"
+      :title="
+        admin
+          ? '请先在“小组管理”创建小组，并在课程管理中配置案例实操题目后再分配机柜。'
+          : '请先在“小组管理”创建小组，并联系管理员在课程中配置案例实操题目后再分配机柜。'
+      "
       type="info"
       show-icon
       :closable="false"

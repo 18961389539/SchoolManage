@@ -185,7 +185,7 @@ public static class ExamManagementEndpoints
             CreatedByUserId = CurrentUserId(ctx) ?? ""
         };
         db.TrainingExams.Add(exam);
-        var (added, enrollError) = await AddStudentsAsync(db, exam.Id, input.ClassIds, input.ProfessionIds, null, ct);
+        var (added, enrollError) = await AddStudentsAsync(db, exam.Id, input.ClassIds, input.ProfessionIds, null, input.ClassroomIds, ctx, ct);
         if (enrollError != null) return Bad(enrollError);
         Audit.Add(db, ctx, "新增考试", "考试", $"{exam.Name}，分配学生{added}人");
         await db.SaveChangesAsync(ct);
@@ -332,7 +332,7 @@ public static class ExamManagementEndpoints
         if (exam == null) return NotFound("考试不存在");
         if (exam.Status != "scheduled") return Conflict("考试已开始，不能再调整学生名单");
         if (await db.ExamAttempts.AnyAsync(item => item.ExamId == id, ct)) return Conflict("已有学生开始作答，不能再调整学生名单");
-        var (added, error) = await AddStudentsAsync(db, id, input.ClassIds, input.ProfessionIds, input.StudentUserIds, ct);
+        var (added, error) = await AddStudentsAsync(db, id, input.ClassIds, input.ProfessionIds, input.StudentUserIds, input.ClassroomIds, ctx, ct);
         if (error != null) return Bad(error);
         Audit.Add(db, ctx, "调整考试学生", "考试", $"{exam.Name}：新增{added}人");
         await db.SaveChangesAsync(ct);
@@ -757,11 +757,13 @@ public static class ExamManagementEndpoints
     }
 
     static async Task<(int Added, string? Error)> AddStudentsAsync(
-        SchoolDbContext db, string examId, string[]? classIds, string[]? professionIds, string[]? studentUserIds, CancellationToken ct)
+        SchoolDbContext db, string examId, string[]? classIds, string[]? professionIds, string[]? studentUserIds,
+        string[]? classroomIds, HttpContext ctx, CancellationToken ct)
     {
         var requestedClasses = (classIds ?? []).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct().ToArray();
         var requestedProfessions = (professionIds ?? []).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct().ToArray();
         var requestedStudents = (studentUserIds ?? []).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct().ToArray();
+        var requestedClassrooms = (classroomIds ?? []).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct().ToArray();
         if (requestedClasses.Length > 0)
         {
             var found = await db.Classes.AsNoTracking().Where(item => requestedClasses.Contains(item.Id)).Select(item => item.Id).ToListAsync(ct);
@@ -771,6 +773,17 @@ public static class ExamManagementEndpoints
         {
             var found = await db.Professions.AsNoTracking().Where(item => requestedProfessions.Contains(item.Id)).Select(item => item.Id).ToListAsync(ct);
             if (found.Count != requestedProfessions.Length) return (0, "部分专业不存在");
+        }
+        if (requestedClassrooms.Length > 0)
+        {
+            var classrooms = await db.Classrooms.AsNoTracking().Where(item => requestedClassrooms.Contains(item.Id)).ToListAsync(ct);
+            if (classrooms.Count != requestedClassrooms.Length) return (0, "部分课堂不存在");
+            if (ctx.User.IsInRole("Teacher"))
+            {
+                var teacherId = CurrentUserId(ctx) ?? "";
+                if (classrooms.Any(item => item.TeacherUserId != teacherId))
+                    return (0, "只能从自己负责的课堂导入名单");
+            }
         }
         var targetClassIds = await db.Classes.AsNoTracking()
             .Where(item => requestedClasses.Contains(item.Id) || requestedProfessions.Contains(item.ProfessionId))
@@ -787,6 +800,19 @@ public static class ExamManagementEndpoints
                                  select new { person.UserId, person.Id, person.ClassId, ClassName = schoolClass == null ? "" : schoolClass.Name })
                 .ToListAsync(ct);
             candidates.AddRange(byClass.Select(item => (item.UserId, item.Id, (string?)item.ClassId, item.ClassName)));
+        }
+        if (requestedClassrooms.Length > 0)
+        {
+            var byClassroom = await (from enrollment in db.ClassroomStudents.AsNoTracking()
+                                     join person in db.People.AsNoTracking() on enrollment.StudentUserId equals person.UserId
+                                     join user in db.Users.AsNoTracking() on person.UserId equals user.Id
+                                     join schoolClass in db.Classes.AsNoTracking() on person.ClassId equals schoolClass.Id into classes
+                                     from schoolClass in classes.DefaultIfEmpty()
+                                     where requestedClassrooms.Contains(enrollment.ClassroomId)
+                                           && person.Kind == "student" && user.Role == "Student"
+                                     select new { person.UserId, person.Id, person.ClassId, ClassName = schoolClass == null ? "" : schoolClass.Name })
+                .ToListAsync(ct);
+            candidates.AddRange(byClassroom.Select(item => (item.UserId, item.Id, (string?)item.ClassId, item.ClassName)));
         }
         if (requestedStudents.Length > 0)
         {

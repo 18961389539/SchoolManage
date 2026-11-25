@@ -235,7 +235,13 @@ function resultTagType(questionId: string): 'success' | 'danger' {
           <small>{{ resources.length }} 个资源</small>
         </div>
         <el-empty v-if="!data.tree.length" description="课程暂无章节" :image-size="70">
-          <p class="empty-hint">此课程尚未配置目录。这是预览，不会记学习成绩；正式学习请到课堂。</p>
+          <p class="empty-hint">
+            {{
+              backKey === 'courses'
+                ? '此课程尚未配置目录。这是预览，不会记学习成绩；正式学习请到课堂。'
+                : '此课程尚未配置目录。请联系管理员修改课程。这是预览，不会记学习成绩；正式学习请到课堂。'
+            }}
+          </p>
           <el-button v-if="backKey === 'courses'" type="primary" plain @click="emit('navigate', 'courses')">
             返回课程管理配置目录
           </el-button>
@@ -267,7 +273,13 @@ function resultTagType(questionId: string): 'success' | 'danger' {
 
       <article class="surface preview-content">
         <el-empty v-if="!data.tree.length" description="课程暂无章节" :image-size="80">
-          <p class="empty-hint">配置课程目录后，可在这里预览讲义、练习和实操环境。预览不会记学习成绩。</p>
+          <p class="empty-hint">
+            {{
+              backKey === 'courses'
+                ? '配置课程目录后，可在这里预览讲义、练习和实操环境。预览不会记学习成绩。'
+                : '请联系管理员修改课程、配置目录后，可在这里预览。预览不会记学习成绩。'
+            }}
+          </p>
           <el-button v-if="backKey === 'courses'" type="primary" plain @click="emit('navigate', 'courses')">
             返回课程管理配置目录
           </el-button>

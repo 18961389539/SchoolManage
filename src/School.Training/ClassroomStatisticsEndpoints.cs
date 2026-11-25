@@ -79,8 +79,8 @@ public static class ClassroomStatisticsEndpoints
                 student.UserId, student.PersonId, student.Name, student.UserName, student.Number, student.ClassId, student.ClassName,
                 learned = state.Learned, passed = state.Passed,
                 status = AnalyticsLogic.ResourceStatus(state.Learned, state.Passed),
-                bestScore = record?.BestScore ?? 0,
-                maxScore = resource.MaxScore,
+                bestScore = PracticeHistory.Score(resource.Kind, record),
+                maxScore = PracticeHistory.Maximum(resource.Kind, record, resource.MaxScore),
                 attemptCount = record?.AttemptCount ?? 0,
                 lastActivity = LastActivityOf(record)
             };
@@ -109,13 +109,10 @@ public static class ClassroomStatisticsEndpoints
         var resource = await FindResourceAsync(db, classroom.CourseId, record.ResourceId, ct);
         if (resource == null) return Results.NotFound(new { message = "资源不属于该课堂课程" });
         var questionResults = ReadPracticeResults(attempt.AnswersJson);
-        if (questionResults == null)
-        {
-            var questions = await db.CourseQuestions.AsNoTracking().Where(item => item.ResourceId == resource.Id)
-                .OrderBy(item => item.SortOrder).ToListAsync(ct);
-            var answers = ParseAnswers(attempt.AnswersJson);
-            questionResults = questions.Select(question => TeachingEndpoints.PracticeResult(question, answers.GetValueOrDefault(question.Id) ?? [])).ToArray();
-        }
+        var snapshotUnavailable = questionResults == null;
+        questionResults ??= [];
+        // Legacy answers do not contain a reliable copy of the original questions. Never regrade them against today's course.
+
         var history = await db.PracticeAttempts.AsNoTracking().Where(item => item.LearningRecordId == record.Id)
             .OrderBy(item => item.SubmittedAt).ThenBy(item => item.Id).ToListAsync(ct);
         var attemptNumber = history.FindIndex(item => item.Id == attempt.Id) + 1;
@@ -125,8 +122,8 @@ public static class ClassroomStatisticsEndpoints
             attemptId = attempt.Id,
             attemptNumber,
             attemptCount = history.Count,
-            averageScore = Math.Round(history.Average(item => item.Score), 1),
-            bestScore = history.Max(item => item.Score),
+            averagePercent = PracticeHistory.AveragePercent(history),
+            bestPercent = PracticeHistory.BestPercent(history),
             score = attempt.Score,
             maxScore = attempt.MaxScore,
             passed = attempt.MaxScore > 0 && (long)attempt.Score * 100 >= (long)attempt.MaxScore * AnalyticsLogic.PassScorePercent,
@@ -134,6 +131,8 @@ public static class ClassroomStatisticsEndpoints
             startedAt = attempt.StartedAt ?? (attemptNumber == 1 ? record.StartedAt : null),
             student = new { name = student?.Name ?? "", number = student?.Number ?? "" },
             resource = new { resource.Id, resource.Name, sectionName = resource.SectionName, chapterName = resource.ChapterName },
+            snapshotUnavailable,
+            snapshotMessage = snapshotUnavailable ? "旧记录未保存完整题目快照，只展示原始成绩与时间，不使用当前课程题目重新判分。" : null,
             questions = questionResults
         });
     }
@@ -213,7 +212,7 @@ public static class ClassroomStatisticsEndpoints
                     Csv(resource.Name), Csv(TeachingLogic.ResourceKindLabel(resource.Kind)),
                     Csv(student.Name), Csv(student.Number), Csv(student.ClassName),
                     Csv(StatusLabel(state)), state.Passed ? "是" : "否",
-                    (record?.BestScore ?? 0).ToString(), resource.MaxScore.ToString(), (record?.AttemptCount ?? 0).ToString(),
+                    PracticeHistory.Score(resource.Kind, record).ToString(), PracticeHistory.Maximum(resource.Kind, record, resource.MaxScore).ToString(), (record?.AttemptCount ?? 0).ToString(),
                     Csv(LastActivityOf(record) is { } at ? SchoolTime.Format(at) : "")
                 }));
             }
@@ -344,7 +343,7 @@ public static class ClassroomStatisticsEndpoints
                 resource.ChapterId, resource.ChapterName, resource.SectionId, resource.SectionName,
                 learned = state.Learned, passed = state.Passed,
                 status = AnalyticsLogic.ResourceStatus(state.Learned, state.Passed),
-                bestScore = record?.BestScore ?? 0, resource.MaxScore,
+                bestScore = PracticeHistory.Score(resource.Kind, record), maxScore = PracticeHistory.Maximum(resource.Kind, record, resource.MaxScore),
                 attemptCount = record?.AttemptCount ?? 0, lastActivity = LastActivityOf(record)
             };
         }).ToArray();
@@ -449,6 +448,7 @@ public static class ClassroomStatisticsEndpoints
         var recordIds = records.Select(item => item.Id).ToArray();
         var attempts = recordIds.Length == 0 ? new List<PracticeAttempt>() : await db.PracticeAttempts.AsNoTracking()
             .Where(item => recordIds.Contains(item.LearningRecordId)).OrderBy(item => item.SubmittedAt).ThenBy(item => item.Id).ToListAsync(ct);
+        PracticeHistory.Apply(records, attempts);
         var teacher = await db.Users.AsNoTracking().Where(item => item.Id == classroom.TeacherUserId)
             .Select(item => item.DisplayName).FirstOrDefaultAsync(ct) ?? "";
         var data = new StatsData

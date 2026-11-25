@@ -6,7 +6,7 @@ import { dateTime, parseApiDate } from '../time'
 import { classroomStatusOptions, classroomStatusType, labelOf } from '../teaching'
 import TableEmpty from './TableEmpty.vue'
 
-const props = defineProps<{ classrooms: HomeClassroomCard[]; teacher?: boolean }>()
+const props = defineProps<{ classrooms: HomeClassroomCard[]; teacher?: boolean; canCreateClassroom?: boolean }>()
 const emit = defineEmits<{ all: []; enter: [id: string]; statistics: [id: string] }>()
 
 const statusOrder = { open: 0, scheduled: 1, closed: 2 }
@@ -87,7 +87,13 @@ const preview = computed(() => {
     <div v-else class="home-classrooms-empty">
       <TableEmpty
         :title="teacher ? '暂无课堂' : '暂未加入课堂'"
-        :hint="teacher ? undefined : '请联系授课教师，确认已加入课堂'"
+        :hint="
+          teacher
+            ? canCreateClassroom
+              ? '还没有课堂。可在“我的课堂”中新建。'
+              : '还没有课堂。请先等待管理员发布并激活课程，然后再新建课堂。'
+            : '请联系授课教师，确认已加入课堂。加入并开始学习后，进度会出现在这里。'
+        "
       />
       <el-button v-if="teacher" type="primary" plain @click="emit('all')">前往我的课堂</el-button>
     </div>

@@ -468,6 +468,9 @@ export interface LearningRecord {
   resourceId: string
   status: string
   bestScore: number
+  practiceBestScore?: number | null
+  practiceMaxScore?: number | null
+  practicePercent?: number | null
   attemptCount: number
   startedAt: string
   completedAt: string | null
@@ -547,7 +550,11 @@ export interface ClassroomPracticeResult extends PracticeSubmitResponse {
   submittedAt: string
   attemptCount: number
   bestScore: number
-  averageScore: number
+  practiceBestScore?: number | null
+  practiceMaxScore?: number | null
+  practicePercent?: number | null
+  averagePercent?: number | null
+  bestPercent?: number | null
   questions: (PracticeSubmitResponse['questions'][number] & { selected: number[] })[]
 }
 

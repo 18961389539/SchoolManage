@@ -19,7 +19,7 @@ import { rangeText } from '../time'
 import { examStatusLabel, examStatusOptions, examStatusType } from '../exam'
 import { durationText } from '../teaching'
 import { shanghaiInputTime, shanghaiInputToIso } from '../time'
-import type { ExamPaperSummary, Paged, TeachingClassesResponse, TrainingExamSummary } from '../types'
+import type { ClassroomSummary, ExamPaperSummary, Paged, TeachingClassesResponse, TrainingExamSummary } from '../types'
 import ExamAnalysisDrawer from './ExamAnalysisDrawer.vue'
 import ExamMonitorDrawer from './ExamMonitorDrawer.vue'
 import ExamRosterDrawer from './ExamRosterDrawer.vue'
@@ -55,6 +55,7 @@ function syncTableViewport(event: MediaQueryListEvent) {
 }
 const papers = ref<ExamPaperSummary[]>([])
 const teaching = ref<TeachingClassesResponse>({ professions: [], classes: [] })
+const classrooms = ref<ClassroomSummary[]>([])
 
 const dialogVisible = ref(false)
 const nameInput = ref<{ focus?: () => void; $el?: HTMLElement }>()
@@ -74,7 +75,8 @@ const form = reactive({
   endAt: '',
   durationMinutes: 60,
   classIds: [] as string[],
-  professionIds: [] as string[]
+  professionIds: [] as string[],
+  classroomIds: [] as string[]
 })
 const guard = useDiscardGuard({
   visible: dialogVisible,
@@ -126,12 +128,14 @@ async function load() {
 
 async function loadOptions() {
   try {
-    const [paperData, teachingData] = await Promise.all([
+    const [paperData, teachingData, classroomData] = await Promise.all([
       api<Paged<ExamPaperSummary>>('/exam-papers?page=1&pageSize=1000'),
-      api<TeachingClassesResponse>('/teaching/classes')
+      api<TeachingClassesResponse>('/teaching/classes'),
+      api<Paged<ClassroomSummary>>('/classrooms?page=1&pageSize=200')
     ])
     papers.value = paperData.items
     teaching.value = teachingData
+    classrooms.value = classroomData.items
   } catch (failure) {
     ElMessage.error(messageOf(failure))
   }
@@ -180,6 +184,7 @@ function openCreate() {
   form.durationMinutes = 60
   form.classIds = []
   form.professionIds = []
+  form.classroomIds = []
   formError.value = ''
   guard.capture()
   dialogVisible.value = true
@@ -212,6 +217,7 @@ function openEdit(item: TrainingExamSummary) {
   form.durationMinutes = item.durationMinutes
   form.classIds = []
   form.professionIds = []
+  form.classroomIds = []
   formError.value = ''
   guard.capture()
   dialogVisible.value = true
@@ -251,7 +257,8 @@ async function saveExam() {
       endAt,
       durationMinutes: form.durationMinutes,
       classIds: editing.value ? [] : form.classIds,
-      professionIds: editing.value ? [] : form.professionIds
+      professionIds: editing.value ? [] : form.professionIds,
+      classroomIds: editing.value ? [] : form.classroomIds
     }
     if (editing.value) await put(`/exams/${editing.value.id}`, payload)
     else await post('/exams', payload)
@@ -634,7 +641,19 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
             </el-select>
           </el-form-item>
         </div>
-        <p class="field-help">创建后可在“名单”中继续添加或移除学生；开考后名单锁定。</p>
+        <el-form-item label="从课堂导入名单">
+          <el-select v-model="form.classroomIds" multiple filterable collapse-tags placeholder="选择课堂，导入当前名单">
+            <el-option
+              v-for="item in classrooms"
+              :key="item.id"
+              :label="`${item.name} · ${item.courseName} · ${item.studentCount} 人`"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+        <p class="field-help">
+          从课堂导入的是该课堂当前名单，可减少中途插班漏人。创建后仍可在“名单”中继续添加或移除学生；开考后名单锁定。
+        </p>
       </template>
       <el-alert
         v-else

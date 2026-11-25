@@ -190,7 +190,7 @@ watch(
           </div>
           <template v-if="row.submittedAt">
             <div class="score-number">
-              <span>{{ row.status === 'submitted' ? '当前得分' : '总分' }}</span>
+              <span>{{ row.status === 'submitted' ? '暂定得分（待批阅）' : '总分' }}</span>
               <strong
                 >{{ row.totalScore }} <small>/ {{ row.maxScore }}</small></strong
               >

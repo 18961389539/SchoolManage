@@ -19,7 +19,8 @@ import { appState } from '../store'
 import type { AdminHomeResponse } from '../analytics'
 import type { BootstrapResult, DashboardResponse } from '../types'
 import TableEmpty from './TableEmpty.vue'
-const emit = defineEmits<{ navigate: [key: string] }>()
+import HomeTodos from './HomeTodos.vue'
+const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>] }>()
 const loading = ref(false),
   creating = ref(false),
   error = ref(''),
@@ -129,6 +130,13 @@ onMounted(load)
   </section>
   <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="section-notice" />
   <el-skeleton v-if="loading && !data" :rows="4" animated class="dashboard-skeleton surface" />
+
+  <HomeTodos
+    v-if="admin"
+    :todos="admin.todos || []"
+    empty-hint="暂时没有待办。已发布未激活的课程、由管理员任课的课堂、尚未部署的实操考试，以及将满的许可证额度，都会出现在这里。"
+    @navigate="(route, params) => emit('navigate', route, params)"
+  />
 
   <div v-if="data" class="stat-grid" role="group" aria-label="组织与设备">
     <button v-for="stat in stats" :key="stat.key" type="button" class="stat-card" @click="emit('navigate', stat.route)">

@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import { Delete, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf, post } from '../api'
 import { attemptStatusLabel, attemptStatusType, deploymentLabel, deploymentType } from '../exam'
-import type { ExamRosterStudent, ExamStudentOption } from '../types'
+import type { ClassroomSummary, ExamRosterStudent, ExamStudentOption, Paged } from '../types'
 import ExamDeploymentDialog from './ExamDeploymentDialog.vue'
 import TableEmpty from './TableEmpty.vue'
 import { focusFirstField } from '../focusField'
@@ -35,7 +35,7 @@ function removeStudentsReason(): string | undefined {
   if (!selection.value.length) return '请先勾选要移除的学生'
 }
 function addStudentsReason(): string | undefined {
-  if (!addSelection.value.length) return '请先搜索并选择要加入的学生'
+  if (!addSelection.value.length && !addClassroomIds.value.length) return '请先搜索学生，或选择要从中导入名单的课堂'
 }
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; changed: [] }>()
 
@@ -63,6 +63,8 @@ const adding = ref(false)
 const options = ref<ExamStudentOption[]>([])
 const optionsLoading = ref(false)
 const addSelection = ref<string[]>([])
+const addClassroomIds = ref<string[]>([])
+const classroomOptions = ref<ClassroomSummary[]>([])
 
 const filtered = computed(() => {
   const keyword = search.value.trim().toLowerCase()
@@ -120,17 +122,29 @@ async function loadOptions(keyword = '') {
 
 function openAdd() {
   addSelection.value = []
+  addClassroomIds.value = []
   options.value = []
   addVisible.value = true
   void loadOptions()
+  void loadClassroomOptions()
+}
+
+async function loadClassroomOptions() {
+  try {
+    const data = await api<Paged<ClassroomSummary>>('/classrooms?page=1&pageSize=200')
+    classroomOptions.value = data.items
+  } catch {
+    classroomOptions.value = []
+  }
 }
 
 async function addStudents() {
-  if (!addSelection.value.length) return
+  if (!addSelection.value.length && !addClassroomIds.value.length) return
   adding.value = true
   try {
     const result = await post<{ added: number }>(`/exams/${props.examId}/students`, {
-      studentUserIds: addSelection.value
+      studentUserIds: addSelection.value,
+      classroomIds: addClassroomIds.value
     })
     ElMessage.success(`已加入 ${result.added} 名学生`)
     addVisible.value = false
@@ -405,13 +419,27 @@ watch(
           </el-option>
         </el-select>
         <p class="field-help">仅显示尚未加入本场考试的学生，最多返回 50 条搜索结果。</p>
+        <el-select v-model="addClassroomIds" multiple filterable collapse-tags placeholder="或从课堂导入当前名单">
+          <el-option
+            v-for="item in classroomOptions"
+            :key="item.id"
+            :label="`${item.name} · ${item.courseName} · ${item.studentCount} 人`"
+            :value="item.id"
+          />
+        </el-select>
+        <p class="field-help">从课堂导入的是该课堂当前名单，可补入中途插班的学生。已在名单中的学生会被跳过。</p>
       </div>
       <template #footer>
         <el-button @click="addVisible = false">取消</el-button>
         <el-tooltip :disabled="!addStudentsReason()" :content="addStudentsReason()" placement="top">
           <span class="disabled-action-wrap">
-            <el-button type="primary" :loading="adding" :disabled="!addSelection.length" @click="addStudents">
-              加入 {{ addSelection.length }} 名学生
+            <el-button
+              type="primary"
+              :loading="adding"
+              :disabled="!addSelection.length && !addClassroomIds.length"
+              @click="addStudents"
+            >
+              加入学生
             </el-button>
           </span>
         </el-tooltip>

@@ -211,6 +211,10 @@ public class LearningRecord
     public string ResourceId { get; set; } = "";
     public string Status { get; set; } = "notStarted";
     public int BestScore { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int? PracticeBestScore { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int? PracticeMaxScore { get; set; }
     public int AttemptCount { get; set; }
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }

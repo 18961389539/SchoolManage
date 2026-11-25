@@ -77,7 +77,8 @@ public static class AnalyticsLogic
     public static bool IsPassed(string kind, LearningRecord? record, int maxScore)
     {
         if (!IsLearned(record)) return false;
-        return kind is "theoryPractice" or "casePractice"
+        if (kind == "theoryPractice") return record!.AttemptCount > 0 && PracticeHistory.Percent(record) is >= PassScorePercent;
+        return kind == "casePractice"
             ? maxScore > 0 && record!.AttemptCount > 0 && (long)record.BestScore * 100 >= (long)maxScore * PassScorePercent
             : record!.Status == "completed";
     }
@@ -210,6 +211,7 @@ public static class AnalyticsLoader
         if (ids.Length == 0) return data;
 
         var records = await db.LearningRecords.AsNoTracking().Where(item => ids.Contains(item.ClassroomId)).ToListAsync(ct);
+        await PracticeHistory.LoadAsync(db, records, ct);
         foreach (var record in records)
         {
             var key = LearnerData.Key(record.UserId, record.ResourceId);

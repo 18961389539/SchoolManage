@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { DataAnalysis, Refresh, School, Suitcase, Tickets } from '@element-plus/icons-vue'
 import { api, dateTime, messageOf } from '../api'
 import type { StudentHomeResponse } from '../analytics'
+import HomeTodos from './HomeTodos.vue'
 import HomeClassroomsPanel from './HomeClassroomsPanel.vue'
 import HomeLeaderboard from './HomeLeaderboard.vue'
 import '../role-home.css'
@@ -67,6 +68,13 @@ onMounted(load)
 
   <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
   <el-skeleton v-if="loading && !data" :rows="5" animated class="surface role-home-loading" />
+
+  <HomeTodos
+    v-if="data"
+    :todos="data.todos || []"
+    empty-hint="暂时没有待办。已开课的课堂、可参加或即将开始的考试、已就绪的实操环境，以及已出分可复盘的记录，都会出现在这里。"
+    @navigate="(route, params) => emit('navigate', route, params)"
+  />
 
   <div v-if="data" v-loading="loading" class="role-home-grid">
     <HomeClassroomsPanel

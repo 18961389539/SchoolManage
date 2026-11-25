@@ -188,7 +188,7 @@ public static class SkillGraphEndpoints
                         resource.Id, resource.Name, resource.Kind, TeachingLogic.ResourceKindLabel(resource.Kind),
                         resource.DurationMinutes, classroom.Id, classroom.Name,
                         state.Learned, state.Passed, AnalyticsLogic.ResourceStatus(state.Learned, state.Passed),
-                        record?.BestScore ?? 0, resource.MaxScore, record?.AttemptCount ?? 0, progress,
+                        PracticeHistory.Score(resource.Kind, record), PracticeHistory.Maximum(resource.Kind, record, resource.MaxScore), record?.AttemptCount ?? 0, progress,
                         record == null ? null : record.CompletedAt ?? record.StartedAt);
                 }).ToArray();
                 var score = resourceViews.Length == 0 ? 0 : (int)Math.Round(resourceViews.Average(item => item.Progress), MidpointRounding.AwayFromZero);
@@ -208,8 +208,10 @@ public static class SkillGraphEndpoints
     static int ProgressOf(AnalyticsResource resource, LearningRecord? record, LearningState state)
     {
         if (!state.Learned || record == null) return 0;
-        if (resource.Kind is "theoryPractice" or "casePractice" && resource.MaxScore > 0 && record.AttemptCount > 0)
-            return Math.Clamp(AnalyticsLogic.Rate(Math.Min(record.BestScore, resource.MaxScore), resource.MaxScore), 0, 100);
+        if (resource.Kind is "theoryPractice" or "casePractice" && record.AttemptCount > 0)
+            return Math.Clamp(AnalyticsLogic.Rate(
+                PracticeHistory.Score(resource.Kind, record),
+                PracticeHistory.Maximum(resource.Kind, record, resource.MaxScore)), 0, 100);
         return state.Passed ? 100 : 50;
     }
 

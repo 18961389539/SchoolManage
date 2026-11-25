@@ -349,6 +349,14 @@ onMounted(() => {
 
   <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />
 
+  <el-alert
+    v-if="data"
+    title="理论练习达标与技能进度按提交时保存的得分率计算，不随当前题目满分变化。缺少可靠历史满分的旧记录会显示“历史满分未知，暂不判定达标”，不会按当前题目满分重算。"
+    type="info"
+    show-icon
+    :closable="false"
+    class="section-notice"
+  />
   <div v-if="data" class="student-banner">
     <div class="student-identity">
       <span class="student-avatar"
@@ -446,7 +454,7 @@ onMounted(() => {
           <span>{{
             isStaff
               ? '该学生尚未加入课堂或学习资源，技能地图暂未生成。'
-              : '加入课堂并开始学习资源后，这里会按课程章节生成技能地图。'
+              : '这不是故障。还没加入课堂或还没开始学习时，这里会是空的。加入课堂并开始学习后，会按课程章节自动生成技能地图。'
           }}</span>
           <el-button v-if="!isStaff" type="primary" plain @click="emit('navigate', 'my-classrooms')"
             >去我的课堂</el-button
@@ -648,7 +656,7 @@ onMounted(() => {
               {{
                 isStaff
                   ? '该学生完成课堂资源学习后，将按章节生成能力对比。'
-                  : '加入课堂并开始学习资源后，将按章节生成能力对比。'
+                  : '这不是故障。加入课堂并开始学习后，将按章节生成能力对比。'
               }}
             </p>
             <el-button v-if="!isStaff" type="primary" plain @click="emit('navigate', 'my-classrooms')"
@@ -677,7 +685,7 @@ onMounted(() => {
             {{
               isStaff
                 ? '该学生尚未加入课堂或学习资源，暂无技能对比数据。'
-                : '加入课堂并开始学习资源后，这里会按技能展示掌握程度。'
+                : '这不是故障。还没加入课堂或还没开始学习时，这里会是空的。加入课堂并开始学习后，会按技能展示掌握程度。'
             }}
           </p>
           <el-button v-if="!isStaff" type="primary" plain @click="emit('navigate', 'my-classrooms')"
@@ -794,7 +802,10 @@ onMounted(() => {
               <el-tag size="small" :type="resourceType(resource)">{{ skillStateText(resource) }}</el-tag>
             </div>
             <strong>{{ resource.name }}</strong>
-            <p>{{ resource.classroomName }} · {{ resourceProgressText(resource.bestScore, resource.maxScore) }}</p>
+            <p>
+              {{ resource.classroomName }} ·
+              {{ resourceProgressText(resource.bestScore, resource.maxScore, resource.kind, resource.attemptCount) }}
+            </p>
             <el-progress :percentage="resource.progress" :stroke-width="4" :show-text="false" />
           </button>
           <el-empty v-if="!selectedSkill.resources.length" description="暂无关联资源" :image-size="60">
@@ -813,7 +824,7 @@ onMounted(() => {
         {{
           isStaff
             ? '该学生尚未加入课堂或学习资源，技能图谱暂未生成。'
-            : '技能图谱来自课堂课程与学习记录，请先加入课堂并开始学习。'
+            : '这不是故障。技能图谱来自加入课堂后的学习记录；还没上课或还没开始学习时，这里会是空的。'
         }}
       </p>
       <el-button v-if="!isStaff" type="primary" plain @click="emit('navigate', 'my-classrooms')">去我的课堂</el-button>

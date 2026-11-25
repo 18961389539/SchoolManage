@@ -54,6 +54,20 @@ export interface HomeLeaderboardRow {
   lastActivity: string | null
 }
 
+export interface HomeTodoAction {
+  route: string
+  params?: Record<string, string>
+  label: string
+}
+
+export interface HomeTodo {
+  key: string
+  kind: string
+  title: string
+  hint: string
+  action?: HomeTodoAction | null
+}
+
 export interface StudentHomeResponse {
   student: {
     userId: string
@@ -73,6 +87,7 @@ export interface StudentHomeResponse {
   }
   classrooms: HomeClassroomCard[]
   classLeaderboard: HomeLeaderboardRow[]
+  todos: HomeTodo[]
   serverNow: string
 }
 
@@ -89,6 +104,9 @@ export interface TeacherHomeResponse {
   }
   classrooms: HomeClassroomCard[]
   leaderboard: HomeLeaderboardRow[]
+  todos: HomeTodo[]
+  canCreateClassroom: boolean
+  serverNow: string
 }
 
 export interface AdminHomeResponse {
@@ -119,6 +137,7 @@ export interface AdminHomeResponse {
     auditCount: number
     lastActiveAt: string | null
   }[]
+  todos: HomeTodo[]
   serverNow: string
 }
 
@@ -311,13 +330,15 @@ export interface PracticeAttemptDetail {
   attemptId: string
   attemptNumber: number
   attemptCount: number
-  averageScore: number
-  bestScore: number
+  averagePercent?: number | null
+  bestPercent?: number | null
   startedAt: string | null
   score: number
   maxScore: number
   passed: boolean
   submittedAt: string
+  snapshotUnavailable?: boolean
+  snapshotMessage?: string | null
   student: { name: string; number: string }
   resource: { id: string; name: string; sectionName: string; chapterName: string }
   questions: {
@@ -469,8 +490,18 @@ export function skillStateType(state: SkillNodeState): 'success' | 'warning' | '
   return 'info'
 }
 
-export function resourceProgressText(score: number, maxScore: number): string {
-  return maxScore > 0 ? `${score} / ${maxScore}` : '—'
+export function resourceProgressText(score: number, maxScore: number, kind?: string, attemptCount?: number): string {
+  if (maxScore > 0) return `${score} / ${maxScore}`
+  if (kind === 'theoryPractice' && (attemptCount ?? 0) > 0) return '历史满分未知，暂不判定达标'
+  return '—'
+}
+
+export function rateText(rate: number | null | undefined): string {
+  return rate == null ? '—' : `${rate}%`
+}
+
+export function attemptPassLabel(attempt: { maxScore: number; passed: boolean }): string {
+  return attempt.maxScore > 0 ? (attempt.passed ? '达标' : '未达标') : '暂不判定'
 }
 
 export function remainingText(seconds: number): string {

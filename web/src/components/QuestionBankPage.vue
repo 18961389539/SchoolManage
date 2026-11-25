@@ -583,7 +583,7 @@ onMounted(load)
       <el-table-column label="分值" width="80" align="center">
         <template #default="{ row }">{{ row.score }} 分</template>
       </el-table-column>
-      <el-table-column label="引用" width="96" align="center">
+      <el-table-column label="已复制到" width="110" align="center">
         <template #default="{ row }">{{ row.paperCount }} 份试卷</template>
       </el-table-column>
       <el-table-column label="更新时间" width="168">
@@ -729,6 +729,14 @@ onMounted(load)
         :closable="false"
         class="section-notice"
       />
+      <el-alert
+        v-if="editing"
+        title="修改题库不会自动更新已组试卷。试卷保存的是加入时的题目快照；未用于考试的试卷可移除后重新加入，已用于考试的试卷不可调整。"
+        type="info"
+        :closable="false"
+        show-icon
+        class="section-notice"
+      />
       <el-form-item label="题目解析（可选）">
         <el-input
           v-model="form.analysis"
@@ -780,7 +788,10 @@ onMounted(load)
           <p>{{ preview.analysis || '暂无解析' }}</p>
         </div>
         <div class="preview-block">
-          <span>引用试卷（{{ preview.papers.length }}）</span>
+          <span>已复制到的试卷（{{ preview.papers.length }}）</span>
+          <p class="muted-text">
+            加入试卷时保存题目快照；修改题库不会自动更新已组试卷。未用于考试的试卷可移除后重新加入，已用于考试的试卷保持锁定。
+          </p>
           <p v-if="!preview.papers.length" class="muted-text">尚未加入任何试卷</p>
           <div v-else class="preview-papers">
             <el-tag v-for="paper in preview.papers" :key="paper.id" effect="plain">{{ paper.name }}</el-tag>

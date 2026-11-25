@@ -85,7 +85,9 @@ onBeforeUnmount(() => request?.abort())
   <section class="page-heading">
     <div>
       <h1>我的实训设备</h1>
-      <p>查看已分配的模拟节点、设备和虚拟机。</p>
+      <p>
+        这里只显示管理员把你的账号分配到实训节点后的个人设备。教师在课堂里为小组分配的机柜不会出现在本页，案例实操请从课堂进入。
+      </p>
     </div>
     <el-button :icon="Refresh" :loading="loading" @click="load">刷新设备</el-button>
   </section>
@@ -101,7 +103,9 @@ onBeforeUnmount(() => request?.abort())
   </section>
   <section v-else-if="!resources?.nodes.length" class="surface resource-empty">
     <el-empty description="暂未分配实训设备">
-      <p>请联系平台管理员，将你的账号分配到实训节点。</p>
+      <p>
+        课堂里教师为小组分配的机柜不会出现在这一页，案例实操请从“我的课堂”进入。如需个人节点设备，请联系平台管理员，将你的账号分配到实训节点。
+      </p>
     </el-empty>
   </section>
   <div v-else class="my-resource-sections" :aria-busy="loading">

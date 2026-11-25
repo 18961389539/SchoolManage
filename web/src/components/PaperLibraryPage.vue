@@ -339,7 +339,9 @@ onMounted(load)
   <section class="page-heading">
     <div>
       <h1>{{ canWrite ? '试卷管理' : '试卷库' }}</h1>
-      <p v-if="canWrite">从题库挑选题目组成试卷并调整分值；重命名不影响已引用试卷的考试。</p>
+      <p v-if="canWrite">
+        从题库复制题目快照组成试卷并调整分值。修改题库不会自动更新本试卷；未用于考试时可移除后重新加入题目。已用于考试的试卷保持锁定，重命名不影响原考试。
+      </p>
       <p v-else>只读查看管理员已配置的试卷，不能改题、组卷或删除。</p>
     </div>
     <div class="heading-actions">
