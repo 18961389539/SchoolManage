@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Net;
+using System.Security.Cryptography;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -30,6 +31,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     readonly string? previousAutomaticBackups;
     readonly IPAddress clientAddress;
     readonly bool demo;
+    readonly string? previousDemoPassword;
+
+    public string? DemoPassword { get; }
 
     public ApiFactory(IPAddress? remoteAddress = null, bool demo = false)
     {
@@ -37,8 +41,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         clientAddress = remoteAddress ?? IPAddress.Loopback;
         previousDataDir = Environment.GetEnvironmentVariable("SCHOOL_DATA_DIR");
         previousAutomaticBackups = Environment.GetEnvironmentVariable("School__Backups__Automatic__Enabled");
+        previousDemoPassword = Environment.GetEnvironmentVariable(DemoHost.PasswordVariable);
         Environment.SetEnvironmentVariable("SCHOOL_DATA_DIR", dataDir);
         Environment.SetEnvironmentVariable("School__Backups__Automatic__Enabled", "false");
+        if (!demo) return;
+        DemoPassword = "Pw" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        Environment.SetEnvironmentVariable(DemoHost.PasswordVariable, DemoPassword);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -56,6 +64,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         if (!disposing) return;
         Environment.SetEnvironmentVariable("SCHOOL_DATA_DIR", previousDataDir);
         Environment.SetEnvironmentVariable("School__Backups__Automatic__Enabled", previousAutomaticBackups);
+        if (demo) Environment.SetEnvironmentVariable(DemoHost.PasswordVariable, previousDemoPassword);
         SqliteConnection.ClearAllPools();
         try { if (Directory.Exists(dataDir)) Directory.Delete(dataDir, recursive: true); }
         catch (IOException) { }

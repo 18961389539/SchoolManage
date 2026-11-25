@@ -25,7 +25,6 @@ export interface StatusResponse {
   maxUploadBytes: number
   schoolName?: string | null
   demo?: boolean
-  demoPassword?: string | null
   demoAccounts?: { role: string; userName: string; displayName: string }[] | null
 }
 

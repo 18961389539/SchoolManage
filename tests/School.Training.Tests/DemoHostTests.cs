@@ -36,18 +36,20 @@ public sealed class DemoHostTests
         Assert.Equal("http://0.0.0.0:5080", configuration["urls"]);
         Assert.Equal("*", configuration["AllowedHosts"]);
 
-        var status = await client.GetFromJsonAsync<StatusBody>("/api/status");
+        var statusJson = await client.GetStringAsync("/api/status");
+        Assert.DoesNotContain("demoPassword", statusJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(factory.DemoPassword!, statusJson, StringComparison.Ordinal);
+        var status = JsonSerializer.Deserialize<StatusBody>(statusJson, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.NotNull(status);
         Assert.True(status.Initialized);
         Assert.True(status.Demo);
-        Assert.Equal(DemoHost.Password, status.DemoPassword);
         Assert.Contains(status.DemoAccounts!, account => account.UserName == "demo" && account.Role == "Admin");
         Assert.Equal(DemoHost.SchoolName, status.SchoolName);
 
         var setup = await client.PostAsJsonAsync("/api/setup", new { schoolName = "其他学校", userName = "other", displayName = "其他人", password = "OtherPass12345" });
         Assert.Equal(HttpStatusCode.Forbidden, setup.StatusCode);
 
-        var login = await client.PostAsJsonAsync("/api/auth/login", new { userName = "demo", password = DemoHost.Password });
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { userName = "demo", password = factory.DemoPassword });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var session = await login.Content.ReadFromJsonAsync<SessionBody>();
         Assert.False(session!.User.MustChangePassword);
@@ -58,7 +60,7 @@ public sealed class DemoHostTests
         Assert.NotEmpty(positions!.Items);
 
         var student = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        var studentLogin = await student.PostAsJsonAsync("/api/auth/login", new { userName = "zhaozh", password = DemoHost.Password });
+        var studentLogin = await student.PostAsJsonAsync("/api/auth/login", new { userName = "zhaozh", password = factory.DemoPassword });
         Assert.Equal(HttpStatusCode.OK, studentLogin.StatusCode);
         var studentSession = await studentLogin.Content.ReadFromJsonAsync<SessionBody>();
         Assert.False(studentSession!.User.MustChangePassword);
@@ -69,7 +71,7 @@ public sealed class DemoHostTests
         var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
         var before = await db.Users.CountAsync();
-        await DemoSeed.EnsureAsync(db, hasher);
+        await DemoSeed.EnsureAsync(db, hasher, factory.DemoPassword!);
         Assert.Equal(before, await db.Users.CountAsync());
         Assert.Equal(1, await db.Nodes.CountAsync(node => node.Id == "simulation-node" && node.Provider == "simulated"));
     }
@@ -78,7 +80,6 @@ public sealed class DemoHostTests
     {
         public bool Initialized { get; set; }
         public bool Demo { get; set; }
-        public string? DemoPassword { get; set; }
         public string? SchoolName { get; set; }
         public DemoAccountBody[]? DemoAccounts { get; set; }
     }

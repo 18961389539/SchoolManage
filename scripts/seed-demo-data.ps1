@@ -8,7 +8,7 @@
     并调用内置「创建模拟环境」。默认只新增尚不存在的记录，不删除、不覆盖已有数据，也不修改 admin 账号或密码。
 
     前置条件：服务已在本机运行，并已在本机浏览器完成管理员初始化。
-    演示师生的初始密码为 Demo12345678，首次登录后需按产品规则修改密码。
+    演示师生的初始密码来自环境变量 SCHOOL_DEMO_PASSWORD，未设置时在控制台提示输入。不要把该口令写入仓库。首次登录后需按产品规则修改密码。
     说明见 docs/demo-data.md。
 
 .PARAMETER BaseUrl
@@ -30,7 +30,6 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$DemoPassword = 'Demo12345678'
 $ApiRoot = $BaseUrl.TrimEnd('/') + '/api'
 $script:Session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $script:CsrfToken = $null
@@ -39,11 +38,34 @@ $script:Skipped = New-Object System.Collections.Generic.List[string]
 $script:ApiNotes = New-Object System.Collections.Generic.List[string]
 $script:RestorePersonIds = New-Object System.Collections.Generic.List[string]
 $script:LoginCount = 0
-$script:WorkPassword = 'DemoSeedWork1234'
 $script:AdminPassword = $null
 $script:PracticeAnswers = @{}
 
 function Write-Step([string]$Message) { Write-Host $Message }
+
+function New-WorkPassword {
+    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+    $bytes = New-Object byte[] 24
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    $chars = foreach ($b in $bytes) { $alphabet[$b % $alphabet.Length] }
+    return -join $chars
+}
+
+$script:WorkPassword = New-WorkPassword
+
+function Get-DemoPassword {
+    if (-not [string]::IsNullOrWhiteSpace($env:SCHOOL_DEMO_PASSWORD)) { return $env:SCHOOL_DEMO_PASSWORD }
+    $secure = Read-Host -Prompt '演示师生初始密码' -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+}
+
+$DemoPassword = Get-DemoPassword
+if ([string]::IsNullOrWhiteSpace($DemoPassword) -or $DemoPassword.Length -lt 12 -or $DemoPassword.Length -gt 128 -or $DemoPassword -notmatch '[A-Za-z]' -or $DemoPassword -notmatch '[0-9]') {
+    throw '演示初始密码须为 12–128 位，且同时包含字母和数字。'
+}
 
 function Get-PlainPassword {
     if (-not [string]::IsNullOrWhiteSpace($Password)) { return $Password }
@@ -2004,7 +2026,7 @@ try {
         $uniqueNotes = @($script:ApiNotes | Select-Object -Unique)
         Write-Step ('接口限制或注意事项：' + ($uniqueNotes -join '；'))
     }
-    Write-Step '演示师生初始密码为 Demo12345678，首次登录后需要修改密码。脚本未改动管理员账号。'
+    Write-Step '演示师生使用本次提供的初始密码，脚本没有把口令写入仓库。首次登录后需要修改密码。脚本未改动管理员账号。'
     Write-Step '详细说明见 docs/demo-data.md。'
 }
 catch {

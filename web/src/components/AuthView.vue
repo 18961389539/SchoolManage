@@ -12,7 +12,6 @@ const props = defineProps<{
   busy: boolean
   error: string
   demoAccounts?: { role: string; userName: string; displayName: string }[] | null
-  demoPassword?: string | null
 }>()
 const emit = defineEmits<{ submit: []; edit: [] }>()
 
@@ -133,9 +132,7 @@ watch(
         <h1 id="auth-title">{{ initialized ? '登录工作空间' : '初始化实训平台' }}</h1>
         <p v-if="!initialized" class="auth-intro">请在部署服务器本机创建首个管理员账号。</p>
         <div v-if="demoAccounts?.length" class="auth-demo">
-          <p>
-            这是客户演示。下列账号的密码都是 <strong>{{ demoPassword }}</strong>，登录后不需要再修改。
-          </p>
+          <p>这是客户演示。请使用部署时配置的口令登录，页面和接口都不会显示该口令。登录后不需要再修改。</p>
           <ul>
             <li v-for="account in demoAccounts" :key="account.userName">
               <button type="button" @click="auth.userName = account.userName">

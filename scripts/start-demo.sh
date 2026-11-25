@@ -18,6 +18,10 @@ fi
 
 export SCHOOL_DEMO=1
 export PORT="${PORT:-5080}"
+if [ -z "${SCHOOL_DEMO_PASSWORD:-}" ]; then
+  echo "需要环境变量 SCHOOL_DEMO_PASSWORD。不要把口令写进仓库、页面或接口。" >&2
+  exit 1
+fi
 export SCHOOL_DATA_DIR="${SCHOOL_DATA_DIR:-$root/.local/demo-data}"
 mkdir -p "$SCHOOL_DATA_DIR"
 

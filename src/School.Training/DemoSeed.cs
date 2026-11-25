@@ -35,8 +35,9 @@ public static class DemoSeed
         new("Student", "gaoyh", "高宇航")
     ];
 
-    public static async Task EnsureAsync(SchoolDbContext db, IPasswordHasher<AppUser> hasher, CancellationToken cancellationToken = default)
+    public static async Task EnsureAsync(SchoolDbContext db, IPasswordHasher<AppUser> hasher, string password, CancellationToken cancellationToken = default)
     {
+        if (Validation.Password(password) is not null) throw new InvalidOperationException("演示口令不符合密码规则。");
         if (await db.Users.AnyAsync(cancellationToken)) return;
         var users = new Dictionary<string, AppUser>(StringComparer.Ordinal);
         foreach (var account in Accounts)
@@ -48,7 +49,7 @@ public static class DemoSeed
                 Role = account.Role,
                 MustChangePassword = false
             };
-            user.PasswordHash = hasher.HashPassword(user, DemoHost.Password);
+            user.PasswordHash = hasher.HashPassword(user, password);
             users[account.UserName] = user;
             db.Users.Add(user);
         }
