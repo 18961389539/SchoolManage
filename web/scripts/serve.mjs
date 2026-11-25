@@ -1,11 +1,13 @@
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { extname, join, normalize, sep } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const root = fileURLToPath(new URL('../dist/', import.meta.url))
-const indexFile = join(root, 'index.html')
+const dist = fileURLToPath(new URL('../dist/', import.meta.url))
+const indexFile = join(dist, 'index.html')
+const assetsDir = join(dist, 'assets')
 const port = Number(process.env.PORT) || 8080
+const assetName = /^[A-Za-z0-9._-]+$/
 
 const types = {
   '.css': 'text/css; charset=utf-8',
@@ -29,23 +31,6 @@ if (!existsSync(indexFile)) {
   process.exit(1)
 }
 
-function insideRoot(file) {
-  return file === root || file.startsWith(root.endsWith(sep) ? root : root + sep)
-}
-
-function resolveFile(pathname) {
-  let decoded = '/'
-  try {
-    decoded = decodeURIComponent(pathname)
-  } catch {
-    return null
-  }
-  if (decoded.includes('\0')) return null
-  const relative = normalize(decoded).replace(/^(\.\.(\/|\\|$))+/, '').replace(/^[/\\]+/, '')
-  const file = join(root, relative)
-  return insideRoot(file) ? file : null
-}
-
 function send(res, file) {
   const stream = createReadStream(file)
   stream.on('error', () => {
@@ -66,15 +51,16 @@ createServer((req, res) => {
     res.end('not found')
     return
   }
-  const file = resolveFile(url.pathname)
-  if (!file) {
-    res.writeHead(400)
-    res.end()
-    return
-  }
-  const candidate = existsSync(file) && statSync(file).isDirectory() ? join(file, 'index.html') : file
-  if (existsSync(candidate) && statSync(candidate).isFile()) {
-    send(res, candidate)
+  if (url.pathname.startsWith('/assets/')) {
+    const name = basename(url.pathname)
+    const requested = url.pathname.slice('/assets/'.length)
+    const file = join(assetsDir, name)
+    if (name !== requested || !assetName.test(name) || !existsSync(file) || !statSync(file).isFile()) {
+      res.writeHead(404)
+      res.end()
+      return
+    }
+    send(res, file)
     return
   }
   if (extname(url.pathname)) {
