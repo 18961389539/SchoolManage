@@ -37,7 +37,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/seed-demo-data.p
 
 ## 演示账号
 
-师生初始密码均为 `Demo12345678`（符合 12–128 位且同时包含字母和数字的规则）。按产品习惯，这些账号首次登录后需要先修改密码，才能进入课堂、考试等页面。请勿把该口令用于正式环境。
+师生初始密码不写入仓库。导入脚本读取环境变量 `SCHOOL_DEMO_PASSWORD`（至少 12 位，且同时包含字母和数字）。按产品习惯，这些账号首次登录后需要先修改密码，才能进入课堂、考试等页面。请勿把该口令用于正式环境，也不要把它写进文档或提交到 Git。
+
+Cloud Agent 客户演示由 `scripts/start-demo.sh` 启动。没有合格的 `SCHOOL_DEMO_PASSWORD` 时，脚本生成随机口令并只放在进程环境中。服务把哈希写入数据库，并把明文写一次到 `.local/demo-password.txt`。登录页只列出账号，密码另行提供给发布此演示的人。
 
 | 角色 | 账号 | 姓名 | 编号 | 班级 |
 | --- | --- | --- | --- | --- |

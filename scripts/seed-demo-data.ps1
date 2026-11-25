@@ -8,7 +8,7 @@
     并调用内置「创建模拟环境」。默认只新增尚不存在的记录，不删除、不覆盖已有数据，也不修改 admin 账号或密码。
 
     前置条件：服务已在本机运行，并已在本机浏览器完成管理员初始化。
-    演示师生的初始密码为 Demo12345678，首次登录后需按产品规则修改密码。
+    演示师生的初始密码来自环境变量 SCHOOL_DEMO_PASSWORD，不要把口令写入仓库。
     说明见 docs/demo-data.md。
 
 .PARAMETER BaseUrl
@@ -30,7 +30,10 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$DemoPassword = 'Demo12345678'
+$DemoPassword = if ($null -eq $env:SCHOOL_DEMO_PASSWORD) { '' } else { $env:SCHOOL_DEMO_PASSWORD.Trim() }
+if ($DemoPassword.Length -lt 12 -or $DemoPassword -notmatch '\p{L}' -or $DemoPassword -notmatch '\d') {
+    throw '请设置环境变量 SCHOOL_DEMO_PASSWORD（至少 12 位，且同时包含字母和数字）。不要把演示口令写入仓库。'
+}
 $ApiRoot = $BaseUrl.TrimEnd('/') + '/api'
 $script:Session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $script:CsrfToken = $null
@@ -39,11 +42,27 @@ $script:Skipped = New-Object System.Collections.Generic.List[string]
 $script:ApiNotes = New-Object System.Collections.Generic.List[string]
 $script:RestorePersonIds = New-Object System.Collections.Generic.List[string]
 $script:LoginCount = 0
-$script:WorkPassword = 'DemoSeedWork1234'
+$script:WorkPassword = $null
 $script:AdminPassword = $null
 $script:PracticeAnswers = @{}
 
 function Write-Step([string]$Message) { Write-Host $Message }
+
+function New-RandomPassword {
+    $letters = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'.ToCharArray()
+    $digits = '23456789'.ToCharArray()
+    $alphabet = $letters + $digits
+    $bytes = New-Object byte[] 24
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    $chars = New-Object char[] 24
+    $chars[0] = $letters[$bytes[0] % $letters.Length]
+    $chars[1] = $digits[$bytes[1] % $digits.Length]
+    for ($i = 2; $i -lt 24; $i++) { $chars[$i] = $alphabet[$bytes[$i] % $alphabet.Length] }
+    return -join $chars
+}
+
+$script:WorkPassword = New-RandomPassword
 
 function Get-PlainPassword {
     if (-not [string]::IsNullOrWhiteSpace($Password)) { return $Password }
@@ -2004,7 +2023,7 @@ try {
         $uniqueNotes = @($script:ApiNotes | Select-Object -Unique)
         Write-Step ('接口限制或注意事项：' + ($uniqueNotes -join '；'))
     }
-    Write-Step '演示师生初始密码为 Demo12345678，首次登录后需要修改密码。脚本未改动管理员账号。'
+    Write-Step '演示师生初始密码来自环境变量 SCHOOL_DEMO_PASSWORD。脚本未改动管理员账号，也未把口令写入仓库。'
     Write-Step '详细说明见 docs/demo-data.md。'
 }
 catch {

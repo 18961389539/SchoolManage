@@ -5,8 +5,9 @@ namespace School.Training;
 
 /// <summary>
 /// Fills an empty database with the customer demonstration. Re-running against a database
-/// that already has users leaves those users and their data in place. The hosted disk may
-/// be empty after a republish, so the same seed runs again.
+/// that already has users leaves those users and their data in place, and updates only the
+/// shared demonstration password hash. The hosted disk may be empty after a republish, so
+/// the same seed runs again.
 /// </summary>
 public static class DemoSeed
 {
@@ -35,9 +36,14 @@ public static class DemoSeed
         new("Student", "gaoyh", "高宇航")
     ];
 
-    public static async Task EnsureAsync(SchoolDbContext db, IPasswordHasher<AppUser> hasher, CancellationToken cancellationToken = default)
+    public static async Task EnsureAsync(SchoolDbContext db, IPasswordHasher<AppUser> hasher, string password, CancellationToken cancellationToken = default)
     {
-        if (await db.Users.AnyAsync(cancellationToken)) return;
+        if (password is not { Length: >= Validation.PasswordMinLength }) throw new InvalidOperationException("演示口令不可用。");
+        if (await db.Users.AnyAsync(cancellationToken))
+        {
+            await RefreshSharedPasswordAsync(db, hasher, password, cancellationToken);
+            return;
+        }
         var users = new Dictionary<string, AppUser>(StringComparer.Ordinal);
         foreach (var account in Accounts)
         {
@@ -48,7 +54,7 @@ public static class DemoSeed
                 Role = account.Role,
                 MustChangePassword = false
             };
-            user.PasswordHash = hasher.HashPassword(user, DemoHost.Password);
+            user.PasswordHash = hasher.HashPassword(user, password);
             users[account.UserName] = user;
             db.Users.Add(user);
         }
@@ -88,6 +94,22 @@ public static class DemoSeed
         AddCamp(db);
         db.Audits.Add(new AuditEntry { UserName = DemoHost.AdminUserName, Action = "初始化演示数据", Target = DemoHost.SchoolName, Detail = "空库自动写入演示账号、模拟机柜和教学数据。" });
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    static async Task RefreshSharedPasswordAsync(SchoolDbContext db, IPasswordHasher<AppUser> hasher, string password, CancellationToken cancellationToken)
+    {
+        var changed = false;
+        foreach (var account in Accounts)
+        {
+            var user = await db.Users.SingleOrDefaultAsync(item => item.UserName == account.UserName, cancellationToken);
+            if (user == null) continue;
+            if (hasher.VerifyHashedPassword(user, user.PasswordHash, password) != PasswordVerificationResult.Failed) continue;
+            user.PasswordHash = hasher.HashPassword(user, password);
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.MustChangePassword = false;
+            changed = true;
+        }
+        if (changed) await db.SaveChangesAsync(cancellationToken);
     }
 
     static Profession AddProfession(SchoolDbContext db, string name, string code)

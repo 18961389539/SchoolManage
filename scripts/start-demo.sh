@@ -21,6 +21,18 @@ export PORT="${PORT:-5080}"
 export SCHOOL_DATA_DIR="${SCHOOL_DATA_DIR:-$root/.local/demo-data}"
 mkdir -p "$SCHOOL_DATA_DIR"
 
+# The shared demonstration password stays in this process and in a gitignored file.
+# It is not written into source, the login page, or /api/status.
+generate_demo_password() {
+  python3 -c 'import secrets,string; letters=string.ascii_letters; digits=string.digits; alphabet=letters+digits; chars=[secrets.choice(letters), secrets.choice(digits)]+[secrets.choice(alphabet) for _ in range(22)]; secrets.SystemRandom().shuffle(chars); print("".join(chars), end="")'
+}
+demo_password="${SCHOOL_DEMO_PASSWORD:-}"
+if [ "${#demo_password}" -lt 12 ]; then
+  demo_password="$(generate_demo_password)"
+fi
+export SCHOOL_DEMO_PASSWORD="$demo_password"
+unset demo_password
+
 npm --prefix web install
 npm --prefix web run build
 mkdir -p src/School.Training/wwwroot
