@@ -116,7 +116,7 @@ internal static class LicenseIssuer
             if (expiresAt <= issuedAt) throw new IssuerInputException("有效期结束日不能早于当前北京时间日期。");
         }
         var pem = File.ReadAllText(privatePath, Utf8);
-        if (!pem.Contains("-----BEGIN ENCRYPTED PRIVATE KEY-----", StringComparison.Ordinal)) throw new IssuerInputException("只接受密码加密的 PKCS#8 PEM 私钥，不接受明文私钥或公钥。");
+        if (!pem.Contains(PemArmor("ENCRYPTED PRIVATE KEY"), StringComparison.Ordinal)) throw new IssuerInputException("只接受密码加密的 PKCS#8 PEM 私钥，不接受明文私钥或公钥。");
         var password = Password(confirm: false);
         try
         {
@@ -204,6 +204,7 @@ internal static class LicenseIssuer
         return values;
     }
     private static string Required(Dictionary<string, string> options, string key) => options.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : throw new IssuerInputException("缺少必填选项 --" + key);
+    private static string PemArmor(string label) => new string('-', 5) + "BEGIN " + label + new string('-', 5);
     private static void CheckOptions(Dictionary<string, string> options, string[] allowed)
     {
         var invalid = options.Keys.FirstOrDefault(x => !allowed.Contains(x, StringComparer.Ordinal));

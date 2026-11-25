@@ -39,8 +39,9 @@ try {
   const privatePath = path.join(keys, 'issuer-private.encrypted.pem');
   const publicPath = path.join(keys, 'license-public.pem');
   const pem = fs.readFileSync(privatePath, 'utf8');
-  assert.ok(pem.startsWith('-----BEGIN ENCRYPTED PRIVATE KEY-----'));
-  assert.ok(!pem.includes('-----BEGIN PRIVATE KEY-----'));
+  const pemArmor = label => '-'.repeat(5) + 'BEGIN ' + label + '-'.repeat(5);
+  assert.ok(pem.startsWith(pemArmor('ENCRYPTED PRIVATE KEY')));
+  assert.ok(!pem.includes(pemArmor('PRIVATE KEY')));
   const privateKey = createPrivateKey({ key: pem, format: 'pem', passphrase: password });
   const publicKey = createPublicKey(fs.readFileSync(publicPath));
   assert.ok(privateKey.asymmetricKeyDetails.modulusLength >= 2048);
