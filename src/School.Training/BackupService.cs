@@ -50,6 +50,8 @@ public static class BackupService
                 zip.CreateEntryFromFile(dbPath, "school.db", CompressionLevel.Optimal);
                 zip.CreateEntryFromFile(Path.Combine(paths.Data, ".schooltraining-data.json"), ".schooltraining-data.json", CompressionLevel.Optimal);
                 foreach (var key in Directory.EnumerateFiles(paths.Keys, "*.xml")) zip.CreateEntryFromFile(key, "keys/" + Path.GetFileName(key), CompressionLevel.Optimal);
+                AddBusinessFiles(zip, paths.CourseFiles, "course-files");
+                AddBusinessFiles(zip, paths.CaseEvidence, "case-evidence");
                 var entry = zip.CreateEntry("manifest.json");
                 await using var stream = entry.Open();
                 await JsonSerializer.SerializeAsync(stream, new { product = "SchoolTraining", schemaVersion = 1, databaseSchemaVersion = DatabaseSafety.SchemaVersion, version = BuildInfo.Version, createdAt = DateTime.UtcNow }, JsonOptions, ct);
@@ -71,6 +73,20 @@ public static class BackupService
                 catch (IOException) { }
                 catch (UnauthorizedAccessException) { }
             }
+        }
+    }
+
+    static void AddBusinessFiles(ZipArchive zip, string directory, string entryRoot)
+    {
+        zip.CreateEntry(entryRoot + "/");
+        var root = Path.GetFullPath(directory);
+        foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                     .OrderBy(path => path, StringComparer.Ordinal))
+        {
+            var relative = Path.GetRelativePath(root, file);
+            if (Path.IsPathRooted(relative) || relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains(".."))
+                throw new InvalidOperationException("业务文件路径不能超出数据目录");
+            zip.CreateEntryFromFile(file, entryRoot + "/" + relative.Replace('\\', '/'), CompressionLevel.Optimal);
         }
     }
 

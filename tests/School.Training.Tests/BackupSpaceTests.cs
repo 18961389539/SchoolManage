@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -55,6 +56,36 @@ public sealed class BackupSpaceTests : IDisposable
         Assert.False(result.Success);
         Assert.Empty(Directory.EnumerateFileSystemEntries(paths.Backups));
         Assert.Equal(0, await db.Audits.CountAsync());
+    }
+
+    [Fact]
+    public async Task Successful_backup_contains_course_files_and_case_evidence()
+    {
+        var paths = new AppPaths(directory.FullName);
+        await using var db = Open(paths);
+        await db.Database.EnsureCreatedAsync();
+        var courseFile = CourseFileStore.PathFor(paths, "resource01", "lesson.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(courseFile)!);
+        await File.WriteAllTextAsync(courseFile, "course attachment");
+        var evidenceFile = Path.Combine(paths.CaseEvidence, "session01", "evidence.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(evidenceFile)!);
+        await File.WriteAllTextAsync(evidenceFile, "case evidence");
+
+        var result = await BackupService.CreateAsync(paths, db, new StorageOptions(),
+            "admin", "创建备份", _ => long.MaxValue, CancellationToken.None);
+
+        Assert.True(result.Success, result.Message);
+        using var archive = ZipFile.OpenRead(Path.Combine(paths.Backups, result.FileName));
+        Assert.NotNull(archive.GetEntry("course-files/"));
+        Assert.NotNull(archive.GetEntry("case-evidence/"));
+        var attachment = archive.GetEntry("course-files/resource01/lesson.txt");
+        var evidence = archive.GetEntry("case-evidence/session01/evidence.png");
+        Assert.NotNull(attachment);
+        Assert.NotNull(evidence);
+        using var attachmentReader = new StreamReader(attachment.Open());
+        using var evidenceReader = new StreamReader(evidence.Open());
+        Assert.Equal("course attachment", await attachmentReader.ReadToEndAsync());
+        Assert.Equal("case evidence", await evidenceReader.ReadToEndAsync());
     }
 
     [Theory]

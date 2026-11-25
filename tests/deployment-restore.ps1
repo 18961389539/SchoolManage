@@ -151,16 +151,24 @@ function Get-DatasetHashes([string]$Data) {
         $file = Join-Path $Data $name
         if (Test-Path -LiteralPath $file -PathType Leaf) { "$name $((Get-FileHash -LiteralPath $file).Hash)" }
     }
-    $directory = Join-Path $Data 'keys'
-    if (Test-Path -LiteralPath $directory -PathType Container) {
-        foreach ($file in @(Get-ChildItem -LiteralPath $directory -File -Recurse | Sort-Object FullName)) {
-            "$($file.FullName.Substring($Data.Length + 1)) $((Get-FileHash -LiteralPath $file.FullName).Hash)"
+    foreach ($name in @('keys','course-files','case-evidence')) {
+        $directory = Join-Path $Data $name
+        if (Test-Path -LiteralPath $directory -PathType Container) {
+            foreach ($file in @(Get-ChildItem -LiteralPath $directory -File -Recurse | Sort-Object FullName)) {
+                "$($file.FullName.Substring($Data.Length + 1)) $((Get-FileHash -LiteralPath $file.FullName).Hash)"
+            }
         }
     }
 }
 function Assert-EqualDataset($Expected,$Actual) {
-    Assert-True ($Expected.Count -gt 1) 'A real database and credential key were expected in the fixture.'
-    Assert-True (($Expected -join [Environment]::NewLine) -eq ($Actual -join [Environment]::NewLine)) 'Original SQLite, sidecars, or key-ring bytes changed.'
+    Assert-True ($Expected.Count -gt 1) 'A real database, credential key, and business files were expected in the fixture.'
+    Assert-True (($Expected -join [Environment]::NewLine) -eq ($Actual -join [Environment]::NewLine)) 'Original SQLite, sidecars, key-ring, or business-file bytes changed.'
+}
+function Assert-BusinessFiles([string]$Data,[string]$Label) {
+    $courseFile = Join-Path (Join-Path $Data 'course-files\fixture-resource') 'attachment.txt'
+    $evidenceFile = Join-Path (Join-Path $Data 'case-evidence\fixture-session') 'evidence.png'
+    Assert-True ((Test-Path -LiteralPath $courseFile -PathType Leaf) -and [IO.File]::ReadAllText($courseFile) -eq "$Label attachment") 'Course attachment was not restored.'
+    Assert-True ((Test-Path -LiteralPath $evidenceFile -PathType Leaf) -and [IO.File]::ReadAllText($evidenceFile) -eq "$Label evidence") 'Case evidence was not restored.'
 }
 function New-FixtureBackup([string]$Name,[string]$Label) {
     $data = Join-Path $fixtureRoot $Name
@@ -176,6 +184,13 @@ function New-FixtureBackup([string]$Name,[string]$Label) {
         $cabinet = @{ name='Fixture Cabinet'; isSimulated=$true; jumpPassword=('Fixture9!' + [Guid]::NewGuid().ToString('N')) }
         $created = Invoke-RestMethod @request -Uri "$base/api/cabinets" -Headers $headers -WebSession $session -Body ($cabinet | ConvertTo-Json)
         Assert-True $created.hasJumpPassword 'Fixture credential was not stored.'
+        foreach ($item in @(
+            @{ path = Join-Path (Join-Path $data 'course-files\fixture-resource') 'attachment.txt'; content = "$Label attachment" },
+            @{ path = Join-Path (Join-Path $data 'case-evidence\fixture-session') 'evidence.png'; content = "$Label evidence" }
+        )) {
+            New-Item -ItemType Directory -Path (Split-Path -Parent $item.path) -Force | Out-Null
+            [IO.File]::WriteAllText($item.path, $item.content)
+        }
         $backup = Invoke-RestMethod -Uri "$base/api/backups" -Method Post -Headers $headers -WebSession $session -UseBasicParsing
         $file = Join-Path $fixtureRoot ($Name + '.zip')
         Invoke-WebRequest -Uri "$base/api/backups/$($backup.fileName)" -WebSession $session -OutFile $file -UseBasicParsing
@@ -224,6 +239,7 @@ function Test-Restore([string]$Scenario,[string]$OriginalArchive,[string]$Backup
             Assert-True ($failure -like '*Cannot acquire the data directory restore lock*') "Unexpected result: $failure"
             Assert-True ($snapshots.Count -eq 0 -and $state.startCount -eq 0 -and $state.stopCount -eq 0) 'A blocked restore moved data or touched the service.'
             Assert-True ((Get-SchoolStatus $port).schoolName -eq 'Original school') 'Blocked restore changed the active database.'
+            Assert-BusinessFiles $data 'Original school'
             return
         }
         Assert-True ($snapshots.Count -eq 1) "The restore did not create exactly one recovery directory. Error: $failure"
@@ -232,6 +248,7 @@ function Test-Restore([string]$Scenario,[string]$OriginalArchive,[string]$Backup
             Assert-True (-not $failure) "Unexpected restore failure: $failure"
             Assert-EqualDataset $state.originalItems @(Get-DatasetHashes $snapshot)
             Test-ClosedDatabase $snapshot
+            Assert-BusinessFiles $data 'Backup school'
             if ($Scenario -eq 'previously-stopped') {
                 Assert-True ($state.startCount -eq 0 -and $state.probeCount -eq 0 -and $state.service.Status -eq 'Stopped') 'A stopped service was started.'
                 Test-ClosedDatabase $data
@@ -243,6 +260,7 @@ function Test-Restore([string]$Scenario,[string]$OriginalArchive,[string]$Backup
             Assert-True ($failure -eq 'injected partial move failure') "Unexpected partial move result: $failure"
             Assert-True ($state.restoredOriginalBeforeRestart -and $state.startCount -eq 1 -and $state.probeCount -eq 1) 'Partial move was not reversed before restarting the original instance.'
             Assert-True ((Get-SchoolStatus $port).schoolName -eq 'Original school') 'Partial move rollback did not restore the original instance.'
+            Assert-BusinessFiles $data 'Original school'
         } else {
             Assert-True ($state.restoredOriginalBeforeRestart -and $state.startCount -eq 2 -and $state.probeCount -eq 2) "The original instance was not restored and health checked. Error: $failure"
             Assert-True ((Get-SchoolStatus $port).schoolName -eq 'Original school') 'Rollback did not reactivate the original SQLite data.'
@@ -252,6 +270,7 @@ function Test-Restore([string]$Scenario,[string]$OriginalArchive,[string]$Backup
             } else {
                 Assert-True ($failure -eq 'injected replacement health failure') "Unexpected replacement failure result: $failure"
                 Assert-True ($messages -contains 'Original service restarted and passed its live status check.') 'Successful rollback was not reported.'
+                Assert-BusinessFiles $data 'Original school'
             }
         }
     } finally {
@@ -327,7 +346,7 @@ $report = [ordered]@{
     suite='deployment-restore-injected'; recordedAtUtc=[DateTime]::UtcNow.ToString('o'); powershellVersion=$PSVersionTable.PSVersion.ToString()
     testedApplicationVersion=$publishedVersion; testedAssemblySha256=(Get-FileHash -LiteralPath $assembly).Hash.ToLowerInvariant()
     restoreScriptSha256=(Get-FileHash -LiteralPath $restoreScript).Hash.ToLowerInvariant(); commonScriptSha256=(Get-FileHash -LiteralPath $commonScript).Hash.ToLowerInvariant()
-    scope='Five ordinary memory-stream checks use the production copy routine. Six workflow checks use the published app on loopback with two synthetic SQLite databases, DPAPI key-rings, and actual backup ZIPs. SCM and registration are test doubles. No elevated operations, real service changes, or school data.'
+    scope='Five ordinary memory-stream checks use the production copy routine. Six workflow checks use the published app on loopback with two synthetic SQLite databases, DPAPI key-rings, course attachments, case evidence, and actual backup ZIPs. SCM and registration are test doubles. No elevated operations, real service changes, or school data.'
     passed=($passed -eq $checks.Count); passedChecks=$passed; totalChecks=$checks.Count; checks=$checks.ToArray()
 }
 [IO.File]::WriteAllText($reportPath,($report | ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))

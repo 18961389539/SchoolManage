@@ -37,6 +37,7 @@ $rollback = Get-SafeChild ('restore-rollback-' + [DateTime]::UtcNow.ToString('yy
 $database = Get-SafeChild 'school.db'
 $keys = Get-SafeChild 'keys'
 $liveItems = @('school.db','school.db-wal','school.db-shm','keys')
+$businessItems = @()
 $originalsMoved = New-Object 'Collections.Generic.List[string]'
 $installedItems = New-Object 'Collections.Generic.List[string]'
 $restoreLock = $null
@@ -58,7 +59,7 @@ function Expand-CheckedBackup([IO.Compression.ZipArchive]$Archive) {
     [long]$totalSize = 0
     foreach ($entry in $Archive.Entries) {
         $name = $entry.FullName.Replace('\','/')
-        if ($name -match '(^/|:|(^|/)\.\.(/|$)|(^|/)\.(/|$))' -or -not ($name -eq 'school.db' -or $name -eq 'manifest.json' -or $name -eq '.schooltraining-data.json' -or $name.StartsWith('keys/'))) { throw "Unexpected or unsafe backup entry: $name" }
+        if ($name -match '(^/|:|(^|/)\.\.(/|$)|(^|/)\.(/|$))' -or -not ($name -eq 'school.db' -or $name -eq 'manifest.json' -or $name -eq '.schooltraining-data.json' -or $name.StartsWith('keys/') -or $name.StartsWith('course-files/') -or $name.StartsWith('case-evidence/'))) { throw "Unexpected or unsafe backup entry: $name" }
         if (-not $seen.Add($name.TrimEnd('/'))) { throw 'Duplicate backup entry.' }
         $length = $entry.Length
         if ($length -lt 0 -or $length -gt 1GB -or $length -gt (2GB - $totalSize)) { throw 'Backup size limit exceeded.' }
@@ -112,6 +113,9 @@ try {
     if ($manifest.schemaVersion -ne 1 -or $manifest.product -ne 'SchoolTraining') { throw 'Unsupported backup product or schema version.' }
     $dataMarker = Get-Content -LiteralPath (Join-Path $staging '.schooltraining-data.json') -Raw | ConvertFrom-Json
     if ($dataMarker.product -ne 'SchoolTraining' -or $dataMarker.schemaVersion -ne 1) { throw 'Invalid backup data marker.' }
+    # Older backups do not carry business files. Leave the live directories untouched in that case.
+    $businessItems = @(@('course-files','case-evidence') | Where-Object { Test-Path -LiteralPath (Join-Path $staging $_) -PathType Container })
+    $liveItems += $businessItems
     $stream = [IO.File]::OpenRead((Join-Path $staging 'school.db'))
     try {
         $header = New-Object byte[] 16
@@ -148,7 +152,7 @@ try {
                 $originalsMoved.Add($item)
             }
         }
-        foreach ($item in @('school.db','keys')) {
+        foreach ($item in @('school.db','keys') + $businessItems) {
             Move-Item -LiteralPath (Get-SafeProductChild $staging $item) -Destination (Get-SafeChild $item)
             $installedItems.Add($item)
         }
@@ -156,7 +160,7 @@ try {
             $serviceStartAttempted = $true
             Start-VerifiedRestoreService
         }
-        Write-Output "Backup restored. Previous database and keys preserved at: $rollback"
+        Write-Output "Backup restored. Previous database, keys, and business files preserved at: $rollback"
         Write-Output 'Sessions may need a new login. Original backups and logs were not modified.'
     } catch {
         $restoreFailure = $_
