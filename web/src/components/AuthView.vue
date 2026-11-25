@@ -11,8 +11,8 @@ const props = defineProps<{
   version: string
   busy: boolean
   error: string
+  demo?: boolean
   demoAccounts?: { role: string; userName: string; displayName: string }[] | null
-  demoPassword?: string | null
 }>()
 const emit = defineEmits<{ submit: []; edit: [] }>()
 
@@ -130,12 +130,13 @@ watch(
       </header>
 
       <section class="auth-form-wrap" aria-labelledby="auth-title">
-        <h1 id="auth-title">{{ initialized ? '登录工作空间' : '初始化实训平台' }}</h1>
-        <p v-if="!initialized" class="auth-intro">请在部署服务器本机创建首个管理员账号。</p>
+        <h1 id="auth-title">{{ initialized || demo ? '登录工作空间' : '初始化实训平台' }}</h1>
+        <p v-if="!initialized && !demo" class="auth-intro">请在部署服务器本机创建首个管理员账号。</p>
+        <p v-else-if="demo && !demoAccounts?.length" class="auth-intro">
+          演示密码由主持方在环境中配置，本页不显示密码。
+        </p>
         <div v-if="demoAccounts?.length" class="auth-demo">
-          <p>
-            这是客户演示。下列账号的密码都是 <strong>{{ demoPassword }}</strong>，登录后不需要再修改。
-          </p>
+          <p>这是客户演示。下列账号可以登录。密码由主持方另行提供，本页不显示。</p>
           <ul>
             <li v-for="account in demoAccounts" :key="account.userName">
               <button type="button" @click="auth.userName = account.userName">
@@ -151,7 +152,14 @@ watch(
           <span>{{ error }}</span>
         </div>
 
-        <form ref="form" novalidate :aria-busy="busy" @submit.prevent="submit" @input="error && emit('edit')">
+        <form
+          v-if="initialized || !demo"
+          ref="form"
+          novalidate
+          :aria-busy="busy"
+          @submit.prevent="submit"
+          @input="error && emit('edit')"
+        >
           <fieldset class="auth-fields" :disabled="busy">
             <div
               v-for="field in accountFields"

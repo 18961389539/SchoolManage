@@ -7,10 +7,10 @@ namespace School.Training;
 public static class DemoHost
 {
     /// <summary>
-    /// Published demonstration password. It is not a credential for a real school.
-    /// The login page shows it so a customer can open the hosted link and sign in.
+    /// Environment variable that supplies the demonstration password. The value is never
+    /// written into the repository or returned to the browser.
     /// </summary>
-    public const string Password = "Demo12345678";
+    public const string PasswordEnvironmentVariable = "SCHOOL_DEMO_PASSWORD";
 
     public const string SchoolName = "演示职业技术学院";
     public const string AdminUserName = "demo";
@@ -20,6 +20,18 @@ public static class DemoHost
         var value = configuration["School:Demo"];
         if (string.IsNullOrWhiteSpace(value)) value = Environment.GetEnvironmentVariable("SCHOOL_DEMO");
         return value is "1" or "true" or "True" or "TRUE";
+    }
+
+    /// <summary>
+    /// Reads the demonstration password from configuration or the environment.
+    /// A missing or weak value means demonstration accounts are not created.
+    /// </summary>
+    public static string? ConfiguredPassword(IConfiguration configuration)
+    {
+        var value = configuration["School:DemoPassword"];
+        if (string.IsNullOrWhiteSpace(value)) value = Environment.GetEnvironmentVariable(PasswordEnvironmentVariable);
+        value = value?.Trim();
+        return string.IsNullOrEmpty(value) || Validation.Password(value) != null ? null : value;
     }
 
     public static string ListenUrl(string? port)

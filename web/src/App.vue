@@ -22,7 +22,7 @@ const startupError = ref('')
 const user = computed(() => appState.user)
 const initialized = ref(true)
 const demoAccounts = ref<StatusResponse['demoAccounts']>(null)
-const demoPassword = ref<string | null>(null)
+const demoMode = ref(false)
 const busy = ref(false)
 const authError = ref('')
 const authNotice = computed(() => authError.value || appState.authNotice)
@@ -190,8 +190,8 @@ async function boot() {
   try {
     const status = await api<StatusResponse>('/status', { pageScoped: false })
     initialized.value = status.initialized
+    demoMode.value = !!status.demo
     demoAccounts.value = status.demo ? (status.demoAccounts ?? null) : null
-    demoPassword.value = status.demo ? (status.demoPassword ?? null) : null
     applyServerInfo(status)
     if (!status.initialized) return
     const outcome = await probeSession(() => api<SessionResponse>('/auth/me', { pageScoped: false }))
@@ -339,8 +339,8 @@ onBeforeUnmount(() => {
       :version="version"
       :busy="busy"
       :error="authNotice"
+      :demo="demoMode"
       :demo-accounts="demoAccounts"
-      :demo-password="demoPassword"
       @submit="authenticate"
       @edit="clearAuthNotice"
     />

@@ -8,7 +8,7 @@
     并调用内置「创建模拟环境」。默认只新增尚不存在的记录，不删除、不覆盖已有数据，也不修改 admin 账号或密码。
 
     前置条件：服务已在本机运行，并已在本机浏览器完成管理员初始化。
-    演示师生的初始密码为 Demo12345678，首次登录后需按产品规则修改密码。
+    演示师生的初始密码从环境变量 SCHOOL_DEMO_PASSWORD 读取。不要把密码写入仓库。首次登录后需按产品规则修改密码。
     说明见 docs/demo-data.md。
 
 .PARAMETER BaseUrl
@@ -30,7 +30,13 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$DemoPassword = 'Demo12345678'
+if ([string]::IsNullOrWhiteSpace($env:SCHOOL_DEMO_PASSWORD)) {
+    throw '请设置环境变量 SCHOOL_DEMO_PASSWORD 作为演示师生初始密码。不要把密码写入仓库。'
+}
+$DemoPassword = $env:SCHOOL_DEMO_PASSWORD.Trim()
+if ($DemoPassword.Length -lt 12 -or $DemoPassword.Length -gt 128 -or $DemoPassword -notmatch '[A-Za-z]' -or $DemoPassword -notmatch '\d') {
+    throw 'SCHOOL_DEMO_PASSWORD 须为 12–128 位，且同时包含字母和数字。'
+}
 $ApiRoot = $BaseUrl.TrimEnd('/') + '/api'
 $script:Session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $script:CsrfToken = $null
@@ -39,11 +45,20 @@ $script:Skipped = New-Object System.Collections.Generic.List[string]
 $script:ApiNotes = New-Object System.Collections.Generic.List[string]
 $script:RestorePersonIds = New-Object System.Collections.Generic.List[string]
 $script:LoginCount = 0
-$script:WorkPassword = 'DemoSeedWork1234'
 $script:AdminPassword = $null
 $script:PracticeAnswers = @{}
 
 function Write-Step([string]$Message) { Write-Host $Message }
+
+function New-TemporaryPassword {
+    $bytes = New-Object byte[] 16
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) }
+    finally { $rng.Dispose() }
+    return 'Aa' + ([System.BitConverter]::ToString($bytes)).Replace('-', '')
+}
+
+$script:WorkPassword = New-TemporaryPassword
 
 function Get-PlainPassword {
     if (-not [string]::IsNullOrWhiteSpace($Password)) { return $Password }
@@ -2004,7 +2019,7 @@ try {
         $uniqueNotes = @($script:ApiNotes | Select-Object -Unique)
         Write-Step ('接口限制或注意事项：' + ($uniqueNotes -join '；'))
     }
-    Write-Step '演示师生初始密码为 Demo12345678，首次登录后需要修改密码。脚本未改动管理员账号。'
+    Write-Step '演示师生初始密码来自环境变量 SCHOOL_DEMO_PASSWORD，脚本不会打印该密码。首次登录后需要修改密码。脚本未改动管理员账号。'
     Write-Step '详细说明见 docs/demo-data.md。'
 }
 catch {

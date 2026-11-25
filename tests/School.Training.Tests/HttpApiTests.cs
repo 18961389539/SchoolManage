@@ -30,10 +30,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     readonly string? previousAutomaticBackups;
     readonly IPAddress clientAddress;
     readonly bool demo;
+    readonly string? demoPassword;
 
-    public ApiFactory(IPAddress? remoteAddress = null, bool demo = false)
+    public ApiFactory(IPAddress? remoteAddress = null, bool demo = false, string? demoPassword = null)
     {
         this.demo = demo;
+        this.demoPassword = demoPassword;
         clientAddress = remoteAddress ?? IPAddress.Loopback;
         previousDataDir = Environment.GetEnvironmentVariable("SCHOOL_DATA_DIR");
         previousAutomaticBackups = Environment.GetEnvironmentVariable("School__Backups__Automatic__Enabled");
@@ -44,6 +46,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("School:Demo", demo ? "1" : "0");
+        if (!string.IsNullOrEmpty(demoPassword)) builder.UseSetting("School:DemoPassword", demoPassword);
         builder.UseEnvironment("Development");
         builder.UseContentRoot(Path.GetFullPath(Path.Combine(
             Path.GetDirectoryName(typeof(Program).Assembly.Location)!, "..", "..", "..")));

@@ -11,7 +11,7 @@ Import preview/commit, backup creation/download, diagnostics, statistics exports
 Frontend response contracts live in `web/src/types.ts`. `api<T>`, `post<T>` and `put<T>` have no `any` default, so each call site must name the expected payload; `Row` is reserved for runtime-configured entity forms and tables. The import dialog additionally checks the preview and status payload shapes at runtime, so a renamed field becomes a visible contract error instead of blank cells.
 
 ## Setup and session
-- GET `/status`: `{initialized, product, version, schemaVersion, logWriteFailures, maxUploadBytes, schoolName}` anonymous. `maxUploadBytes` is the single source for the upload limit the web client enforces.
+- GET `/status`: `{initialized, product, version, schemaVersion, logWriteFailures, maxUploadBytes, schoolName, demo?, demoAccounts?}` anonymous. `demoAccounts` lists demonstration user names only when demo mode has already created accounts. The response never includes a password. `maxUploadBytes` is the single source for the upload limit the web client enforces.
 - GET `/healthz`: anonymous `{status:"healthy"|"unhealthy", checks:{database:"ok"|"failed", disk:"ok"|"low"|"unavailable"}}`; 200 when healthy, 503 otherwise. No paths, accounts or version are returned.
 - Session cookies are HttpOnly, SameSite=Strict, 8 h sliding with a 24 h absolute limit; `School:Session:AbsoluteHours` adjusts the absolute window (1–168 h).
 - POST `/setup`: `{schoolName, userName, displayName,password}` -> session, first admin, loopback only

@@ -103,7 +103,13 @@ using (var scope = app.Services.CreateScope())
     await DatabaseGuards.EnsureAsync(db);
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
     if (DemoHost.IsEnabled(app.Configuration))
-        await DemoSeed.EnsureAsync(db, scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>());
+    {
+        var demoPassword = DemoHost.ConfiguredPassword(app.Configuration);
+        if (demoPassword == null)
+            startupLogger.LogInformation("Demonstration password is not configured. Accounts were not created.");
+        else
+            await DemoSeed.EnsureAsync(db, scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>(), demoPassword);
+    }
 }
 if (DemoHost.IsEnabled(app.Configuration))
 {
@@ -207,8 +213,7 @@ app.MapGet("/api/status", async (SchoolDbContext db, RollingFileLoggerProvider l
     maxUploadBytes = Limits.MaxUploadBytes,
     schoolName = await db.Settings.Where(x => x.Id == "schoolName").Select(x => x.Value).FirstOrDefaultAsync(ct),
     demo = DemoHost.IsEnabled(app.Configuration),
-    demoPassword = DemoHost.IsEnabled(app.Configuration) ? DemoHost.Password : null,
-    demoAccounts = DemoHost.IsEnabled(app.Configuration) ? DemoSeed.Accounts : null
+    demoAccounts = DemoHost.IsEnabled(app.Configuration) && await db.Users.AnyAsync(ct) ? DemoSeed.Accounts : null
 }));
 app.MapGet("/healthz", async (SchoolDbContext db, AppPaths paths, StorageOptions storage, CancellationToken ct) =>
 {
