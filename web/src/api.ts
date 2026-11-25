@@ -1,3 +1,4 @@
+import { flushEmergencyDrafts } from './draftPersistence'
 import { pageLeft, trackPageRead } from './requestScope'
 import { appState, expireSession } from './store'
 
@@ -88,7 +89,11 @@ async function request<T>(path: string, options: ApiOptions, read: (response: Re
     if (controller.signal.reason === pageLeft) return new Promise<T>(() => {})
     // A 401 on a live session is handled after that check: the shell is already showing the
     // sign-in notice, so the page that asked must not also paint an error on the way out.
-    if (error instanceof ApiError && error.status === 401 && expireSession()) return new Promise<T>(() => {})
+    if (error instanceof ApiError && error.status === 401 && appState.user) {
+      flushEmergencyDrafts()
+      expireSession()
+      throw error
+    }
     if (controller.signal.reason === timedOut)
       throw new ApiError(`请求超时（${Math.round(limit / 1000)} 秒），请检查网络后重试`, 0, { code: 'timeout' })
     throw error

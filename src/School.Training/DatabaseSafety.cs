@@ -124,6 +124,7 @@ public static class DatabaseSafety
             ("CourseResources" or "ClassroomCaseSessions", "TopologyBlueprintJson"))) return false;
         // Pre-v17 backups and snapshots predate optimistic locking on the course tree.
         if (version < 17 && column == "Version" && table is ("Courses" or "CourseChapters" or "CourseSections" or "CourseResources")) return false;
+        if (version < 18 && table == "JobPositions" && column == "Published") return false;
         if (table == "Devices" && column == "NodeId") return version >= 5;
         if (table == "ImportBatches" && column is "Status" or "RemoveInvalidRows" or "TotalCount" or "ProcessedCount"
             or "ImportedCount" or "RemovedCount" or "FailureMessage" or "QueuedAt" or "StartedAt" or "CompletedAt") return version >= 3;

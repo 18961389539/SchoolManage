@@ -54,7 +54,7 @@ function Copy-ExactBackupData([IO.Stream]$Source,[IO.Stream]$Destination,[long]$
 }
 
 function Expand-CheckedBackup([IO.Compression.ZipArchive]$Archive) {
-    if ($Archive.Entries.Count -gt 5000) { throw 'Too many archive entries.' }
+    if ($Archive.Entries.Count -gt 100000) { throw 'Too many archive entries.' }
     $seen = New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     [long]$totalSize = 0
     foreach ($entry in $Archive.Entries) {
@@ -62,7 +62,7 @@ function Expand-CheckedBackup([IO.Compression.ZipArchive]$Archive) {
         if ($name -match '(^/|:|(^|/)\.\.(/|$)|(^|/)\.(/|$))' -or -not ($name -eq 'school.db' -or $name -eq 'manifest.json' -or $name -eq '.schooltraining-data.json' -or $name.StartsWith('keys/') -or $name.StartsWith('course-files/') -or $name.StartsWith('case-evidence/'))) { throw "Unexpected or unsafe backup entry: $name" }
         if (-not $seen.Add($name.TrimEnd('/'))) { throw 'Duplicate backup entry.' }
         $length = $entry.Length
-        if ($length -lt 0 -or $length -gt 1GB -or $length -gt (2GB - $totalSize)) { throw 'Backup size limit exceeded.' }
+        if ($length -lt 0 -or $length -gt 8GB -or $length -gt (20GB - $totalSize)) { throw 'Backup size limit exceeded.' }
         if ($name.EndsWith('/') -and $length -ne 0) { throw 'Backup directory entry must be empty.' }
         $totalSize += $length
         $unixMode = ($entry.ExternalAttributes -shr 16) -band 0xF000

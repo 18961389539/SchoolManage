@@ -27,9 +27,9 @@ public class AnalyticsLogicTests
     }
 
     [Theory]
-    [InlineData("theory", "completed", 0, 0, 0, true)]
+    [InlineData("theory", "completed", 0, 0, 0, false)]
     [InlineData("theory", "inProgress", 0, 0, 0, false)]
-    [InlineData("case", "completed", 0, 0, 0, true)]
+    [InlineData("case", "completed", 0, 0, 0, false)]
     [InlineData("casePractice", "completed", 0, 0, 100, false)]
     [InlineData("casePractice", "completed", 59, 1, 100, false)]
     [InlineData("casePractice", "inProgress", 60, 1, 100, true)]
@@ -85,9 +85,11 @@ public class AnalyticsLogicTests
             resource => AnalyticsLogic.Evaluate(resource.Kind, records.GetValueOrDefault(resource.Id), resource.MaxScore));
         Assert.Equal(4, stats.Total);
         Assert.Equal(3, stats.Learned);
-        Assert.Equal(2, stats.Passed);
+        Assert.Equal(1, stats.Passed);
+        Assert.Equal(1, stats.VerifiableTotal);
         Assert.Equal(75, stats.LearningRate);
-        Assert.Equal(50, stats.PassRate);
+        Assert.Equal(100, stats.PassRate);
+        Assert.True(AnalyticsLogic.MeetsOverallTarget(stats));
     }
 
     [Theory]
@@ -97,17 +99,21 @@ public class AnalyticsLogicTests
     [InlineData(3, 3, 3, "mastered")]
     public void Skill_state_requires_every_resource_passed_for_mastery(int total, int passed, int learned, string expected)
     {
-        Assert.Equal(expected, AnalyticsLogic.SkillState(total, passed, learned));
+        Assert.Equal(expected, AnalyticsLogic.SkillState(total, passed, learned, total, passed));
     }
+
+    [Fact]
+    public void Skill_state_is_not_mastered_without_verifiable_resources()
+        => Assert.Equal("learning", AnalyticsLogic.SkillState(1, 0, 1));
 
     [Theory]
     [InlineData(0, 0, false)]
     [InlineData(10, 5, false)]
     [InlineData(10, 6, true)]
     [InlineData(5, 3, true)]
-    public void Overall_target_requires_sixty_percent_of_resources(int total, int passed, bool expected)
+    public void Overall_target_requires_sixty_percent_of_verifiable_practice(int total, int passed, bool expected)
     {
-        Assert.Equal(expected, AnalyticsLogic.MeetsOverallTarget(new KindStats(total, total, passed, 100, 0)));
+        Assert.Equal(expected, AnalyticsLogic.MeetsOverallTarget(new KindStats(total, total, passed, 100, 0, total)));
     }
 
     [Theory]

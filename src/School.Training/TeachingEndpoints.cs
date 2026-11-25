@@ -300,6 +300,7 @@ public static class TeachingEndpoints
     {
         var entity = await db.Courses.FindAsync([id], ct);
         if (entity == null) return NotFound("课程不存在");
+        if (entity.Status == "published") return Conflict("课程已发布，请先下线后再删除");
         if (await db.Classrooms.AnyAsync(item => item.CourseId == id, ct)) return Conflict("课程已被课堂使用，请先删除或调整课堂");
         var resourceIds = await (from resource in db.CourseResources.AsNoTracking()
                                  join section in db.CourseSections.AsNoTracking() on resource.SectionId equals section.Id
@@ -384,6 +385,7 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseChapters.FindAsync([id], ct);
         if (entity == null) return NotFound("大章不存在");
+        if (await EnsureCourseDraft(db, entity.CourseId, ct) is { } chapterLock) return chapterLock;
         var resourceIds = await (from resource in db.CourseResources.AsNoTracking()
                                  join section in db.CourseSections.AsNoTracking() on resource.SectionId equals section.Id
                                  where section.ChapterId == id
@@ -430,6 +432,9 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseSections.FindAsync([id], ct);
         if (entity == null) return NotFound("小节不存在");
+        var courseId = await db.CourseChapters.AsNoTracking().Where(item => item.Id == entity.ChapterId)
+            .Select(item => item.CourseId).FirstOrDefaultAsync(ct);
+        if (await EnsureCourseDraft(db, courseId, ct) is { } sectionLock) return sectionLock;
         var resourceIds = await db.CourseResources.AsNoTracking().Where(item => item.SectionId == id).Select(item => item.Id).ToListAsync(ct);
         if (await HasLearningHistory(db, resourceIds, ct)) return Conflict("该小节下的资源已有学习记录或实操会话，不能删除。");
         var stored = await CourseFileStore.ListAsync(db, resourceIds, ct);
@@ -481,10 +486,12 @@ public static class TeachingEndpoints
 
     static async Task<IResult> UpdateResource(string id, CourseResourceInput input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
-        var entity = await db.CourseResources.FindAsync([id], ct);
+var entity = await db.CourseResources.FindAsync([id], ct);
         if (entity == null) return NotFound("资源不存在");
-        if (input.Version is not int version) return Concurrency.MissingVersion();
-        if (!Concurrency.Matches(version, entity.Version)) return Concurrency.Conflict("资源");
+        var courseId = await db.CourseSections.AsNoTracking().Where(item => item.Id == entity.SectionId)
+            .Join(db.CourseChapters.AsNoTracking(), section => section.ChapterId, chapter => chapter.Id, (_, chapter) => chapter.CourseId)
+            .FirstOrDefaultAsync(ct);
+        if (await EnsureCourseDraft(db, courseId, ct) is { } updateLock) return updateLock;
         var error = TeachingLogic.ValidateResource(input);
         if (error != null) return Bad(error);
         if (!await StartupNodeExists(db, input.StartupNodeId, ct)) return Bad("启动节点不存在");
@@ -513,6 +520,10 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseResources.FindAsync([id], ct);
         if (entity == null) return NotFound("资源不存在");
+        var courseId = await db.CourseSections.AsNoTracking().Where(item => item.Id == entity.SectionId)
+            .Join(db.CourseChapters.AsNoTracking(), section => section.ChapterId, chapter => chapter.Id, (_, chapter) => chapter.CourseId)
+            .FirstOrDefaultAsync(ct);
+        if (await EnsureCourseDraft(db, courseId, ct) is { } deleteLock) return deleteLock;
         if (await HasLearningHistory(db, [id], ct)) return Conflict("该资源已有学习记录或实操会话，不能删除。");
         var stored = await CourseFileStore.ListAsync(db, [id], ct);
         db.CourseResources.Remove(entity);
@@ -1121,6 +1132,17 @@ public static class TeachingEndpoints
 
     static async Task<bool> StartupNodeExists(SchoolDbContext db, string? nodeId, CancellationToken ct)
         => string.IsNullOrWhiteSpace(nodeId) || await db.Nodes.AnyAsync(item => item.Id == nodeId, ct);
+
+    static async Task<IResult?> EnsureCourseDraft(SchoolDbContext db, string? courseId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(courseId)) return NotFound("课程不存在");
+        var status = await db.Courses.AsNoTracking().Where(item => item.Id == courseId).Select(item => item.Status).FirstOrDefaultAsync(ct);
+        if (status == null) return NotFound("课程不存在");
+        if (status == "published") return Conflict("课程已发布，请先下线后再调整课程内容");
+        if (await db.Classrooms.AnyAsync(item => item.CourseId == courseId && item.Status != "closed", ct))
+            return Conflict("课程仍有未结课课堂，暂不能调整课程内容");
+        return null;
+    }
 
     static async Task<bool> HasLearningHistory(SchoolDbContext db, List<string> resourceIds, CancellationToken ct)
         => resourceIds.Count > 0

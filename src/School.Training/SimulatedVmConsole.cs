@@ -162,8 +162,12 @@ public static class VmConsoleEndpoints
                 key = ClassroomScope(id, session.WorkId);
                 break;
             case "camp":
-                vmId = await camps.Where(item => item.Id == id && (isAdmin || isTeacher || (isStudent && item.UserId == userId)))
-                    .Select(item => item.VirtualMachineId).FirstOrDefaultAsync(ct);
+                var campScope = isAdmin
+                    ? camps
+                    : isTeacher
+                        ? CampAccess.TeacherControlScope(camps, db, userId)
+                        : camps.Where(item => item.UserId == userId);
+                vmId = await campScope.Where(item => item.Id == id).Select(item => item.VirtualMachineId).FirstOrDefaultAsync(ct);
                 key = CampScope(id);
                 break;
             default:

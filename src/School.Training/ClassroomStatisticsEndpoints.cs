@@ -424,7 +424,8 @@ public static class ClassroomStatisticsEndpoints
         var total = list.Sum(item => item.Total);
         var learned = list.Sum(item => item.Learned);
         var passed = list.Sum(item => item.Passed);
-        return new KindStats(total, learned, passed, AnalyticsLogic.Rate(learned, total), AnalyticsLogic.Rate(passed, total));
+        var verifiable = list.Sum(item => item.VerifiableTotal);
+        return new KindStats(total, learned, passed, AnalyticsLogic.Rate(learned, total), AnalyticsLogic.Rate(passed, verifiable), verifiable);
     }
 
     static StudentSummary Summarize(StatsData data, string userId, IEnumerable<AnalyticsResource> resources)

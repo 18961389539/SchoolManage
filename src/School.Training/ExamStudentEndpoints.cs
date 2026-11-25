@@ -226,6 +226,9 @@ public static class ExamStudentEndpoints
         var attempt = await db.ExamAttempts.FirstOrDefaultAsync(item => item.ExamId == id && item.UserId == userId, ct);
         if (attempt == null) return Conflict("请先开始考试");
         if (attempt.Status != "inProgress") return Conflict("本次考试已提交，不能修改答案");
+        if (input.LoadedAt is not DateTime loadedAt) return Bad("请求缺少作答基线，请刷新后重试");
+        if (await db.ExamAnswers.AnyAsync(item => item.AttemptId == attempt.Id && item.AnsweredAt > loadedAt, ct))
+            return Concurrency.Conflict("考试答案");
         var now = DateTime.UtcNow;
         var deadline = SubmissionDeadline(exam, attempt);
         if (now < exam.StartAt && now < deadline) return Conflict("考试尚未开始");
@@ -240,7 +243,7 @@ public static class ExamStudentEndpoints
         if (error != null) return Bad(error);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        return Results.Ok(new { saved });
+        return Results.Ok(new { saved, serverNow = now });
     }
 
     static async Task<IResult> SubmitExam(string id, ExamSubmitInput? input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
@@ -256,8 +259,11 @@ public static class ExamStudentEndpoints
         var deadline = SubmissionDeadline(exam, attempt);
         var autoSubmitted = now >= deadline;
         if (!autoSubmitted && now < exam.StartAt) return Conflict("考试尚未开始");
-        if (!autoSubmitted && input?.Answers is { Length: > 0 })
+        if (input?.Answers is { Length: > 0 })
         {
+            if (input.LoadedAt is not DateTime loadedAt) return Bad("请求缺少作答基线，请刷新后重试");
+            if (await db.ExamAnswers.AnyAsync(item => item.AttemptId == attempt.Id && item.AnsweredAt > loadedAt, ct))
+                return Concurrency.Conflict("考试答案");
             var (_, error) = await StoreAnswersAsync(db, exam, attempt, input.Answers, now, ct);
             if (error != null) return Bad(error);
             await db.SaveChangesAsync(ct);

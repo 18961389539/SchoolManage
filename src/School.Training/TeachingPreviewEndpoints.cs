@@ -84,16 +84,17 @@ public static class TeachingPreviewEndpoints
             .GroupBy(answer => answer.QuestionId)
             .ToDictionary(group => group.Key, group => TeachingLogic.NormalizeSelection(group.Last().Selected));
         var (score, maxScore) = TeachingLogic.ScoreAttempt(questions, answers);
+        var revealAnswers = !ctx.User.IsInRole("Student");
         return Results.Ok(new
         {
             score, maxScore, passed = maxScore > 0 && (long)score * 100 >= (long)maxScore * 60,
-            questions = questions.Select(question => new
+            questions = revealAnswers ? questions.Select(question => new
             {
                 questionId = question.Id,
                 correct = TeachingLogic.IsCorrect(question, answers.GetValueOrDefault(question.Id)),
                 correctAnswers = TeachingLogic.DeserializeAnswers(question.AnswerJson),
                 question.Analysis, question.Score
-            })
+            }) : []
         });
     }
 

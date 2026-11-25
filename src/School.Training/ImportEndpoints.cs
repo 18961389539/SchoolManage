@@ -73,7 +73,7 @@ public static class ImportEndpoints
         }).RequireRateLimiting("expensive");
         api.MapPost("/{id}/commit", async (string id, CommitImportRequest input, HttpContext ctx, SchoolDbContext db, ImportJobQueue jobs) =>
         {
-            var error = Validation.Password(input.InitialPassword); if (error != null) return Results.BadRequest(new { message = error });
+
             var owner = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
             var batch = await db.ImportBatches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.UserId == owner, ctx.RequestAborted);
             if (batch == null || batch.CreatedAt < DateTime.UtcNow.AddHours(-1)) return Results.NotFound(new { message = "导入预览已过期，请重新上传" });
@@ -105,7 +105,7 @@ public static class ImportEndpoints
             await db.SaveChangesAsync(ctx.RequestAborted);
             await transaction.CommitAsync(ctx.RequestAborted);
 
-            if (!jobs.TryEnqueue(new ImportJobRequest(id, input.InitialPassword)))
+            if (!jobs.TryEnqueue(new ImportJobRequest(id)))
             {
                 await db.ImportBatches.Where(x => x.Id == id && x.Status == ImportBatchStatus.Queued).ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.Status, ImportBatchStatus.Failed)
@@ -124,6 +124,17 @@ public static class ImportEndpoints
             var owner = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
             var batch = await db.ImportBatches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.UserId == owner, ctx.RequestAborted);
             return batch == null ? Results.NotFound(new { message = "导入批次不存在" }) : Results.Ok(StatusResponse(batch));
+        });
+        api.MapGet("/{id}/receipt", async (string id, HttpContext ctx, SchoolDbContext db, ImportPasswordReceipts receipts) =>
+        {
+            var owner = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var batch = await db.ImportBatches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.UserId == owner, ctx.RequestAborted);
+            if (batch == null) return Results.NotFound(new { message = "导入批次不存在" });
+            if (batch.Status != ImportBatchStatus.Completed) return Results.Conflict(new { message = "导入尚未完成，暂时不能领取初始密码" });
+            var items = receipts.Take(id, owner);
+            return items == null
+                ? Results.Conflict(new { message = "初始密码回执已领取或已过期；如未保存，请在人员管理中逐人重置密码" })
+                : Results.Ok(new { items });
         });
         api.MapPost("/{id}/cancel", async (string id, HttpContext ctx, SchoolDbContext db, ImportJobQueue jobs) =>
         {
@@ -242,4 +253,4 @@ public sealed class ImportRow
 }
 public record ImportData(string Name, string UserName, string Number, string ClassName, string Gender, string Phone, string Email);
 public record ImportError(string Column, string Message);
-public record CommitImportRequest(bool RemoveInvalidRows, string InitialPassword);
+public record CommitImportRequest(bool RemoveInvalidRows, string? InitialPassword = null);

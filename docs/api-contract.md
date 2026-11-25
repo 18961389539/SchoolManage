@@ -33,8 +33,9 @@ Frontend response contracts live in `web/src/types.ts`. `api<T>`, `post<T>` and 
 - POST `/people/{id}/reset-password`: `{newPassword}`
 - POST `/imports/preview?kind=teacher|student`: multipart `file` (.xlsx/.csv)
   -> `{batchId,rows:[{rowNumber,data:{name,userName,number,className,gender,phone,email},errors:[{column,message}]}],validCount,errorCount}`
-- POST `/imports/{batchId}/commit`: `{removeInvalidRows:true|false,initialPassword}` -> `202 {batchId,status,processedCount,totalCount,...}`. Password hashing runs in a bounded-concurrency background worker; the initial password stays in process memory and is never persisted. A restart fails unfinished batches safely.
+- POST `/imports/{batchId}/commit`: `{removeInvalidRows:true|false}` -> `202 {batchId,status,processedCount,totalCount,...}`. The worker generates a distinct initial password for every account and keeps only the one-time receipt in process memory; plaintext passwords are never persisted. A restart fails unfinished batches safely.
 - GET `/imports/{batchId}`: `{batchId,status,processedCount,totalCount,importedCount,removedCount,failureMessage,createdAt,queuedAt,startedAt,completedAt,message}`; `status` is `preview|queued|running|cancelling|completed|failed|cancelled`. Clients poll until a terminal state.
+- GET `/imports/{batchId}/receipt`: after completion returns `{items:[{account,password}]}` once to the submitting administrator within 24 hours; later calls return 409. Passwords must be handed over securely and changed at first login.
 - POST `/imports/{batchId}/cancel`: request cooperative cancellation; completed batches return 409
 - GET `/imports/template?kind=teacher|student`: CSV template
 

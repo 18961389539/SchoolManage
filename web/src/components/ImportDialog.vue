@@ -1,11 +1,20 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, Download, CircleCheck, Warning, Delete } from '@element-plus/icons-vue'
-import { api, post, messageOf, passwordIssue, ApiError, type Row } from '../api'
+import { api, post, messageOf, ApiError, type Row } from '../api'
 import { appState, maxUploadMegabytes } from '../store'
 import { assertImportPreview, assertImportStatus } from '../importContract'
-import type { ImportIssue, ImportJobState, ImportPreviewResponse, ImportRow, ImportStatusResponse } from '../types'
+import { registerLeaveGuard } from '../leaveGuard'
+import type {
+  ImportCredential,
+  ImportIssue,
+  ImportJobState,
+  ImportPreviewResponse,
+  ImportRow,
+  ImportStatusResponse
+} from '../types'
+import PasswordReceiptDialog from './PasswordReceiptDialog.vue'
 const props = defineProps<{ modelValue: boolean; kind: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; committed: [] }>()
 const visible = computed({ get: () => props.modelValue, set: value => emit('update:modelValue', value) })
@@ -13,8 +22,7 @@ const busy = ref(false),
   preview = ref<ImportPreviewResponse | null>(null),
   fileName = ref(''),
   error = ref(''),
-  removedInvalid = ref(false),
-  password = ref('')
+  removedInvalid = ref(false)
 const page = ref(1),
   pageSize = ref(50),
   onlyInvalid = ref(false)
@@ -24,9 +32,78 @@ const jobStatus = ref<ImportJobState | ''>(''),
   cancelBusy = ref(false)
 let pollRun = 0
 let previewRun = 0
+const runningStorageKey = () => `school.import.running.${appState.user?.id || 'anonymous'}.${props.kind}`
+
+function rememberRunning(batchId: string) {
+  try {
+    sessionStorage.setItem(runningStorageKey(), JSON.stringify({ batchId }))
+  } catch {
+    // The in-dialog polling still protects the task when session storage is unavailable.
+  }
+}
+
+function forgetRunning() {
+  try {
+    sessionStorage.removeItem(runningStorageKey())
+  } catch {
+    // Nothing else to clear when session storage is unavailable.
+  }
+}
+
+async function showCompletedReceipt(batchId: string) {
+  try {
+    const receipt = await api<{ items: ImportCredential[] }>(`/imports/${batchId}/receipt`)
+    receiptRows.value = receipt.items
+    receiptVisible.value = receipt.items.length > 0
+  } catch (receiptFailure) {
+    ElMessage.warning(`导入已完成，但密码回执未取得：${messageOf(receiptFailure)}`)
+  }
+}
+
+async function resumeRunningImport() {
+  if (busy.value || preview.value) return
+  let batchId = ''
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(runningStorageKey()) || 'null') as { batchId?: string } | null
+    batchId = saved?.batchId || ''
+  } catch {
+    return
+  }
+  if (!batchId) return
+  busy.value = true
+  const run = ++pollRun
+  try {
+    const result = await waitForImport(batchId, run)
+    if (run !== pollRun) return
+    forgetRunning()
+    ElMessage.success(result.message || '导入任务已完成')
+    await showCompletedReceipt(batchId)
+    emit('committed')
+  } catch (failure) {
+    if (run === pollRun) {
+      error.value = messageOf(failure)
+      if (!activeJob.value) forgetRunning()
+    }
+  } finally {
+    if (run === pollRun) busy.value = false
+  }
+}
+
+const releaseImportGuard = registerLeaveGuard(async () => {
+  if (!busy.value) return true
+  ElMessage.warning('批量导入正在处理，请等待完成或取消后再离开')
+  return false
+})
+
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (!busy.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
 const chooseFileButton = ref<{ ref?: HTMLElement; $el?: HTMLElement }>()
-const passwordInput = ref<{ focus?: () => void }>()
 const fileInput = ref<HTMLInputElement>()
+const receiptRows = ref<ImportCredential[]>([])
+const receiptVisible = ref(false)
 const progressText = computed(() => {
   if (jobStatus.value === 'queued') return '等待导入任务'
   if (jobStatus.value === 'running')
@@ -143,11 +220,7 @@ async function waitForImport(batchId: string, run: number) {
 }
 function validateBeforeCommit(): boolean {
   if (!preview.value) return false
-  const issue = passwordIssue(password.value)
-  if (issue) {
-    ElMessage.warning(issue)
-    return false
-  }
+
   if (invalidCount.value && !removedInvalid.value) {
     ElMessage.warning('请先移除待导入数据中的问题行')
     return false
@@ -170,11 +243,11 @@ async function startImport(target: ImportPreviewResponse) {
   jobProcessed.value = 0
   jobTotal.value = validCount.value
   const run = ++pollRun
+  rememberRunning(target.batchId)
   try {
     const started = assertImportStatus(
       await post<unknown>(`/imports/${target.batchId}/commit`, {
-        removeInvalidRows: removedInvalid.value,
-        initialPassword: password.value
+        removeInvalidRows: removedInvalid.value
       })
     )
     if (run !== pollRun) return
@@ -182,6 +255,8 @@ async function startImport(target: ImportPreviewResponse) {
     const result = await waitForImport(String(target.batchId), run)
     if (run !== pollRun) return
     ElMessage.success(result.message || `已导入 ${result.importedCount ?? validCount.value} 条记录`)
+    forgetRunning()
+    await showCompletedReceipt(target.batchId)
     emit('committed')
     jobStatus.value = ''
     busy.value = false
@@ -280,13 +355,8 @@ function focusImportStart() {
   button?.focus?.()
 }
 
-function focusImportPassword() {
-  passwordInput.value?.focus?.()
-}
-
 function onImportOpened() {
-  if (preview.value) focusImportPassword()
-  else focusImportStart()
+  focusImportStart()
 }
 
 watch(
@@ -299,7 +369,7 @@ watch(
       fileName.value = ''
       error.value = ''
       removedInvalid.value = false
-      password.value = ''
+
       page.value = 1
       onlyInvalid.value = false
       jobStatus.value = ''
@@ -307,16 +377,20 @@ watch(
       jobTotal.value = 0
       busy.value = false
       cancelBusy.value = false
+      if (value) window.setTimeout(() => void resumeRunningImport(), 0)
     }
   }
 )
 watch(preview, value => {
-  if (value) void nextTick(() => focusImportPassword())
+  if (value) void nextTick(() => focusImportStart())
 })
 
+onMounted(() => window.addEventListener('beforeunload', beforeUnload))
 onBeforeUnmount(() => {
   pollRun++
   previewRun++
+  releaseImportGuard()
+  window.removeEventListener('beforeunload', beforeUnload)
 })
 </script>
 <template>
@@ -380,7 +454,8 @@ onBeforeUnmount(() => {
         :percentage="jobTotal ? Math.min(100, Math.round((jobProcessed / jobTotal) * 100)) : 0"
         :status="jobStatus === 'cancelling' ? 'warning' : undefined"
         :stroke-width="6"
-        class="import-progress" />
+        class="import-progress"
+      />
       <el-table :data="pagedRows" max-height="350" :row-class-name="rowClass" border
         ><el-table-column prop="rowNumber" label="原始行" width="72" /><el-table-column
           v-for="column in columns"
@@ -415,18 +490,11 @@ onBeforeUnmount(() => {
       </div>
       <div class="import-password">
         <div>
-          <strong>设置导入账号的初始密码</strong>
-          <p>密码须为 12–128 位，且同时包含字母和数字。导入后请通过适当渠道单独告知本人；首次登录强制修改。</p>
+          <strong>每名账号使用独立初始密码</strong>
+          <p>导入完成后会一次性显示并允许下载密码回执。平台不保存明文密码，关闭回执后只能由管理员逐人重置。</p>
         </div>
-        <el-input
-          ref="passwordInput"
-          v-model="password"
-          type="password"
-          show-password
-          autocomplete="new-password"
-          placeholder="密码须为 12–128 位，且同时包含字母和数字"
-        /></div
-    ></template>
+      </div>
+    </template>
     <div v-else-if="!busy" class="import-empty">
       <el-icon :size="32"><UploadFilled /></el-icon>
       <p>选择文件后，将在这里显示每一行的校验结果</p>
@@ -447,6 +515,12 @@ onBeforeUnmount(() => {
       ></template
     >
   </el-dialog>
+  <PasswordReceiptDialog
+    v-model="receiptVisible"
+    title="导入账号初始密码回执"
+    :rows="receiptRows"
+    note="以下密码只显示这一次。请立即下载 CSV 并分别交给本人；首次登录后必须修改密码。平台不保存明文密码。"
+  />
 </template>
 <style scoped>
 :global(.import-dialog .el-table .cell) {

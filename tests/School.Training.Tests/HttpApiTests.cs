@@ -29,9 +29,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     readonly string? previousDataDir;
     readonly string? previousAutomaticBackups;
     readonly IPAddress clientAddress;
+    readonly bool demo;
 
-    public ApiFactory(IPAddress? remoteAddress = null)
+    public ApiFactory(IPAddress? remoteAddress = null, bool demo = false)
     {
+        this.demo = demo;
         clientAddress = remoteAddress ?? IPAddress.Loopback;
         previousDataDir = Environment.GetEnvironmentVariable("SCHOOL_DATA_DIR");
         previousAutomaticBackups = Environment.GetEnvironmentVariable("School__Backups__Automatic__Enabled");
@@ -41,6 +43,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseSetting("School:Demo", demo ? "1" : "0");
         builder.UseEnvironment("Development");
         builder.UseContentRoot(Path.GetFullPath(Path.Combine(
             Path.GetDirectoryName(typeof(Program).Assembly.Location)!, "..", "..", "..")));
@@ -363,8 +366,8 @@ public sealed class HttpApiTests(ApiScenario scenario) : IClassFixture<ApiScenar
             var studentId = await db.Users.Where(x => x.UserName == "student01").Select(x => x.Id).SingleAsync();
             var classroom = new Classroom
             {
-                Name = "删除保护课堂", CourseId = courseId, TeacherUserId = adminId,
-                OpenAt = DateTime.UtcNow.AddMinutes(-1), CloseAt = DateTime.UtcNow.AddHours(1)
+                Name = "删除保护课堂", CourseId = courseId, TeacherUserId = adminId, Status = "closed",
+                OpenAt = DateTime.UtcNow.AddHours(-2), CloseAt = DateTime.UtcNow.AddHours(-1)
             };
             db.Classrooms.Add(classroom);
             db.LearningRecords.Add(new LearningRecord { ClassroomId = classroom.Id, UserId = studentId, ResourceId = usedId });

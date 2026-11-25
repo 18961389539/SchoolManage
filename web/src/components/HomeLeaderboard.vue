@@ -14,7 +14,12 @@ defineProps<{ rows: HomeLeaderboardRow[]; teacher?: boolean }>()
       </div>
     </header>
     <ol v-if="rows.length" class="leaderboard" role="list">
-      <li v-for="(row, index) in rows" :key="row.userId" class="leaderboard-row" :class="{ 'is-self': row.isMe }">
+      <li
+        v-for="(row, index) in rows"
+        :key="row.userId || `${row.name}-${index}`"
+        class="leaderboard-row"
+        :class="{ 'is-self': row.isMe }"
+      >
         <span
           class="leaderboard-rank"
           :class="{ 'is-first': index === 0, 'is-second': index === 1, 'is-third': index === 2 }"
@@ -22,9 +27,7 @@ defineProps<{ rows: HomeLeaderboardRow[]; teacher?: boolean }>()
         >
         <div class="leaderboard-person">
           <strong>{{ row.name }} <span v-if="row.isMe" class="leaderboard-self">我</span></strong>
-          <small>{{
-            teacher ? `${row.className || '未分班'} · ${row.number}` : `${row.number} · 活跃 ${row.activeDays} 天`
-          }}</small>
+          <small v-if="teacher">{{ row.className || '未分班' }} · {{ row.number }}</small>
         </div>
         <div class="leaderboard-value">
           <strong>{{ row.learned }}</strong><span>已学习</span>

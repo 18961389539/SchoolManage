@@ -15,6 +15,9 @@ public sealed record BackupResult(bool Success, string Message, string FileName,
 
 public static class BackupService
 {
+    internal const long MaxRestoreEntryBytes = 8L * 1024 * 1024 * 1024;
+    internal const long MaxRestoreUncompressedBytes = 20L * 1024 * 1024 * 1024;
+    internal const int MaxRestoreEntries = 100_000;
     static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { RespectNullableAnnotations = true, RespectRequiredConstructorParameters = true };
 
     public static async Task<BackupResult> CreateAsync(AppPaths paths, SchoolDbContext db, StorageOptions storage,
@@ -45,6 +48,7 @@ public static class BackupService
                 await destination.OpenAsync(ct);
                 source.BackupDatabase(destination);
             }
+            if (!FitsRestoreLimits(paths, dbPath, out var limitError)) return Failure(limitError!, StatusCodes.Status413PayloadTooLarge);
             using (var zip = ZipFile.Open(pendingPath, ZipArchiveMode.Create))
             {
                 zip.CreateEntryFromFile(dbPath, "school.db", CompressionLevel.Optimal);
@@ -76,6 +80,32 @@ public static class BackupService
         }
     }
 
+    static bool FitsRestoreLimits(AppPaths paths, string databaseSnapshot, out string? error)
+    {
+        long total = new FileInfo(databaseSnapshot).Length + new FileInfo(Path.Combine(paths.Data, ".schooltraining-data.json")).Length;
+        var entries = 4;
+        foreach (var directory in new[] { paths.Keys, paths.CourseFiles, paths.CaseEvidence })
+        {
+            foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+            {
+                var length = new FileInfo(file).Length;
+                if (length > MaxRestoreEntryBytes)
+                {
+                    error = "单个业务文件超过 8GB，当前备份无法保证可恢复；请拆分或联系供应商调整限制";
+                    return false;
+                }
+                checked { total += length; entries++; }
+                if (total > MaxRestoreUncompressedBytes || entries > MaxRestoreEntries)
+                {
+                    error = "业务文件总量超过可恢复上限，当前备份无法保证可恢复；请联系供应商调整恢复限制";
+                    return false;
+                }
+            }
+        }
+        error = null;
+        return true;
+    }
+
     static void AddBusinessFiles(ZipArchive zip, string directory, string entryRoot)
     {
         zip.CreateEntry(entryRoot + "/");
@@ -90,7 +120,8 @@ public static class BackupService
         }
     }
 
-    static BackupResult Failure(string message) => new(false, message, "", default, 0, StatusCodes.Status507InsufficientStorage);
+    static BackupResult Failure(string message, int statusCode = StatusCodes.Status507InsufficientStorage)
+        => new(false, message, "", default, 0, statusCode);
 
     internal static bool IsDiskFull(Exception error) => error switch
     {

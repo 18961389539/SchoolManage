@@ -3,7 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Clock, Grid, Promotion, Refresh, Select } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, messageOf, post } from '../api'
+import { clearDraft, readDraft, registerEmergencyFlush, writeDraft } from '../draftPersistence'
 import { registerLeaveGuard } from '../leaveGuard'
+import { appState } from '../store'
 import { campAttemptLabel, campAttemptStatusType } from '../camp'
 import { countdownText, examQuestionTypeLabel, optionLetters } from '../exam'
 import { durationText } from '../teaching'
@@ -41,7 +43,43 @@ let ticker: number | undefined
 let saveTimer: number | undefined
 let saveQueued = false
 let saveRequested = false
+let serverOffset = 0
+let answerBaseAt = ''
+let emergencyRestorePending = true
 const autoSubmittedAttempts = new Set<string>()
+const draftKey = () =>
+  `school.camp.${appState.user?.id || 'anonymous'}.${props.positionId}.${detail.value?.attempt?.id || ''}`
+
+function saveEmergencyDraft() {
+  if (!inProgress.value || !detail.value?.attempt?.id) return
+  writeDraft(draftKey(), { answers: collectAnswers() })
+}
+
+function restoreEmergencyDraft() {
+  if (!emergencyRestorePending) return
+  emergencyRestorePending = false
+  if (!inProgress.value) return
+  const saved = readDraft<{ answers: CampSaveAnswer[] }>(draftKey())
+  if (!saved?.answers?.length) return
+  let restored = false
+  for (const answer of saved.answers) {
+    const target = questions.value.find(question => question.id === answer.questionId)
+    if (!target) continue
+    if (answer.selected?.length) {
+      target.selected = [...answer.selected]
+      restored = true
+    }
+    if (answer.text) {
+      target.textAnswer = answer.text
+      restored = true
+    }
+  }
+  if (restored) {
+    saveState.value = '待保存'
+    ElMessage.warning('已从本机恢复上次未保存的测评答案，请核对后继续作答')
+  }
+}
+const releaseEmergencyFlush = registerEmergencyFlush(saveEmergencyDraft)
 
 const questions = computed(() => detail.value?.questions || [])
 const objectiveQuestions = computed(() => questions.value.filter(item => item.type !== 'practical'))
@@ -59,7 +97,7 @@ const environmentUrl = computed(() => `/camp/positions/${props.positionId}/envir
 const remaining = computed(() => {
   const attempt = detail.value?.attempt
   if (!attempt || attempt.status !== 'inProgress') return 0
-  return Math.max(0, Math.ceil((parseApiDate(attempt.deadline).getTime() - now.value) / 1000))
+  return Math.max(0, Math.ceil((parseApiDate(attempt.deadline).getTime() - now.value - serverOffset) / 1000))
 })
 const answeredCount = computed(() => questions.value.filter(answered).length)
 const answeredPercent = computed(() =>
@@ -102,14 +140,34 @@ async function load(silent = false) {
   error.value = ''
   try {
     const result = await api<CampPositionLearnerDetail>(`/camp/positions/${props.positionId}`)
+    serverOffset = parseApiDate(result.serverNow).getTime() - Date.now()
+    answerBaseAt = result.serverNow
     detail.value = result
     now.value = Date.now()
-    if (result.attempt?.status === 'inProgress') activeTab.value = 'objective'
+    if (result.attempt?.status === 'inProgress') {
+      activeTab.value = 'objective'
+      restoreEmergencyDraft()
+    }
   } catch (failure) {
     if (!silent) error.value = messageOf(failure)
   } finally {
     if (!silent) loading.value = false
   }
+}
+
+async function refreshPage() {
+  if (saving.value) {
+    ElMessage.info('答案正在保存，请稍后再刷新')
+    return
+  }
+  if (inProgress.value) {
+    await flushSave()
+    if (saveState.value === '保存失败') {
+      ElMessage.warning('答案尚未保存成功，已取消刷新，请检查网络后重试')
+      return
+    }
+  }
+  await load()
 }
 
 async function start() {
@@ -166,7 +224,12 @@ async function flushSave(announce = false): Promise<void> {
   saveRequested = false
   saveState.value = '保存中…'
   try {
-    await post(`/camp/positions/${props.positionId}/answers`, { answers: collectAnswers() })
+    const result = await post<{ serverNow: string }>(`/camp/positions/${props.positionId}/answers`, {
+      answers: collectAnswers(),
+      loadedAt: answerBaseAt
+    })
+    answerBaseAt = result.serverNow
+    if (!saveRequested) clearDraft(draftKey())
     saveState.value = '答案已自动保存'
     if (announce) ElMessage.success('答案已保存')
   } catch (failure) {
@@ -207,6 +270,7 @@ const releaseLeaveGuard = registerLeaveGuard(async () => {
 })
 
 function beforeUnload(event: BeforeUnloadEvent) {
+  saveEmergencyDraft()
   if (!inProgress.value) return
   event.preventDefault()
   event.returnValue = ''
@@ -241,11 +305,13 @@ async function submit(auto = false) {
   }
   try {
     const result = await post<CampSubmitResponse>(`/camp/positions/${props.positionId}/submit`, {
-      answers: collectAnswers()
+      answers: collectAnswers(),
+      loadedAt: answerBaseAt
     })
     ElMessage[auto ? 'warning' : 'success'](
       auto ? '测评时间已到，系统已自动提交本次作答' : `测评已提交，得分 ${result.totalScore} / ${result.maxScore}`
     )
+    clearDraft(draftKey())
     await load(true)
   } catch (failure) {
     ElMessage.error(messageOf(failure))
@@ -291,6 +357,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  saveEmergencyDraft()
+  releaseEmergencyFlush()
   releaseLeaveGuard()
   window.removeEventListener('beforeunload', beforeUnload)
   if (ticker !== undefined) window.clearInterval(ticker)
@@ -308,7 +376,7 @@ onBeforeUnmount(() => {
     </div>
     <div class="heading-actions">
       <el-button @click="emit('navigate', 'my-camp')">返回岗位列表</el-button>
-      <el-button v-if="inProgress" :icon="Refresh" :loading="loading" @click="load()">刷新</el-button>
+      <el-button v-if="inProgress" :icon="Refresh" :loading="loading || saving" @click="refreshPage">刷新</el-button>
     </div>
   </section>
 

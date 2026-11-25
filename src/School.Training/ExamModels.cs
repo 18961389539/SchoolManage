@@ -205,10 +205,10 @@ public record ExamStudentAdjustInput(string[]? ClassIds = null, string[]? Profes
 public record ExamPaperQuestionInput(string QuestionId, int? Score = null);
 public record ExamPaperQuestionAddInput(ExamPaperQuestionInput[]? Items);
 public record ExamPaperQuestionScoreInput(int Score);
-public record ExamSubmitInput(ExamSubmitAnswer[]? Answers);
-public record ExamSaveAnswersInput(ExamSubmitAnswer[]? Answers);
+public record ExamSubmitInput(ExamSubmitAnswer[]? Answers, DateTime? LoadedAt = null);
+public record ExamSaveAnswersInput(ExamSubmitAnswer[]? Answers, DateTime? LoadedAt = null);
 public record ExamSubmitAnswer(string PaperQuestionId, int[]? Selected, string? Text = null);
-public record ExamGradeInput(ExamGradeAnswer[]? Answers);
+public record ExamGradeInput(ExamGradeAnswer[]? Answers, DateTime? LoadedAt = null);
 public record ExamGradeAnswer(string PaperQuestionId, int Score, string? Comment = null);
 public record ExamDeploymentInput(string[]? StudentUserIds = null);
 public record IdListInput(string[]? Ids);

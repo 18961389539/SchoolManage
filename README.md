@@ -4,6 +4,18 @@
 
 技术路线：Vue 3 / TypeScript 管理界面、ASP.NET Core / .NET 10、SQLite、Windows Service。前端构建结果由同一个服务托管，发布包自带 .NET 运行时；使用端通过浏览器访问。目标机不需要 Node.js、Java、容器环境或独立 SQLite 服务。
 
+## Cloud Agent Apps 演示
+
+客户演示用 Linux 上的网页进程，不安装 Windows 服务，也不连接 Hyper-V。在 Cloud Agent 中部署时执行：
+
+```bash
+bash scripts/start-demo.sh
+```
+
+脚本会构建管理界面，设置 `SCHOOL_DEMO=1`，并监听 `0.0.0.0` 上的 `PORT`（没有该变量时用 5080）。数据库目录默认是 `.local/demo-data`。库为空时自动写入演示学校、管理员、师生、模拟机柜、一门已发布课程、一个开放课堂、一场进行中的考试和一项已发布的岗位训练营。登录页列出账号。演示密码是 `Demo12345678`，登录后不需要再修改。
+
+重新发布后如果数据目录是空的，会再次写入同一套演示数据。已有用户的库不会被覆盖。学校正式服务器不要设置 `SCHOOL_DEMO`。
+
 ## 开发运行
 
 开发机需要 .NET 10 SDK 与 Node.js 22.5+/npm（发布门禁使用内置 `node:sqlite`），目标部署机只接收构建后的程序。所有命令在仓库根目录执行。

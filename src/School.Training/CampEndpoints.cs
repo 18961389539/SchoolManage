@@ -194,8 +194,9 @@ public static class CampEndpoints
             maxScore = questions.Sum(question => question.Score),
             skillCount = skills.Count,
             attempt = attemptState,
+            serverNow = now,
             canStart = attempt == null || attempt.Status == "inProgress",
-            canReview = attempt is { Status: "graded" },
+            canReview = attempt is { Status: "graded" } && (!position.Published || ctx.User.IsInRole("Admin") || ctx.User.IsInRole("Teacher")),
             questions = questionRows
         });
     }
@@ -230,6 +231,8 @@ public static class CampEndpoints
         if (entity == null) return NotFound("岗位不存在");
         var error = CampLogic.ValidatePosition(input);
         if (error != null) return Bad(error);
+        if (input.UpdatedAt is not DateTime updatedAt) return Concurrency.MissingVersion();
+        if (updatedAt != entity.UpdatedAt) return Concurrency.Conflict("岗位");
         var name = input.Name.Trim();
         if (await db.JobPositions.AnyAsync(item => item.Id != id && item.Name == name, ct)) return Conflict("岗位名称已存在");
         if (!await StartupNodeExists(db, input.StartupNodeId, ct)) return Bad("启动节点不存在");
@@ -403,6 +406,9 @@ public static class CampEndpoints
         var attempt = await db.JobAttempts.FirstOrDefaultAsync(item => item.PositionId == id && item.UserId == userId, ct);
         if (attempt == null) return Conflict("请先开始测评");
         if (attempt.Status != "inProgress") return Conflict("本次测评已提交，不能修改答案");
+        if (input.LoadedAt is not DateTime loadedAt) return Bad("请求缺少作答基线，请刷新后重试");
+        if (await db.JobAnswers.AnyAsync(item => item.AttemptId == attempt.Id && item.AnsweredAt > loadedAt, ct))
+            return Concurrency.Conflict("测评答案");
         var now = DateTime.UtcNow;
         if (now >= attempt.Deadline)
         {
@@ -415,7 +421,7 @@ public static class CampEndpoints
         if (error != null) return Bad(error);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        return Results.Ok(new { saved });
+        return Results.Ok(new { saved, serverNow = now });
     }
 
     static async Task<IResult> Submit(string id, CampSaveAnswersInput? input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
@@ -429,8 +435,11 @@ public static class CampEndpoints
         if (attempt.Status != "inProgress") return Conflict("本次测评已提交，不能重复提交");
         var now = DateTime.UtcNow;
         var autoSubmitted = now >= attempt.Deadline;
-        if (!autoSubmitted && input?.Answers is { Length: > 0 })
+        if (input?.Answers is { Length: > 0 })
         {
+            if (input.LoadedAt is not DateTime loadedAt) return Bad("请求缺少作答基线，请刷新后重试");
+            if (await db.JobAnswers.AnyAsync(item => item.AttemptId == attempt.Id && item.AnsweredAt > loadedAt, ct))
+                return Concurrency.Conflict("测评答案");
             var (_, error) = await StoreAnswersAsync(db, id, attempt, input.Answers, now, ct);
             if (error != null) return Bad(error);
             await db.SaveChangesAsync(ct);
@@ -483,7 +492,10 @@ public static class CampEndpoints
     static async Task<IResult> ListReports(HttpRequest request, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var search = request.Query["search"].ToString().Trim();
-        var query = from attempt in db.JobAttempts.AsNoTracking()
+        var attempts = ctx.User.IsInRole("Admin")
+            ? db.JobAttempts.AsNoTracking()
+            : CampAccess.TeacherControlScope(db.JobAttempts.AsNoTracking(), db, CurrentUserId(ctx));
+        var query = from attempt in attempts
                     join position in db.JobPositions.AsNoTracking() on attempt.PositionId equals position.Id
                     where attempt.Status == "graded"
                     select new { attempt, position };
@@ -518,7 +530,10 @@ public static class CampEndpoints
     static async Task<IResult> ListRecords(HttpRequest request, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var search = request.Query["search"].ToString().Trim();
-        var query = from attempt in db.JobAttempts.AsNoTracking()
+        var attempts = ctx.User.IsInRole("Admin")
+            ? db.JobAttempts.AsNoTracking()
+            : CampAccess.TeacherControlScope(db.JobAttempts.AsNoTracking(), db, CurrentUserId(ctx));
+        var query = from attempt in attempts
                     join position in db.JobPositions.AsNoTracking() on attempt.PositionId equals position.Id
                     where attempt.Status == "graded"
                     select new { attempt, position };
@@ -554,7 +569,7 @@ public static class CampEndpoints
     {
         var attempt = await db.JobAttempts.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attemptId, ct);
         if (attempt == null) return NotFound("测评记录不存在");
-        if (!CanViewAttempt(ctx, attempt)) return Forbidden("无权查看该测评报告");
+        if (!await CanViewAttempt(db, ctx, attempt)) return Forbidden("无权查看该测评报告");
         if (attempt.Status == "inProgress") return Conflict("测评尚未提交，暂时没有岗位报告");
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attempt.PositionId, ct);
         if (position == null) return NotFound("岗位不存在");
@@ -586,7 +601,7 @@ public static class CampEndpoints
     {
         var attempt = await db.JobAttempts.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attemptId, ct);
         if (attempt == null) return NotFound("测评记录不存在");
-        if (!CanViewAttempt(ctx, attempt)) return Forbidden("无权查看该测评记录");
+        if (!await CanViewAttempt(db, ctx, attempt)) return Forbidden("无权查看该测评记录");
         if (attempt.Status == "inProgress") return Conflict("测评尚未提交，请先完成测评");
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attempt.PositionId, ct);
         if (position == null) return NotFound("岗位不存在");
@@ -595,9 +610,11 @@ public static class CampEndpoints
         var questions = await db.JobQuestions.AsNoTracking().Where(item => item.PositionId == position.Id).OrderBy(item => item.SortOrder).ToListAsync(ct);
         var answers = await db.JobAnswers.AsNoTracking().Where(item => item.AttemptId == attempt.Id)
             .ToDictionaryAsync(item => item.QuestionId, StringComparer.Ordinal, ct);
+        var revealAnswers = ctx.User.IsInRole("Admin") || ctx.User.IsInRole("Teacher") || !position.Published;
         return Results.Ok(new
         {
             attemptId = attempt.Id,
+            revealAnswers,
             position = new { position.Id, position.Name, position.Description },
             attempt = new
             {
@@ -621,8 +638,8 @@ public static class CampEndpoints
                     question.Type,
                     question.Stem,
                     options = ExamLogic.DeserializeOptions(question.OptionsJson),
-                    answers = ExamLogic.DeserializeAnswers(question.AnswerJson),
-                    question.Analysis,
+                    answers = revealAnswers ? ExamLogic.DeserializeAnswers(question.AnswerJson) : [],
+                    analysis = revealAnswers ? question.Analysis : "",
                     maxScore = question.Score,
                     question.SortOrder,
                     skillName = skill?.Name ?? "",
@@ -631,12 +648,14 @@ public static class CampEndpoints
                     selected,
                     textAnswer = answer?.TextAnswer ?? "",
                     scoreAwarded = answer?.ScoreAwarded ?? 0,
-                    correct = answered && (ExamLogic.IsObjective(question.Type)
+                    correct = revealAnswers && answered && (ExamLogic.IsObjective(question.Type)
                         ? ExamLogic.IsCorrect(question.AnswerJson, selected) : answer?.ScoreAwarded == question.Score),
                     answered,
                     automaticPractical = automatic,
-                    practicalDetails = ClassroomCaseScoring.ScoreDetails(answer?.PracticalDetailsJson ?? "[]"),
-                    rubric = rubricMatches.Select(match => new { match.Item.Item, match.Item.Keyword, match.Item.Score, match.Matched })
+                    practicalDetails = revealAnswers ? ClassroomCaseScoring.ScoreDetails(answer?.PracticalDetailsJson ?? "[]") : [],
+                    rubric = revealAnswers
+                        ? rubricMatches.Select(match => new { match.Item.Item, match.Item.Keyword, match.Item.Score, match.Matched })
+                        : []
                 };
             })
         });
@@ -645,7 +664,10 @@ public static class CampEndpoints
     static async Task<IResult> Monitor(HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
-        var rows = await (from attempt in db.JobAttempts.AsNoTracking()
+        var attempts = ctx.User.IsInRole("Admin")
+            ? db.JobAttempts.AsNoTracking()
+            : CampAccess.TeacherControlScope(db.JobAttempts.AsNoTracking(), db, CurrentUserId(ctx));
+        var rows = await (from attempt in attempts
                           join position in db.JobPositions.AsNoTracking() on attempt.PositionId equals position.Id
                           where attempt.Status == "inProgress"
                           join vm in db.VirtualMachines.AsNoTracking() on attempt.VirtualMachineId equals vm.Id into vms
@@ -685,6 +707,7 @@ public static class CampEndpoints
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var attempt = await db.JobAttempts.FirstOrDefaultAsync(item => item.Id == attemptId, ct);
         if (attempt == null) return NotFound("测评记录不存在");
+        if (!await CampAccess.CanControlAsync(db, ctx, attempt)) return NotFound("测评记录不存在或无权操作");
         if (attempt.Status != "inProgress" || attempt.Deadline <= DateTime.UtcNow) return Conflict("测评已结束，无需重启环境");
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attempt.PositionId, ct);
         if (position == null) return NotFound("岗位不存在");
@@ -715,6 +738,7 @@ public static class CampEndpoints
     {
         var attempt = await db.JobAttempts.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attemptId, ct);
         if (attempt == null) return NotFound("测评记录不存在");
+        if (!await CampAccess.CanControlAsync(db, ctx, attempt)) return NotFound("测评记录不存在或无权操作");
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attempt.PositionId, ct);
         if (position == null) return NotFound("岗位不存在");
         var nodeId = position.StartupNodeId;
@@ -868,8 +892,10 @@ public static class CampEndpoints
     static async Task<bool> StartupNodeExists(SchoolDbContext db, string? nodeId, CancellationToken ct)
         => string.IsNullOrWhiteSpace(nodeId) || await db.Nodes.AnyAsync(item => item.Id == nodeId, ct);
 
-    static bool CanViewAttempt(HttpContext ctx, JobAttempt attempt)
-        => ctx.User.IsInRole("Admin") || ctx.User.IsInRole("Teacher") || attempt.UserId == CurrentUserId(ctx);
+    static Task<bool> CanViewAttempt(SchoolDbContext db, HttpContext ctx, JobAttempt attempt)
+        => ctx.User.IsInRole("Admin") || attempt.UserId == CurrentUserId(ctx)
+            ? Task.FromResult(true)
+            : CampAccess.CanControlAsync(db, ctx, attempt);
 
     static string CurrentUserId(HttpContext ctx) => ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
 

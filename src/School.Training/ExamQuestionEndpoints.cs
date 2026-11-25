@@ -362,6 +362,7 @@ public static class ExamQuestionEndpoints
     static async Task<IResult> AddPaperQuestions(string id, ExamPaperQuestionAddInput input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await LockPaperAsync(db, id, ct);
         var paper = await db.ExamPapers.FirstOrDefaultAsync(item => item.Id == id, ct);
         if (paper == null) return NotFound("试卷不存在");
         if (await db.TrainingExams.AnyAsync(item => item.PaperId == id, ct))
@@ -406,6 +407,8 @@ public static class ExamQuestionEndpoints
     static async Task<IResult> UpdatePaperQuestionScore(string id, string paperQuestionId, ExamPaperQuestionScoreInput input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         if (input.Score is < 1 or > 100) return Bad("题目分值应在 1–100 之间");
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await LockPaperAsync(db, id, ct);
         if (await db.TrainingExams.AnyAsync(item => item.PaperId == id, ct))
             return Conflict("试卷已用于考试，不能再调整题目分值");
         var link = await db.ExamPaperQuestions.FirstOrDefaultAsync(item => item.Id == paperQuestionId && item.PaperId == id, ct);
@@ -415,6 +418,7 @@ public static class ExamQuestionEndpoints
         paper.UpdatedAt = DateTime.UtcNow;
         Audit.Add(db, ctx, "调整试卷题目分值", "试卷", $"{paper.Name}：{Truncate(link.Stem)} → {input.Score}分");
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return Results.NoContent();
     }
 
@@ -429,6 +433,7 @@ public static class ExamQuestionEndpoints
         var ids = requested.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct().ToArray();
         if (ids.Length is < 1 or > 500) return Bad("请选择 1–500 道试卷题目");
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await LockPaperAsync(db, id, ct);
         if (await db.TrainingExams.AnyAsync(item => item.PaperId == id, ct))
             return Conflict("试卷已用于考试，不能再调整题目");
         var links = await db.ExamPaperQuestions.Where(item => item.PaperId == id && ids.Contains(item.Id)).ToListAsync(ct);
@@ -443,6 +448,11 @@ public static class ExamQuestionEndpoints
     }
 
     sealed record PaperQuestionRemoval(string[]? PaperQuestionIds);
+
+    internal static Task LockPaperAsync(SchoolDbContext db, string paperId, CancellationToken ct)
+        => db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "ExamPapers" SET "UpdatedAt" = "UpdatedAt" WHERE "Id" = {paperId};
+            """, ct);
 
     static ExamQuestion BuildQuestion(ExamQuestionInput input) => new()
     {

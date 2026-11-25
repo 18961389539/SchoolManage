@@ -40,18 +40,18 @@ export interface HomeClassroomCard {
 }
 
 export interface HomeLeaderboardRow {
-  userId: string
+  userId?: string
   name: string
-  number: string
-  className: string
+  number?: string
+  className?: string
   isMe: boolean
   learned: number
   passed: number
   totalResources: number
   learningRate: number
   passRate: number
-  activeDays: number
-  lastActivity: string | null
+  activeDays?: number
+  lastActivity?: string | null
 }
 
 export interface HomeTodoAction {

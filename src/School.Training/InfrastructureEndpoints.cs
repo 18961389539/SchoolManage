@@ -245,6 +245,16 @@ public static partial class InfrastructureEndpoints
                 var row = await db.Nodes.FindAsync([id], ctx.RequestAborted); if (row is null) return Missing();
                 if (await db.VirtualMachines.AnyAsync(x => x.NodeId == id)) return Conflict("节点仍有关联虚拟机，请先删除或迁移虚拟机。");
                 if (await db.NodeAccountAssignments.AnyAsync(x => x.NodeId == id)) return Conflict("节点仍有已分配师生账号，请先在账号分配中移除全部关联。");
+                var references = new List<string>();
+                if (await db.CourseResources.AnyAsync(x => x.StartupNodeId == id)) references.Add("课程实操资源");
+                if (await db.JobPositions.AnyAsync(x => x.StartupNodeId == id)) references.Add("岗位测评");
+                if (await db.CaseTopologyTemplates.AnyAsync(x => x.NodeId == id)) references.Add("拓扑模板");
+                if (await db.ClassroomCaseSessions.AnyAsync(x => x.NodeId == id)) references.Add("课堂实操记录");
+                if (await db.Devices.AnyAsync(x => x.NodeId == id)) references.Add("设备");
+                if (await db.ExamQuestions.AnyAsync(x => x.PracticalNodeId == id)) references.Add("题库实操题");
+                if (await db.ExamPaperQuestions.AnyAsync(x => x.PracticalNodeId == id)) references.Add("试卷实操题");
+                if (references.Count > 0)
+                    return Conflict($"节点仍被{string.Join("、", references)}引用，请先迁移或解除关联后再删除。");
                 db.Nodes.Remove(row); Audit.Add(db, ctx, "删除节点", row.Name); await db.SaveChangesAsync(ctx.RequestAborted); return Results.Ok(new { message = "已删除。" });
             }
             finally { VmPowerLock.Release(); }

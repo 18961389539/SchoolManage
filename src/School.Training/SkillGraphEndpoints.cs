@@ -181,7 +181,7 @@ public static class SkillGraphEndpoints
             {
                 var resourceViews = group.Select(resource =>
                 {
-                    var record = data.RecordFor(userId, resource.Id);
+                    var record = data.RecordFor(classroom.Id, userId, resource.Id);
                     var state = AnalyticsLogic.Evaluate(resource.Kind, record, resource.MaxScore);
                     var progress = ProgressOf(resource, record, state);
                     return new SkillResourceView(
@@ -194,8 +194,11 @@ public static class SkillGraphEndpoints
                 var score = resourceViews.Length == 0 ? 0 : (int)Math.Round(resourceViews.Average(item => item.Progress), MidpointRounding.AwayFromZero);
                 var learnedCount = resourceViews.Count(item => item.Learned);
                 var passedCount = resourceViews.Count(item => item.Passed);
+                var verifiable = resourceViews.Where(item => item.Kind is "theoryPractice" or "casePractice").ToArray();
                 return new SkillBuild(group.Key.SectionId, group.Key.SectionName, group.Key.ChapterId, group.Key.ChapterName,
-                    course.Id, course.Name, score, AnalyticsLogic.SkillState(resourceViews.Length, passedCount, learnedCount),
+                    course.Id, course.Name, score,
+                    AnalyticsLogic.SkillState(resourceViews.Length, passedCount, learnedCount,
+                        verifiable.Length, verifiable.Count(item => item.Passed)),
                     resourceViews.Length, learnedCount, passedCount, resourceViews);
             }).ToArray();
         var chapters = skillRows.GroupBy(item => new { item.ChapterId, item.ChapterName })

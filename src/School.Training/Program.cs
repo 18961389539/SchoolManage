@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Claims;
+using Microsoft.AspNetCore.HttpOverrides;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
@@ -33,7 +34,8 @@ builder.Configuration.AddJsonFile(Path.Combine(dataDirectory, "server.json"), op
 builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
 var paths = new AppPaths(dataDirectory, builder.Configuration["School:Backups:Directory"]);
-if (string.IsNullOrEmpty(builder.Configuration["urls"])) builder.WebHost.UseUrls("http://127.0.0.1:5080");
+if (DemoHost.IsEnabled(builder.Configuration)) DemoHost.Apply(builder);
+else if (string.IsNullOrEmpty(builder.Configuration["urls"])) builder.WebHost.UseUrls("http://127.0.0.1:5080");
 var storage = StorageOptions.Load(builder.Configuration);
 var fileLogger = new RollingFileLoggerProvider(paths.Logs, storage);
 builder.Services.AddSingleton(paths);
@@ -86,6 +88,7 @@ builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = Limits.MaxUp
 builder.Services.AddInfrastructure();
 builder.Services.AddSingleton<LicenseQuotaPolicy>();
 builder.Services.AddSingleton<ImportJobQueue>();
+builder.Services.AddSingleton<ImportPasswordReceipts>();
 builder.Services.AddHostedService<ImportJobWorker>();
 builder.Services.AddHostedService<ExamDeadlineWorker>();
 builder.Services.AddHostedService<AutomaticBackupWorker>();
@@ -99,6 +102,15 @@ using (var scope = app.Services.CreateScope())
     await DatabaseSafety.Validate(paths.Database, fullIntegrity: false);
     await DatabaseGuards.EnsureAsync(db);
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+    if (DemoHost.IsEnabled(app.Configuration))
+        await DemoSeed.EnsureAsync(db, scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>());
+}
+if (DemoHost.IsEnabled(app.Configuration))
+{
+    var forwarded = new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost };
+    forwarded.KnownIPNetworks.Clear();
+    forwarded.KnownProxies.Clear();
+    app.UseForwardedHeaders(forwarded);
 }
 async Task HandleDatabaseFailure(HttpContext ctx, Exception exception)
 {
@@ -193,7 +205,10 @@ app.MapGet("/api/status", async (SchoolDbContext db, RollingFileLoggerProvider l
     schemaVersion = DatabaseSafety.SchemaVersion,
     logWriteFailures = logs.WriteFailures,
     maxUploadBytes = Limits.MaxUploadBytes,
-    schoolName = await db.Settings.Where(x => x.Id == "schoolName").Select(x => x.Value).FirstOrDefaultAsync(ct)
+    schoolName = await db.Settings.Where(x => x.Id == "schoolName").Select(x => x.Value).FirstOrDefaultAsync(ct),
+    demo = DemoHost.IsEnabled(app.Configuration),
+    demoPassword = DemoHost.IsEnabled(app.Configuration) ? DemoHost.Password : null,
+    demoAccounts = DemoHost.IsEnabled(app.Configuration) ? DemoSeed.Accounts : null
 }));
 app.MapGet("/healthz", async (SchoolDbContext db, AppPaths paths, StorageOptions storage, CancellationToken ct) =>
 {

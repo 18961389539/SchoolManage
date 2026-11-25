@@ -29,6 +29,7 @@ public static class ExamManagementEndpoints
         staff.MapGet("/exams/{id}/monitor", GetMonitor);
         staff.MapGet("/exams/{id}/statistics", GetStatistics);
         staff.MapGet("/exams/{id}/statistics/export", ExportStatistics).RequireRateLimiting("expensive");
+        staff.MapGet("/exams/{id}/scores/export", ExportScores).RequireRateLimiting("expensive");
         staff.MapGet("/exams/{id}/question-analysis", GetQuestionAnalysis);
         staff.MapGet("/exams/{id}/question-analysis/export", ExportQuestionAnalysis).RequireRateLimiting("expensive");
     }
@@ -173,6 +174,8 @@ public static class ExamManagementEndpoints
     {
         var error = ExamLogic.ValidateExam(input);
         if (error != null) return Bad(error);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await ExamQuestionEndpoints.LockPaperAsync(db, input.PaperId, ct);
         var paper = await db.ExamPapers.AsNoTracking().FirstOrDefaultAsync(item => item.Id == input.PaperId, ct);
         if (paper == null) return Bad("请选择有效的试卷");
         if (!await db.ExamPaperQuestions.AnyAsync(item => item.PaperId == paper.Id, ct)) return Bad("试卷还没有题目，请先在试卷管理中添加题目");
@@ -189,6 +192,7 @@ public static class ExamManagementEndpoints
         if (enrollError != null) return Bad(enrollError);
         Audit.Add(db, ctx, "新增考试", "考试", $"{exam.Name}，分配学生{added}人");
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return Results.Ok(new { id = exam.Id, studentCount = added });
     }
 
@@ -267,6 +271,7 @@ public static class ExamManagementEndpoints
         if (exam.Status != "scheduled") return Conflict(StatusMessage(exam.Status));
         if (exam.EndAt <= DateTime.UtcNow) return Conflict("考试结束时间已过，请先修改考试时间");
         if (!await db.ExamPaperQuestions.AnyAsync(item => item.PaperId == exam.PaperId, ct)) return Conflict("试卷还没有题目，不能开考");
+        if (!await db.ExamStudents.AnyAsync(item => item.ExamId == id, ct)) return Conflict("考试名单中没有考生，不能开考");
         exam.Status = "open";
         exam.UpdatedAt = DateTime.UtcNow;
         Audit.Add(db, ctx, "开考", "考试", exam.Name);
@@ -368,6 +373,58 @@ public static class ExamManagementEndpoints
         public string Status => Attempt?.Status ?? "notStarted";
     }
 
+    static async Task<IResult> ExportScores(HttpRequest request, string id, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
+    {
+        var exam = await Scoped(db, ctx).AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
+        if (exam == null) return NotFound("考试不存在");
+        var search = request.Query["search"].ToString().Trim();
+        var statusFilter = request.Query["status"].ToString();
+        var query = from enrollment in db.ExamStudents.AsNoTracking()
+                    join person in db.People.AsNoTracking() on enrollment.StudentPersonId equals person.Id
+                    join user in db.Users.AsNoTracking() on enrollment.StudentUserId equals user.Id
+                    join attempt in db.ExamAttempts.AsNoTracking().Where(item => item.ExamId == id)
+                        on enrollment.StudentUserId equals attempt.UserId into attempts
+                    from attempt in attempts.DefaultIfEmpty()
+                    where enrollment.ExamId == id
+                    select new { enrollment.StudentUserId, person.Name, UserName = user.UserName, person.Number, enrollment.ClassName, Attempt = attempt };
+        if (search.Length > 0)
+            query = query.Where(row => row.Name.Contains(search) || row.Number.Contains(search) || row.UserName.Contains(search));
+        if (statusFilter.Length > 0 && statusFilter != "all")
+        {
+            if (statusFilter == "notStarted") query = query.Where(row => row.Attempt == null);
+            else query = query.Where(row => row.Attempt != null && row.Attempt.Status == statusFilter);
+        }
+        var rows = await query.OrderBy(row => row.Number).Take(5000).ToListAsync(ct);
+        var paper = await db.ExamPapers.AsNoTracking().Where(item => item.Id == exam.PaperId)
+            .Select(item => item.Name).FirstOrDefaultAsync(ct) ?? "";
+        var graderIds = rows.Where(row => row.Attempt?.GradedByUserId is { Length: > 0 })
+            .Select(row => row.Attempt!.GradedByUserId).Distinct().ToArray();
+        var graders = graderIds.Length == 0 ? new Dictionary<string, string>() : await db.Users.AsNoTracking()
+            .Where(item => graderIds.Contains(item.Id)).ToDictionaryAsync(item => item.Id, item => item.DisplayName, ct);
+        var builder = new StringBuilder();
+        builder.AppendLine("考试,试卷,姓名,账号,学号,班级,状态,开始作答,交卷时间,是否超时交卷,客观分,实操分,总分,满分,得分率,已批阅时间,批阅人");
+        foreach (var row in rows)
+        {
+            var attempt = row.Attempt;
+            var percent = attempt == null || attempt.MaxScore <= 0 ? "" : $"{Math.Round(attempt.TotalScore * 100m / attempt.MaxScore, 1)}%";
+            builder.AppendLine(string.Join(',', new[]
+            {
+                Csv(exam.Name), Csv(paper), Csv(row.Name), Csv(row.UserName), Csv(row.Number), Csv(row.ClassName),
+                Csv(ExamLogic.AttemptStatusLabel(attempt?.Status ?? "notStarted")),
+                Csv(attempt?.StartedAt is { } started ? SchoolTime.Format(started) : ""),
+                Csv(attempt?.SubmittedAt is { } submitted ? SchoolTime.Format(submitted) : ""),
+                attempt?.AutoSubmitted == true ? "是" : "否",
+                (attempt?.ObjectiveScore ?? 0).ToString(), (attempt?.PracticalScore ?? 0).ToString(),
+                (attempt?.TotalScore ?? 0).ToString(), (attempt?.MaxScore ?? 0).ToString(), Csv(percent),
+                Csv(attempt?.GradedAt is { } graded ? SchoolTime.Format(graded) : ""),
+                Csv(attempt == null ? "" : graders.GetValueOrDefault(attempt.GradedByUserId, ""))
+            }));
+        }
+        return Results.File(
+            Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(builder.ToString())).ToArray(),
+            "text/csv; charset=utf-8", SafeFileName($"考试成绩-{exam.Name}.csv"));
+    }
+
     static async Task<IResult> GetScores(HttpRequest request, string id, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var exam = await Scoped(db, ctx).AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
@@ -457,6 +514,9 @@ public static class ExamManagementEndpoints
         var attempt = await db.ExamAttempts.FirstOrDefaultAsync(item => item.Id == attemptId && item.ExamId == id, ct);
         if (attempt == null) return NotFound("作答记录不存在");
         if (attempt.Status == "inProgress") return Conflict("学生尚未提交，不能批阅");
+        if (input.LoadedAt is not DateTime loadedAt) return Bad("请求缺少批阅基线，请刷新后重试");
+        if (await db.ExamAnswers.AnyAsync(item => item.AttemptId == attemptId && item.AnsweredAt > loadedAt, ct))
+            return Concurrency.Conflict("答卷批阅");
         var grades = (input.Answers ?? []).Where(item => item != null).ToArray();
         if (grades.Length == 0) return Bad("请填写批阅分数");
         var questions = await db.ExamPaperQuestions.AsNoTracking().Where(item => item.PaperId == exam.PaperId)
@@ -479,7 +539,7 @@ public static class ExamManagementEndpoints
             }
             answer.ScoreAwarded = grade.Score;
             answer.Comment = (grade.Comment ?? "").Trim();
-            answer.AnsweredAt ??= DateTime.UtcNow;
+            answer.AnsweredAt = DateTime.UtcNow;
         }
         var practical = questions.Values.Where(item => item.Type == "practical").ToArray();
         var practicalAnswers = answers.Values.Where(item => questions.TryGetValue(item.PaperQuestionId, out var question) && question.Type == "practical").ToArray();

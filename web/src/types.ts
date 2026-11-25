@@ -24,6 +24,9 @@ export interface StatusResponse {
   logWriteFailures: number
   maxUploadBytes: number
   schoolName?: string | null
+  demo?: boolean
+  demoPassword?: string | null
+  demoAccounts?: { role: string; userName: string; displayName: string }[] | null
 }
 
 export interface Paged<T> {
@@ -847,6 +850,7 @@ export interface AttemptReview {
   maxScore: number
   gradedAt: string | null
   pendingPractical: number
+  serverNow: string
   questions: AttemptReviewQuestion[]
 }
 
@@ -1030,6 +1034,11 @@ export interface ImportPreviewResponse {
 
 export type ImportJobState = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
 
+export interface ImportCredential {
+  account: string
+  password: string
+}
+
 export interface ImportStatusResponse {
   batchId: string
   status: ImportJobState
@@ -1092,6 +1101,7 @@ export interface CampPositionInput {
   startupNodeId: string | null
   skills: CampSkillInput[]
   questions: CampQuestionInput[]
+  updatedAt?: string | null
 }
 
 export interface CampQuestionAdmin {
@@ -1208,6 +1218,7 @@ export interface CampPositionLearnerDetail {
   maxScore: number
   skillCount: number
   attempt: CampAttemptState | null
+  serverNow: string
   canStart: boolean
   canReview: boolean
   questions: CampTakingQuestion[] | null

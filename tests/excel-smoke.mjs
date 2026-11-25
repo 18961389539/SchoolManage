@@ -143,6 +143,10 @@ async function uploadFile(client, file, kind = 'student', expected = 200) {
   const form = new FormData(); form.append('file', new Blob([await readFile(file)]), path.basename(file));
   return client.request(`/imports/preview?kind=${kind}`, 'POST', form, expected);
 }
+async function importReceipt(client, batchId) {
+  const items = (await client.request(`/imports/${batchId}/receipt`)).body.items;
+  return Object.fromEntries(items.map(item => [item.account, item.password]));
+}
 async function waitForImport(client, batchId) {
   const started = Date.now(); const observed = []; let last;
   while (Date.now() - started < 120000) {
@@ -219,10 +223,12 @@ try {
     assert.equal(queued.body.status, 'queued');
     const commit = await waitForImport(client, preview.batchId);
     assert.equal(commit.importedCount, 2);
+    const credentials = await importReceipt(client, preview.batchId);
+    assert.equal(Object.keys(credentials).length, 2); assert.notEqual(credentials.excel_student_01, credentials.excel_student_02);
     const people = (await client.request('/people?kind=student')).body;
     assert.equal(people.total, 2); assert.ok(people.items.every(person => person.role === 'Student' && person.className === 'Excel验收班'));
     const student = new Client(client.base);
-    const session = (await student.request('/auth/login', 'POST', { userName: 'excel_student_01', password })).body;
+    const session = (await student.request('/auth/login', 'POST', { userName: 'excel_student_01', password: credentials.excel_student_01 })).body;
     assert.equal(session.user.role, 'Student'); assert.equal(session.user.mustChangePassword, true);
     return { validRows: 2, importedCount: commit.importedCount, firstRowNumber: preview.rows[0].rowNumber, accountRole: session.user.role, mustChangePassword: session.user.mustChangePassword, observedImportStates: commit.observedStates };
   });
@@ -232,10 +238,11 @@ try {
     await client.request(`/imports/${preview.batchId}/commit`, 'POST', { removeInvalidRows: false, initialPassword: password }, 202);
     const commit = await waitForImport(client, preview.batchId);
     assert.equal(commit.importedCount, 1);
+    const credentials = await importReceipt(client, preview.batchId);
     const people = (await client.request('/people?kind=teacher')).body;
     assert.equal(people.total, 1); assert.equal(people.items[0].number, 'T2026001');
     const teacher = new Client(client.base);
-    const session = (await teacher.request('/auth/login', 'POST', { userName: 'excel_teacher_01', password })).body;
+    const session = (await teacher.request('/auth/login', 'POST', { userName: 'excel_teacher_01', password: credentials.excel_teacher_01 })).body;
     assert.equal(session.user.role, 'Teacher'); assert.equal(session.user.mustChangePassword, true);
     return { validRows: 1, importedCount: commit.importedCount, teacherNumber: people.items[0].number, accountRole: session.user.role };
   });
@@ -248,9 +255,11 @@ try {
     const preview = (await uploadFile(client, csvFile)).body;
     assert.equal(preview.validCount, 1); assert.equal(preview.errorCount, 0);
     assert.equal(preview.rows[0].data.name, csvName); assert.equal(preview.rows[0].rowNumber, 2);
-    await client.request(`/imports/${preview.batchId}/commit`, 'POST', { removeInvalidRows: false, initialPassword: password }, 202);
+    await client.request(`/imports/${preview.batchId}/commit`, 'POST', { removeInvalidRows: false }, 202);
     const commit = await waitForImport(client, preview.batchId);
     assert.equal(commit.importedCount, 1);
+    const credentials = await importReceipt(client, preview.batchId);
+    assert.ok(credentials.csv_quoted_01);
     const people = (await client.request('/people?kind=student&search=csv_quoted_01')).body;
     assert.equal(people.total, 1); assert.equal(people.items[0].name, csvName);
     return { importedCount: commit.importedCount, embeddedComma: true, escapedQuote: true, embeddedCrLf: true, originalRowNumber: preview.rows[0].rowNumber };

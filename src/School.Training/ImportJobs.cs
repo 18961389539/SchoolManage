@@ -19,7 +19,7 @@ public static class ImportBatchStatus
     public static bool IsTerminal(string status) => status is Completed or Failed or Cancelled;
 }
 
-public sealed record ImportJobRequest(string BatchId, string InitialPassword);
+public sealed record ImportJobRequest(string BatchId);
 
 /// <summary>
 /// The initial password intentionally stays in process memory. It is never written to
@@ -61,7 +61,7 @@ public sealed class ImportJobQueue
     }
 }
 
-public sealed class ImportJobWorker(ImportJobQueue jobs, IServiceScopeFactory scopes, ILogger<ImportJobWorker> logger) : BackgroundService
+public sealed class ImportJobWorker(ImportJobQueue jobs, ImportPasswordReceipts passwordReceipts, IServiceScopeFactory scopes, ILogger<ImportJobWorker> logger) : BackgroundService
 {
     static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -146,16 +146,8 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, IServiceScopeFactory sc
             }
 
             var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
-            // Every account in the batch receives the same administrator-supplied initial
-            // password and must change it at first login. Hashing once per batch instead of
-            // once per row removes the KDF from the import critical path; the shared hash is
-            // replaced with a private one when each account changes its password. The tradeoff
-            // is that all pending accounts carry equal hashes for a credential that is already
-            // shared and known to the administrator.
-            var initialHash = hasher.HashPassword(
-                new AppUser { UserName = "__import__", DisplayName = "__import__", Role = "Student" },
-                request.InitialPassword);
             var prepared = new Dictionary<int, AppUser>(rows.Count);
+            var credentials = new List<ImportCredential>(rows.Count);
             const int progressInterval = 250;
             var processed = 0;
             foreach (var chunk in rows.Chunk(progressInterval))
@@ -164,14 +156,17 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, IServiceScopeFactory sc
                 foreach (var row in chunk)
                 {
                     var data = row.Data;
-                    prepared.Add(row.RowNumber, new AppUser
+                    var password = ImportPasswordReceipts.GeneratePassword();
+                    var user = new AppUser
                     {
                         UserName = data.UserName,
                         DisplayName = data.Name,
                         Role = batch.Kind == "teacher" ? "Teacher" : "Student",
-                        MustChangePassword = true,
-                        PasswordHash = initialHash
-                    });
+                        MustChangePassword = true
+                    };
+                    user.PasswordHash = hasher.HashPassword(user, password);
+                    prepared.Add(row.RowNumber, user);
+                    credentials.Add(new ImportCredential(data.UserName, password));
                 }
                 processed += chunk.Length;
                 await ReportProgressAsync(request.BatchId, processed, token);
@@ -217,6 +212,7 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, IServiceScopeFactory sc
                 Target = batch.Kind,
                 Detail = $"成功{rows.Count}行，移除问题行{batch.RemovedCount}行"
             });
+            passwordReceipts.Put(request.BatchId, batch.UserId, credentials.ToArray(), DateTime.UtcNow.AddHours(24));
             await db.SaveChangesAsync(token);
             await transaction.CommitAsync(token);
         }

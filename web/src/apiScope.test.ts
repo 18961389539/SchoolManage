@@ -99,13 +99,7 @@ describe('navigation cancels reads only', () => {
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ message: '请先登录' }), { status: 401, headers }))
     )
-    let settled = false
-    api('/courses').then(
-      () => (settled = true),
-      () => (settled = true)
-    )
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(settled).toBe(false)
+    await expect(api('/courses')).rejects.toMatchObject({ status: 401 })
     expect(appState.user).toBeNull()
     expect(appState.authNotice).toBe('登录状态已失效，请重新登录。')
   })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   ArrowDown,
   ArrowLeft,
@@ -14,8 +14,10 @@ import {
   Reading,
   Refresh
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, downloadFile, messageOf, post } from '../api'
+import { readDraft, registerEmergencyFlush, writeDraft } from '../draftPersistence'
+import { registerLeaveGuard } from '../leaveGuard'
 import { appState } from '../store'
 import {
   classroomStatusOptions,
@@ -61,6 +63,61 @@ const lessonTitle = ref<HTMLElement | null>(null)
 const attachmentPreview = ref<HTMLElement | null>(null)
 let previewTrigger: HTMLElement | null = null
 const pendingStarts = new Map<string, Promise<void>>()
+const draftKey = () => `school.practice.${appState.user?.id || 'anonymous'}.${props.classroomId}`
+
+function persistPracticeDrafts() {
+  if (!data.value || role.value !== 'Student') return
+  const value = Object.fromEntries(
+    [...practices.entries()].map(([id, practice]) => [id, { answers: practice.answers, result: practice.result }])
+  )
+  writeDraft(draftKey(), value)
+}
+
+function restorePracticeDrafts() {
+  if (!data.value || role.value !== 'Student') return
+  const saved =
+    readDraft<Record<string, { answers: Record<string, number[]>; result?: ClassroomPracticeResult }>>(draftKey())
+  if (!saved) return
+  for (const resource of allResources.value) {
+    const draft = saved[resource.id]
+    if (!draft || resource.kind !== 'theoryPractice') continue
+    const questionIds = new Set(resource.questions.flatMap(question => (question.id ? [question.id] : [])))
+    const answers: Record<string, number[]> = {}
+    for (const [questionId, selected] of Object.entries(draft.answers || {})) {
+      if (questionIds.has(questionId) && Array.isArray(selected)) answers[questionId] = selected
+    }
+    practices.set(resource.id, { answers, result: draft.result })
+  }
+}
+
+function hasUnsavedPractice() {
+  return [...practices.values()].some(
+    practice => !practice.result && Object.values(practice.answers).some(selected => selected.length > 0)
+  )
+}
+
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (!hasUnsavedPractice()) return
+  persistPracticeDrafts()
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+const releaseLeaveGuard = registerLeaveGuard(async () => {
+  if (!hasUnsavedPractice()) return true
+  persistPracticeDrafts()
+  try {
+    await ElMessageBox.confirm('理论练习还有未提交的答案，已在本机保存草稿。仍要离开吗？', '离开课堂', {
+      type: 'warning',
+      confirmButtonText: '离开',
+      cancelButtonText: '继续作答'
+    })
+    return true
+  } catch {
+    return false
+  }
+})
+const releaseEmergencyFlush = registerEmergencyFlush(persistPracticeDrafts)
 
 const resourceIcons = { theory: Reading, theoryPractice: EditPen, case: Document, casePractice: Monitor }
 
@@ -194,6 +251,7 @@ async function load(preserve = false) {
   try {
     const next = await api<ClassroomContentResponse>(`/classrooms/${props.classroomId}/content`)
     data.value = next
+    restorePracticeDrafts()
   } catch (failure) {
     if (!preserve) data.value = null
     error.value = messageOf(failure)
@@ -339,6 +397,7 @@ async function submitPractice() {
     practice.result = submitted
     actionError.value = ''
     ElMessage.success(`练习已提交，得分 ${submitted.score} / ${submitted.maxScore}`)
+    persistPracticeDrafts()
     await load(true)
   } catch (failure) {
     actionError.value = messageOf(failure)
@@ -395,7 +454,17 @@ function openStatistics() {
   emit('navigate', 'classroom-statistics', { classroomId: props.classroomId, backKey: 'classroom-content' })
 }
 
-onMounted(() => load())
+watch(practices, persistPracticeDrafts, { deep: true })
+onMounted(() => {
+  window.addEventListener('beforeunload', beforeUnload)
+  void load()
+})
+onBeforeUnmount(() => {
+  persistPracticeDrafts()
+  window.removeEventListener('beforeunload', beforeUnload)
+  releaseLeaveGuard()
+  releaseEmergencyFlush()
+})
 </script>
 
 <template>

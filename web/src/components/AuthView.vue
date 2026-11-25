@@ -5,7 +5,15 @@ import { passwordIssue } from '../api'
 import type { AuthForm } from '../auth'
 
 const auth = defineModel<AuthForm>('auth', { required: true })
-const props = defineProps<{ initialized: boolean; schoolName: string; version: string; busy: boolean; error: string }>()
+const props = defineProps<{
+  initialized: boolean
+  schoolName: string
+  version: string
+  busy: boolean
+  error: string
+  demoAccounts?: { role: string; userName: string; displayName: string }[] | null
+  demoPassword?: string | null
+}>()
 const emit = defineEmits<{ submit: []; edit: [] }>()
 
 const form = ref<HTMLFormElement | null>(null)
@@ -58,6 +66,12 @@ const issues = computed<Record<keyof AuthForm, string>>(() => ({
   password: passwordMessage(),
   confirmation: confirmationMessage()
 }))
+
+function roleLabel(role: string) {
+  if (role === 'Admin') return '管理员'
+  if (role === 'Teacher') return '教师'
+  return '学生'
+}
 
 function passwordMessage() {
   if (!auth.value.password) return '请输入密码'
@@ -118,6 +132,19 @@ watch(
       <section class="auth-form-wrap" aria-labelledby="auth-title">
         <h1 id="auth-title">{{ initialized ? '登录工作空间' : '初始化实训平台' }}</h1>
         <p v-if="!initialized" class="auth-intro">请在部署服务器本机创建首个管理员账号。</p>
+        <div v-if="demoAccounts?.length" class="auth-demo">
+          <p>
+            这是客户演示。下列账号的密码都是 <strong>{{ demoPassword }}</strong>，登录后不需要再修改。
+          </p>
+          <ul>
+            <li v-for="account in demoAccounts" :key="account.userName">
+              <button type="button" @click="auth.userName = account.userName">
+                {{ roleLabel(account.role) }} {{ account.displayName }}
+                <span>{{ account.userName }}</span>
+              </button>
+            </li>
+          </ul>
+        </div>
 
         <div v-if="error" ref="serverError" class="auth-server-error" role="alert" tabindex="-1">
           <el-icon aria-hidden="true"><WarningFilled /></el-icon>
@@ -194,7 +221,7 @@ watch(
           </fieldset>
         </form>
 
-        <p v-if="initialized" class="auth-support">
+        <p v-if="initialized && !demoAccounts?.length" class="auth-support">
           忘记密码请联系平台管理员重置。管理员可在人员管理中为你设置新密码，登录后需要再修改。
         </p>
       </section>
@@ -203,6 +230,54 @@ watch(
 </template>
 
 <style scoped>
+.auth-demo {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: #f7fbf9;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.auth-demo p {
+  margin: 0 0 8px;
+}
+
+.auth-demo ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.auth-demo button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.auth-demo button:hover,
+.auth-demo button:focus-visible {
+  background: #e7f3ee;
+}
+
+.auth-demo span {
+  color: #5d6b66;
+}
+
 .auth-layout {
   display: grid;
   place-items: center;

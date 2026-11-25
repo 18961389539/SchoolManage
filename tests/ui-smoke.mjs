@@ -297,7 +297,7 @@ async function verifyNavigationIsolation(page, ui, adminApi) {
     })
   ]);
   const preview = await previewResponse.json();
-  await studentImport.locator('input[type="password"]').fill(password);
+
   await studentImport.getByRole('button', {name: '导入 1 条有效记录'}).click();
   const confirmImport = page.getByRole('dialog', {name: '确认导入'});
   await holdNextResponse(`/api/imports/${preview.batchId}/commit`, 'POST',
@@ -307,6 +307,7 @@ async function verifyNavigationIsolation(page, ui, adminApi) {
     }, 202
   );
   await studentImport.waitFor({state: 'hidden'});
+  await page.getByRole('dialog', {name: '导入账号初始密码回执'}).getByRole('button', {name: '我已保存，关闭'}).click();
   const imported = await adminApi('/people?kind=student&search=ui_commit_wait');
   assert.equal(imported.total, 1);
   await adminApi(`/people/${imported.items[0].id}`, 'DELETE');
@@ -709,10 +710,10 @@ try {
     await capture(page, `${kind}-import-validation.jpg`, {fullPage: false});
     await importDialog.getByRole('button', {name: '移除问题行'}).click();
     await invalidImportRow.waitFor({state: 'hidden'});
-    await importDialog.locator('input[type="password"]').fill(password);
     await importDialog.getByRole('button', {name: '导入 1 条有效记录'}).click();
     await page.getByRole('dialog', {name: '确认导入'}).getByRole('button', {name: '开始导入'}).click();
     await importDialog.waitFor({state: 'hidden'});
+    await page.getByRole('dialog', {name: '导入账号初始密码回执'}).getByRole('button', {name: '我已保存，关闭'}).click();
     await rowNamed(importedName).waitFor();
     await rowNamed(second.name).waitFor();
     assert.equal((await adminApi(`/people?kind=${kind}&search=${importedUser}`)).total, 1);

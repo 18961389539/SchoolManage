@@ -3,7 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { ArrowLeft, Check, Clock, Document, Grid, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, messageOf, post } from '../api'
+import { clearDraft, readDraft, registerEmergencyFlush, writeDraft } from '../draftPersistence'
 import { registerLeaveGuard } from '../leaveGuard'
+import { appState } from '../store'
 import {
   attemptStatusLabel,
   attemptStatusType,
@@ -51,6 +53,7 @@ const practicalDirty = ref(false)
 let hydrating = false
 let dirty = false
 let autoTriggered = false
+let answerBaseAt = ''
 let ticker: number | undefined
 let autosaveTimer: number | undefined
 let deployPoll: number | undefined
@@ -60,6 +63,41 @@ let serverOffset = 0
 let activeSave: Promise<void> | undefined
 let reviewTarget: ExamTakingQuestion | undefined
 let disposed = false
+let emergencyRestorePending = true
+const draftKey = () =>
+  `school.exam.${appState.user?.id || 'anonymous'}.${props.examId}.${detail.value?.attempt?.id || ''}`
+
+function saveEmergencyDraft() {
+  if (!inProgress.value || !detail.value?.attempt?.id) return
+  writeDraft(draftKey(), { answers: payload() })
+}
+
+function restoreEmergencyDraft() {
+  if (!emergencyRestorePending) return
+  emergencyRestorePending = false
+  if (!inProgress.value || !detail.value?.attempt?.id) return
+  const saved = readDraft<{ answers: ExamSubmitAnswer[] }>(draftKey())
+  if (!saved?.answers?.length) return
+  let restored = false
+  for (const answer of saved.answers) {
+    const target = answers[answer.paperQuestionId]
+    if (!target) continue
+    if (answer.selected?.length) {
+      target.selected = [...answer.selected]
+      restored = true
+    }
+    if (answer.text) {
+      target.text = answer.text
+      restored = true
+    }
+  }
+  if (restored) {
+    dirty = true
+    saveState.value = 'pending'
+    ElMessage.warning('已从本机恢复上次未保存的考试答案，请确认后继续作答')
+  }
+}
+const releaseEmergencyFlush = registerEmergencyFlush(saveEmergencyDraft)
 const saveTimeFormat = new Intl.DateTimeFormat('zh-CN', {
   hour: '2-digit',
   minute: '2-digit',
@@ -162,6 +200,7 @@ async function refreshHall(silent = false) {
     const data = await api<ExamHallDetail>(`/exam-hall/${props.examId}`)
     if (disposed) return
     serverOffset = parseApiDate(data.serverNow).getTime() - Date.now()
+    answerBaseAt = data.serverNow
     detail.value = data
     if (data.attempt?.status === 'inProgress' && data.questions) {
       stopClocks()
@@ -187,6 +226,7 @@ async function load() {
   try {
     await refreshHall(true)
     if (disposed) return
+    restoreEmergencyDraft()
   } catch (failure) {
     error.value = messageOf(failure)
     detail.value = null
@@ -292,8 +332,13 @@ function saveNow() {
 
 async function persistAnswers() {
   try {
-    await post(`/exam-hall/${props.examId}/answers`, { answers: payload() })
+    const result = await post<{ serverNow: string }>(`/exam-hall/${props.examId}/answers`, {
+      answers: payload(),
+      loadedAt: answerBaseAt
+    })
     if (disposed) return
+    answerBaseAt = result.serverNow
+    if (!dirty) clearDraft(draftKey())
     lastSavedAt.value = new Date()
     saveState.value = dirty ? 'pending' : 'saved'
   } catch (failure) {
@@ -424,9 +469,13 @@ async function submit(auto = false) {
   reviewError.value = ''
   clearSaveTimer()
   try {
-    const result = await post<ExamSubmitResult>(`/exam-hall/${props.examId}/submit`, { answers: payload() })
+    const result = await post<ExamSubmitResult>(`/exam-hall/${props.examId}/submit`, {
+      answers: payload(),
+      loadedAt: answerBaseAt
+    })
     if (disposed) return
     completed.value = result
+    clearDraft(draftKey())
     stopClocks()
     closeAfterSubmit()
   } catch (failure) {
@@ -447,6 +496,7 @@ async function submit(auto = false) {
 }
 
 function beforeUnload(event: BeforeUnloadEvent) {
+  saveEmergencyDraft()
   if (!inProgress.value) return
   event.preventDefault()
   event.returnValue = ''
@@ -499,6 +549,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  releaseEmergencyFlush()
   releaseLeaveGuard()
   // Last-chance write for paths that bypass the guard (session expiry, forced sign-out).
   if (dirty && inProgress.value && !submitting.value) void persistAnswers()

@@ -29,7 +29,7 @@ public static class HomeEndpoints
         var todayActivities = mine.Where(item => InRange(item.At, today)).ToArray();
         var learnedToday = todayActivities.Where(item => item.IsCompletion).Select(item => item.ResourceId).Distinct().Count();
         var practicesToday = todayActivities.Count(item => item.IsPractice);
-        var leaderboard = BuildLeaderboard(context, profile.ClassId, userId);
+        var leaderboard = BuildLeaderboard(context, profile.ClassId, userId, includeIdentity: false);
         var todos = await HomeTodoLogic.StudentTodosAsync(db, userId, classrooms, ct);
         return Results.Ok(new
         {
@@ -72,7 +72,7 @@ public static class HomeEndpoints
                 resourcePassRate = aggregate.PassRate
             },
             classrooms = BuildClassroomCards(context, null),
-            leaderboard = BuildLeaderboard(context, null, null),
+            leaderboard = BuildLeaderboard(context, null, null, includeIdentity: true),
             todos,
             canCreateClassroom,
             serverNow = DateTime.UtcNow
@@ -185,13 +185,16 @@ public static class HomeEndpoints
             .GroupBy(item => item.Id).Select(group => group.First()).ToArray();
     }
 
-    static StudentSummary Summarize(HomeContext context, string userId, IEnumerable<AnalyticsResource> resources)
+static StudentSummary Summarize(HomeContext context, string userId, IEnumerable<AnalyticsResource> resources, string? classroomId = null)
     {
         var list = resources as IReadOnlyCollection<AnalyticsResource> ?? resources.ToArray();
+        LearningRecord? RecordFor(AnalyticsResource resource) => classroomId == null
+            ? context.Data.BestFor(userId, resource.Id)
+            : context.Data.RecordFor(classroomId, userId, resource.Id);
         KindStats For(string kind) => AnalyticsLogic.Metrics(list.Where(item => item.Kind == kind),
-            resource => AnalyticsLogic.Evaluate(resource.Kind, context.Data.RecordFor(userId, resource.Id), resource.MaxScore));
+            resource => AnalyticsLogic.Evaluate(resource.Kind, RecordFor(resource), resource.MaxScore));
         return new StudentSummary(
-            AnalyticsLogic.Metrics(list, resource => AnalyticsLogic.Evaluate(resource.Kind, context.Data.RecordFor(userId, resource.Id), resource.MaxScore)),
+            AnalyticsLogic.Metrics(list, resource => AnalyticsLogic.Evaluate(resource.Kind, RecordFor(resource), resource.MaxScore)),
             For("theory"), For("theoryPractice"), For("case"), For("casePractice"));
     }
 
@@ -201,7 +204,8 @@ public static class HomeEndpoints
         var total = rows.Sum(item => item.Overall.Total);
         var learned = rows.Sum(item => item.Overall.Learned);
         var passed = rows.Sum(item => item.Overall.Passed);
-        return new KindStats(total, learned, passed, AnalyticsLogic.Rate(learned, total), AnalyticsLogic.Rate(passed, total));
+        var verifiable = rows.Sum(item => item.Overall.VerifiableTotal);
+        return new KindStats(total, learned, passed, AnalyticsLogic.Rate(learned, total), AnalyticsLogic.Rate(passed, verifiable), verifiable);
     }
 
     static object OverviewView(StudentSummary summary, IEnumerable<DateTime> timestamps, int practices)
@@ -230,7 +234,7 @@ public static class HomeEndpoints
         casePractice = summary.CasePractice
     };
 
-    static object[] BuildLeaderboard(HomeContext context, string? classId, string? currentUserId)
+    static object[] BuildLeaderboard(HomeContext context, string? classId, string? currentUserId, bool includeIdentity)
     {
         var rows = context.Students.Where(item => classId != null ? item.ClassId == classId
                 : currentUserId == null || item.UserId == currentUserId)
@@ -252,7 +256,12 @@ public static class HomeEndpoints
                 };
             }).OrderByDescending(item => item.learned).ThenByDescending(item => item.passed)
             .ThenByDescending(item => item.passRate).ThenBy(item => item.Number).Take(10).ToArray();
-        return rows;
+        return includeIdentity
+            ? rows.Cast<object>().ToArray()
+            : rows.Select(item => (object)new
+            {
+                item.Name, item.isMe, item.learned, item.passed, item.totalResources, item.learningRate, item.passRate
+            }).ToArray();
     }
 
     static object[] BuildClassroomCards(HomeContext context, string? userId)
@@ -262,9 +271,10 @@ public static class HomeEndpoints
             .ThenByDescending(item => item.OpenAt).Select(classroom =>
             {
                 var resources = context.ResourcesByCourse.GetValueOrDefault(classroom.CourseId) ?? [];
-                var summary = userId == null ? null : Summarize(context, userId, resources);
+                var summary = userId == null ? null : Summarize(context, userId, resources, classroom.Id);
                 var studentIds = context.StudentsByClassroom.GetValueOrDefault(classroom.Id) ?? [];
-                var passing = studentIds.Count(studentId => AnalyticsLogic.MeetsOverallTarget(Summarize(context, studentId, resources).Overall));
+                var passing = studentIds.Count(studentId =>
+                    AnalyticsLogic.MeetsOverallTarget(Summarize(context, studentId, resources, classroom.Id).Overall));
                 return new
                 {
                     classroom.Id, classroom.Name, classroom.CourseId,
@@ -296,7 +306,7 @@ public static class HomeEndpoints
             if (!activity.IsCompletion) continue;
             var resource = context.ResourceById.GetValueOrDefault(activity.ResourceId);
             if (resource == null || resource.Kind is "theoryPractice" or "casePractice") continue;
-            if (AnalyticsLogic.IsPassed(resource.Kind, context.Data.RecordFor(activity.UserId, resource.Id), resource.MaxScore))
+            if (AnalyticsLogic.IsPassed(resource.Kind, context.Data.BestFor(activity.UserId, resource.Id), resource.MaxScore))
                 users.Add(activity.UserId);
         }
         return users.Count;

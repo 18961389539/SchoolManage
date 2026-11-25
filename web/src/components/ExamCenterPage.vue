@@ -449,7 +449,16 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
         <template #default="{ row }">
           <div class="table-name">
             <strong>{{ row.name }}</strong>
-            <el-tag :type="examStatusType(row.status)" size="small">{{ examStatusLabel(row.status) }}</el-tag>
+            <el-tag
+              :type="row.storedStatus === 'open' && row.status === 'scheduled' ? 'warning' : examStatusType(row.status)"
+              size="small"
+            >
+              {{
+                row.storedStatus === 'open' && row.status === 'scheduled'
+                  ? '已开考 · 待开始'
+                  : examStatusLabel(row.status)
+              }}
+            </el-tag>
           </div>
           <p class="exam-description">{{ row.description || '暂无说明' }}</p>
         </template>
@@ -486,6 +495,8 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
               plain
               size="small"
               :icon="row.storedStatus === 'scheduled' ? VideoPlay : CircleClose"
+              :disabled="row.storedStatus === 'scheduled' && row.studentCount === 0"
+              :title="row.storedStatus === 'scheduled' && row.studentCount === 0 ? '名单中没有考生，请先添加名单' : ''"
               @click="toggleExam(row as TrainingExamSummary)"
             >
               {{ row.storedStatus === 'scheduled' ? '开考' : '结考' }}
@@ -676,7 +687,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     v-model="rosterVisible"
     :exam-id="activeExam?.id || ''"
     :exam-name="activeExam?.name || ''"
-    :editable="!!activeExam && activeExam.status === 'scheduled' && activeExam.attemptCount === 0"
+    :editable="!!activeExam && activeExam.storedStatus === 'scheduled' && activeExam.attemptCount === 0"
     :deployable="activeExam?.status !== 'closed'"
     @changed="onChanged"
   />

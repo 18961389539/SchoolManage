@@ -115,8 +115,8 @@ public sealed record CampQuestionInput(
     string? Analysis = null, int? SkillIndex = null, CampRubricItemInput[]? Rubric = null, CaseRubricItem[]? PracticalRubric = null);
 public sealed record CampPositionInput(
     string Name, string? Description, int DurationMinutes, string? StartupNodeId = null,
-    CampSkillInput[]? Skills = null, CampQuestionInput[]? Questions = null);
+    CampSkillInput[]? Skills = null, CampQuestionInput[]? Questions = null, DateTime? UpdatedAt = null);
 public sealed record CampPublishInput(bool Published);
-public sealed record CampSaveAnswersInput(CampAnswerInput[]? Answers);
+public sealed record CampSaveAnswersInput(CampAnswerInput[]? Answers, DateTime? LoadedAt = null);
 public sealed record CampAnswerInput(string QuestionId, int[]? Selected, string? Text = null);
 public sealed record CampRubricItem(string Item, string Keyword, int Score);

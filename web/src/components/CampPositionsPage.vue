@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useDiscardGuard } from '../discardGuard'
 import { Delete, EditPen, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, dateTime, del, listItems, messageOf, post, put } from '../api'
@@ -54,9 +55,11 @@ useListPersist('camp-positions', () => ({ search: search.value, filters: {} }))
 
 const dialogVisible = ref(false)
 const saving = ref(false)
+const detailLoading = ref(false)
 const formError = ref('')
 const editingId = ref('')
 const editingDetail = ref<CampPositionAdminDetail | null>(null)
+let editRequest = 0
 const enabledNodes = computed(() => nodes.value.filter(node => node.enabled !== false))
 const locked = computed(() => editingDetail.value?.canEditStructure === false)
 
@@ -67,6 +70,13 @@ const form = reactive({
   startupNodeId: '' as string | null,
   skills: [] as EditableSkill[],
   questions: [] as EditableQuestion[]
+})
+
+const guard = useDiscardGuard({
+  visible: dialogVisible,
+  snapshot: () => form,
+  message: '岗位内容还没有保存，关闭后不会保留。',
+  busy: () => saving.value
 })
 
 const filtered = computed(() => {
@@ -130,10 +140,13 @@ async function loadNodes() {
 }
 
 function openCreate() {
+  editRequest++
   editingId.value = ''
   editingDetail.value = null
+  detailLoading.value = false
   resetForm()
   formError.value = ''
+  guard.reset()
   dialogVisible.value = true
 }
 
@@ -158,13 +171,17 @@ function fromQuestion(question: CampQuestionAdmin): EditableQuestion {
 }
 
 async function openEdit(position: CampPositionAdminSummary) {
+  const request = ++editRequest
   editingId.value = position.id
   editingDetail.value = null
+  detailLoading.value = true
   formError.value = ''
+  resetForm()
+  guard.reset()
   dialogVisible.value = true
   try {
     const detail = await api<CampPositionAdminDetail>(`/camp/positions/${position.id}`)
-    editingDetail.value = detail
+    if (request !== editRequest) return
     form.name = detail.name
     form.description = detail.description
     form.durationMinutes = detail.durationMinutes
@@ -173,8 +190,12 @@ async function openEdit(position: CampPositionAdminSummary) {
       ? detail.skills.map(skill => ({ name: skill.name, subName: skill.subName, ability: skill.ability }))
       : [newSkill()]
     form.questions = detail.questions.map(fromQuestion)
+    editingDetail.value = detail
+    guard.capture()
   } catch (failure) {
-    formError.value = messageOf(failure)
+    if (request === editRequest) formError.value = messageOf(failure)
+  } finally {
+    if (request === editRequest) detailLoading.value = false
   }
 }
 
@@ -349,6 +370,7 @@ function payload(): CampPositionInput {
     description: form.description.trim(),
     durationMinutes: form.durationMinutes,
     startupNodeId: form.startupNodeId || null,
+    updatedAt: editingDetail.value?.updatedAt || null,
     skills: form.skills.map(skill => ({
       name: skill.name.trim(),
       subName: skill.subName.trim(),
@@ -377,6 +399,10 @@ function payload(): CampPositionInput {
 }
 
 async function save() {
+  if (editingId.value && (!editingDetail.value || detailLoading.value)) {
+    formError.value = '岗位详情尚未加载完成，请稍后再保存'
+    return
+  }
   const issue = validation()
   if (issue) {
     formError.value = issue
@@ -388,6 +414,7 @@ async function save() {
     if (editingId.value) await put(`/camp/positions/${editingId.value}`, payload())
     else await post('/camp/positions', payload())
     ElMessage.success(editingId.value ? '岗位已更新' : '岗位已创建，发布后学生才能在岗位训练营中看到')
+    guard.reset()
     dialogVisible.value = false
     await load()
   } catch (failure) {
@@ -523,6 +550,8 @@ onMounted(() => {
     width="min(1080px, 97vw)"
     destroy-on-close
     top="4vh"
+    :before-close="guard.beforeClose"
+    v-loading="detailLoading"
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
     <el-alert
@@ -762,8 +791,14 @@ onMounted(() => {
     </template>
 
     <template #footer>
-      <el-button @click="dialogVisible = false">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="save">{{ editingId ? '保存修改' : '创建岗位' }}</el-button>
+      <el-button @click="guard.cancel">取消</el-button>
+      <el-button
+        type="primary"
+        :loading="saving || detailLoading"
+        :disabled="!!editingId && !editingDetail"
+        @click="save"
+        >{{ editingId ? '保存修改' : '创建岗位' }}</el-button
+      >
     </template>
   </el-dialog>
 </template>

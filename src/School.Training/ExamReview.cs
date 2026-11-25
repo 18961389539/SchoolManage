@@ -60,6 +60,7 @@ public static class ExamReview
             attempt.MaxScore,
             attempt.GradedAt,
             pendingPractical = rows.Count(row => row.Type == "practical" && row.scoreAwarded == null),
+            serverNow = DateTime.UtcNow,
             questions = rows
         };
     }

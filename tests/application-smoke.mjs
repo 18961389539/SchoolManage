@@ -168,17 +168,20 @@ try{
   const preview=await api.request('/imports/preview?kind=student','POST',upload('students.csv',csv));
   assert.equal(preview.validCount,1);assert.equal(preview.errorCount,3);assert.ok(preview.rows[1].errors[0].column);assert.equal(preview.rows[1].rowNumber,3);
   await api.request(`/imports/${preview.batchId}/commit`,'POST',{removeInvalidRows:false,initialPassword:password},400);
-  const queueStatus=await api.request(`/imports/${preview.batchId}/commit`,'POST',{removeInvalidRows:true,initialPassword:password},202);
+  const queueStatus=await api.request(`/imports/${preview.batchId}/commit`,'POST',{removeInvalidRows:true},202);
   assert.equal(queueStatus.status,'queued');assert.equal(queueStatus.totalCount,1);assert.equal(queueStatus.removedCount,3);
   const commit=await waitForImport(api,preview.batchId);
   assert.equal(commit.importedCount,1);assert.equal(commit.removedCount,3);
-  await api.request(`/imports/${preview.batchId}/commit`,'POST',{removeInvalidRows:true,initialPassword:password},409);
+  const receipt=await api.request(`/imports/${preview.batchId}/receipt`);
+  assert.equal(receipt.items.length,1);assert.equal(receipt.items[0].account,'import001');
+  await api.request(`/imports/${preview.batchId}/receipt`, 'GET', undefined, 409);
+  await api.request(`/imports/${preview.batchId}/commit`,'POST',{removeInvalidRows:true},409);
   assert.equal((await api.request('/people?kind=student')).total,2);
   mark('CSV预览定位错误行列、后台导入任务可查询、仅移除待导入问题行、原子提交与防重复');
   const cancelRows=Array.from({length:600},(_,index)=>`取消学生${index},cancel${String(index).padStart(3,'0')},CANCEL-${String(index).padStart(3,'0')},软件一班,,,`).join('\r\n');
   const cancelPreview=await api.request('/imports/preview?kind=student','POST',upload('cancel-students.csv',`姓名,账号,学号,班级,性别,手机号,电子邮箱\r\n${cancelRows}\r\n`));
   assert.equal(cancelPreview.validCount,600);
-  await api.request(`/imports/${cancelPreview.batchId}/commit`,'POST',{removeInvalidRows:false,initialPassword:password},202);
+  await api.request(`/imports/${cancelPreview.batchId}/commit`,'POST',{removeInvalidRows:false},202);
   let running=await api.request(`/imports/${cancelPreview.batchId}`);
   const startedAt=Date.now();
   while(running.status!=='running'&&Date.now()-startedAt<10000) {

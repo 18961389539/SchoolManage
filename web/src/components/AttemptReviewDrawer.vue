@@ -3,6 +3,7 @@ import { computed, reactive, ref, useId, watch } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api, dateTime, messageOf, post } from '../api'
+import { useDiscardGuard } from '../discardGuard'
 import { attemptStatusLabel, attemptStatusType, examQuestionTypeLabel, optionLetters, selectedText } from '../exam'
 import type { AttemptReview, AttemptReviewQuestion } from '../types'
 import { caseFieldLabel, type CaseField } from '../caseWork'
@@ -29,6 +30,12 @@ const grading = ref(false)
 const indexPanel = ref<HTMLDetailsElement>()
 let loadRequest = 0
 const gradeForm = reactive<Record<string, { score: number | null; comment: string }>>({})
+const guard = useDiscardGuard({
+  visible,
+  snapshot: () => gradeForm,
+  message: '批阅分数和评语还没有保存，关闭后不会保留。',
+  busy: () => grading.value
+})
 
 const practicalQuestions = computed(() =>
   (review.value?.questions || []).filter(question => question.type === 'practical')
@@ -59,6 +66,7 @@ async function load() {
         comment: question.comment || ''
       }
     }
+    guard.capture()
   } catch (failure) {
     if (request === loadRequest) {
       error.value = messageOf(failure)
@@ -143,12 +151,15 @@ async function saveGrade() {
   const endpoint = props.endpoint
   grading.value = true
   try {
-    await post(gradePath, { answers })
+    await post(gradePath, { answers, loadedAt: review.value?.serverNow })
     ElMessage.success('批阅已保存')
+    guard.reset()
     if (props.modelValue && props.endpoint === endpoint) await load()
+    guard.capture()
     emit('graded')
   } catch (failure) {
     ElMessage.error(messageOf(failure))
+    if ((failure as { status?: number })?.status === 409) await load()
   } finally {
     grading.value = false
   }
@@ -186,6 +197,7 @@ watch(
     body-class="attempt-review-content"
     append-to-body
     footer-class="attempt-review-footer"
+    :before-close="guard.beforeClose"
   >
     <div v-loading="loading" class="review-body">
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="section-notice" />

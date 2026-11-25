@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Refresh, Search, View } from '@element-plus/icons-vue'
-import { api, dateTime, messageOf } from '../api'
+import { Download, Refresh, Search, View } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { api, dateTime, downloadFile, messageOf } from '../api'
 import { attemptStatusLabel, attemptStatusType } from '../exam'
 import type { AttemptStatus, ExamScoreRow, ExamTypeScore, Paged } from '../types'
 import AttemptReviewDrawer from './AttemptReviewDrawer.vue'
@@ -29,6 +30,7 @@ const reviewVisible = ref(false)
 const reviewEndpoint = ref('')
 const reviewGradePath = ref('')
 const reviewTitle = ref('')
+const exporting = ref(false)
 
 async function load() {
   if (!props.examId) return
@@ -77,6 +79,22 @@ function elapsedText(seconds: number | null) {
   if (seconds === null) return '—'
   const minutes = Math.floor(seconds / 60)
   return minutes ? `${minutes} 分 ${seconds % 60} 秒` : `${seconds} 秒`
+}
+
+async function exportScores() {
+  if (!props.examId) return
+  exporting.value = true
+  try {
+    const params = new URLSearchParams()
+    if (appliedSearch.value) params.set('search', appliedSearch.value)
+    if (statusFilter.value) params.set('status', statusFilter.value)
+    await downloadFile(`/exams/${props.examId}/scores/export?${params.toString()}`, `考试成绩-${props.examName}.csv`)
+    ElMessage.success('成绩明细已导出')
+  } catch (failure) {
+    ElMessage.error(messageOf(failure))
+  } finally {
+    exporting.value = false
+  }
 }
 
 function openReview(row: ExamScoreRow) {
@@ -147,6 +165,7 @@ watch(
       </el-select>
       <el-button native-type="submit" type="primary" :icon="Search">查询</el-button>
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
+      <el-button :icon="Download" :loading="exporting" @click="exportScores">导出明细</el-button>
       <div class="score-toolbar-summary">
         <el-button
           :type="statusFilter === 'submitted' ? 'warning' : 'default'"

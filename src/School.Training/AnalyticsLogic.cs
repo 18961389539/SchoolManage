@@ -4,7 +4,7 @@ namespace School.Training;
 
 public readonly record struct LearningState(bool Learned, bool Passed);
 
-public sealed record KindStats(int Total, int Learned, int Passed, int LearningRate, int PassRate);
+public sealed record KindStats(int Total, int Learned, int Passed, int LearningRate, int PassRate, int VerifiableTotal = 0);
 
 public sealed record AnalyticsResource(
     string Id, string Name, string Kind, string CourseId, string CourseName,
@@ -24,13 +24,23 @@ public sealed class LearnerData
     public Dictionary<string, List<PracticeAttempt>> Attempts { get; } = new(StringComparer.Ordinal);
     public List<ActivityEvent> Activities { get; } = [];
 
-    public static string Key(string userId, string resourceId) => userId + "\u001f" + resourceId;
+    public static string Key(string classroomId, string userId, string resourceId)
+        => classroomId + "\u001f" + userId + "\u001f" + resourceId;
 
-    public LearningRecord? RecordFor(string userId, string resourceId)
-        => Records.GetValueOrDefault(Key(userId, resourceId));
+    public LearningRecord? RecordFor(string classroomId, string userId, string resourceId)
+        => Records.GetValueOrDefault(Key(classroomId, userId, resourceId));
 
-    public IReadOnlyList<PracticeAttempt> AttemptsFor(string userId, string resourceId)
-        => Attempts.GetValueOrDefault(Key(userId, resourceId)) ?? (IReadOnlyList<PracticeAttempt>)Array.Empty<PracticeAttempt>();
+    public LearningRecord? BestFor(string userId, string resourceId, IEnumerable<string>? classroomIds = null)
+    {
+        var allowed = classroomIds?.ToHashSet(StringComparer.Ordinal);
+        return Records.Values.Where(record => record.UserId == userId && record.ResourceId == resourceId
+                && (allowed == null || allowed.Contains(record.ClassroomId)))
+            .OrderByDescending(record => record.Status switch { "completed" => 2, "inProgress" => 1, _ => 0 })
+            .ThenByDescending(record => record.BestScore).ThenByDescending(record => record.AttemptCount).FirstOrDefault();
+    }
+
+    public IReadOnlyList<PracticeAttempt> AttemptsFor(string classroomId, string userId, string resourceId)
+        => Attempts.GetValueOrDefault(Key(classroomId, userId, resourceId)) ?? (IReadOnlyList<PracticeAttempt>)Array.Empty<PracticeAttempt>();
 }
 
 public static class SchoolTime
@@ -78,9 +88,9 @@ public static class AnalyticsLogic
     {
         if (!IsLearned(record)) return false;
         if (kind == "theoryPractice") return record!.AttemptCount > 0 && PracticeHistory.Percent(record) is >= PassScorePercent;
-        return kind == "casePractice"
-            ? maxScore > 0 && record!.AttemptCount > 0 && (long)record.BestScore * 100 >= (long)maxScore * PassScorePercent
-            : record!.Status == "completed";
+        if (kind == "casePractice")
+            return maxScore > 0 && record!.AttemptCount > 0 && (long)record.BestScore * 100 >= (long)maxScore * PassScorePercent;
+        return false;
     }
 
     public static LearningState Evaluate(string kind, LearningRecord? record, int maxScore)
@@ -94,27 +104,32 @@ public static class AnalyticsLogic
         var total = 0;
         var learned = 0;
         var passed = 0;
+        var verifiable = 0;
         foreach (var resource in resources)
         {
             total++;
+            if (IsVerifiable(resource.Kind)) verifiable++;
             var state = stateOf(resource);
             if (state.Learned) learned++;
             if (state.Passed) passed++;
         }
-        return new(total, learned, passed, Rate(learned, total), Rate(passed, total));
+        return new(total, learned, passed, Rate(learned, total), Rate(passed, verifiable), verifiable);
     }
 
-    public static KindStats MetricsFor(LearnerData data, string userId, IEnumerable<AnalyticsResource> resources)
-        => Metrics(resources, resource => Evaluate(resource.Kind, data.RecordFor(userId, resource.Id), resource.MaxScore));
+    public static KindStats MetricsFor(LearnerData data, string userId, IEnumerable<AnalyticsResource> resources, string? classroomId = null)
+        => Metrics(resources, resource => Evaluate(resource.Kind,
+            classroomId == null ? data.BestFor(userId, resource.Id) : data.RecordFor(classroomId, userId, resource.Id), resource.MaxScore));
+
+    public static bool IsVerifiable(string kind) => kind is "theoryPractice" or "casePractice";
 
     public static bool MeetsOverallTarget(KindStats stats)
-        => stats.Total > 0 && (long)stats.Passed * 100 >= (long)stats.Total * OverallTargetPercent;
+        => stats.VerifiableTotal > 0 && (long)stats.Passed * 100 >= (long)stats.VerifiableTotal * OverallTargetPercent;
 
     public static string ResourceStatus(bool learned, bool passed)
         => !learned ? "notStarted" : passed ? "passed" : "learning";
 
-    public static string SkillState(int total, int passed, int learned)
-        => total > 0 && passed >= total ? "mastered" : learned > 0 ? "learning" : "notStarted";
+    public static string SkillState(int total, int passed, int learned, int verifiableTotal = 0, int verifiablePassed = 0)
+        => verifiableTotal > 0 && verifiablePassed >= verifiableTotal ? "mastered" : learned > 0 ? "learning" : "notStarted";
 
     public static int NextTarget(int score)
         => score >= 100 ? 100 : (score / 10 + 1) * 10;
@@ -214,8 +229,8 @@ public static class AnalyticsLoader
         await PracticeHistory.LoadAsync(db, records, ct);
         foreach (var record in records)
         {
-            var key = LearnerData.Key(record.UserId, record.ResourceId);
-            if (!data.Records.TryGetValue(key, out var current) || Rank(record).CompareTo(Rank(current)) >= 0) data.Records[key] = record;
+            var key = LearnerData.Key(record.ClassroomId, record.UserId, record.ResourceId);
+            data.Records[key] = record;
             data.Activities.Add(new ActivityEvent(record.UserId, record.ClassroomId, record.ResourceId, record.StartedAt, false, false));
             if (record.CompletedAt is { } completedAt)
                 data.Activities.Add(new ActivityEvent(record.UserId, record.ClassroomId, record.ResourceId, completedAt, false, true));
@@ -227,7 +242,7 @@ public static class AnalyticsLoader
                               select new { record.UserId, record.ClassroomId, record.ResourceId, Attempt = attempt }).ToListAsync(ct);
         foreach (var row in attempts)
         {
-            var key = LearnerData.Key(row.UserId, row.ResourceId);
+            var key = LearnerData.Key(row.ClassroomId, row.UserId, row.ResourceId);
             if (!data.Attempts.TryGetValue(key, out var list)) data.Attempts[key] = list = [];
             list.Add(row.Attempt);
             if (row.Attempt.StartedAt is { } started)

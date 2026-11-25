@@ -125,6 +125,11 @@ function optionLetter(index: number) {
 
 async function submitPractice() {
   if (!active.value || !props.courseId) return
+  const missing = active.value.questions.filter(question => !(practiceAnswers[question.id] || []).length).length
+  if (missing) {
+    practiceError.value = `还有 ${missing} 道题未作答，请完成后再提交`
+    return
+  }
   practiceSubmitting.value = true
   practiceError.value = ''
   try {
@@ -183,11 +188,6 @@ function previewMachineReason(row: { canConnect: boolean; status?: string }): st
   return row.status && row.status !== 'running' ? '虚拟机未运行，无法连接' : '当前无法连接'
 }
 
-function answerText(resource: CoursePreviewResource, questionId: string) {
-  const question = resource.questions.find(item => item.id === questionId)
-  return question ? selectedText({ options: question.options, answers: practiceAnswers[questionId] }) : '未作答'
-}
-
 function correctAnswerText(resource: CoursePreviewResource, questionId: string) {
   const question = resource.questions.find(item => item.id === questionId)
   const correct = resultByQuestion.value.get(questionId)?.correctAnswers || question?.answers || []
@@ -225,7 +225,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
         预览模式 · {{ labelOf(courseTypeOptions, data.course.type) }} ·
         {{ labelOf(courseStatusOptions, data.course.status) }}
         · 练习与实操不计入学习记录
-        <span v-if="!showAnswers"> · 提交后可查看本次得分与解析</span>
+        <span v-if="!showAnswers"> · 提交后可查看本次得分</span>
       </template>
     </el-alert>
     <div class="preview-layout">
@@ -335,7 +335,7 @@ function resultTagType(questionId: string): 'success' | 'danger' {
               <div class="question-title">
                 <strong>第 {{ index + 1 }} 题</strong>
                 <el-tag size="small" effect="plain">{{ question.score }} 分</el-tag>
-                <el-tag v-if="practiceResult" size="small" :type="resultTagType(question.id)">
+                <el-tag v-if="resultByQuestion.get(question.id)" size="small" :type="resultTagType(question.id)">
                   {{ resultByQuestion.get(question.id)?.correct ? '正确' : '错误' }}
                 </el-tag>
               </div>
@@ -357,10 +357,6 @@ function resultTagType(questionId: string): 'success' | 'danger' {
               </el-checkbox-group>
               <p v-if="showAnswers" class="answer-line">
                 正确答案：{{ correctAnswerText(active, question.id) }}
-                <span v-if="question.analysis"> · {{ question.analysis }}</span>
-              </p>
-              <p v-else-if="practiceResult" class="answer-line">
-                正确答案：{{ correctAnswerText(active, question.id) }} · 你的选择：{{ answerText(active, question.id) }}
                 <span v-if="question.analysis"> · {{ question.analysis }}</span>
               </p>
             </div>
