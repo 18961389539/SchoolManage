@@ -1,0 +1,13 @@
+{
+  "name": "school-training",
+  "private": true,
+  "version": "0.1.0",
+  "description": "School training platform customer demonstration",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "build": "npm --prefix web install && npm --prefix web run build && mkdir -p src/School.Training/wwwroot && cp -a web/dist/. src/School.Training/wwwroot/",
+    "start": "bash scripts/start-demo.sh"
+  }
+}

@@ -7,7 +7,31 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-if ! command -v dotnet >/dev/null 2>&1; then
+# Cloud Agent Apps provides Node. Install the .NET 10 SDK for this user when the image
+# does not already have it, then keep using `dotnet run` exactly as the demo contract says.
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+export DOTNET_NOLOGO=1
+export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
+dotnet_major=""
+if command -v dotnet >/dev/null 2>&1; then
+  dotnet_major="$(dotnet --version 2>/dev/null | cut -d. -f1 || true)"
+fi
+if [[ "$dotnet_major" != "10" ]]; then
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "需要 .NET 10 SDK。" >&2
+    exit 1
+  fi
+  dotnet_home="${DOTNET_ROOT:-$HOME/.dotnet}"
+  echo "正在安装 .NET 10 SDK 到 ${dotnet_home}" >&2
+  installer="$(mktemp)"
+  curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$installer"
+  bash "$installer" --channel 10.0 --install-dir "$dotnet_home"
+  rm -f "$installer"
+  export DOTNET_ROOT="$dotnet_home"
+  export PATH="${dotnet_home}:${PATH}"
+  hash -r
+fi
+if ! command -v dotnet >/dev/null 2>&1 || [[ "$(dotnet --version | cut -d. -f1)" != "10" ]]; then
   echo "需要 .NET 10 SDK。" >&2
   exit 1
 fi
