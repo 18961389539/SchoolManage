@@ -20,27 +20,27 @@ public static class TeachingEndpoints
         reader.MapGet("/classrooms", ListClassrooms);
         reader.MapGet("/classrooms/{id}/content", GetClassroomContent);
 
-        admin.MapPost("/courses", CreateCourse);
-        admin.MapPut("/courses/{id}", UpdateCourse);
-        admin.MapDelete("/courses/{id}", DeleteCourse);
-        admin.MapPost("/courses/{id}/publish", PublishCourse);
-        admin.MapPost("/courses/{id}/unpublish", UnpublishCourse);
+        staff.MapPost("/courses", CreateCourse);
+        staff.MapPut("/courses/{id}", UpdateCourse);
+        staff.MapDelete("/courses/{id}", DeleteCourse);
+        staff.MapPost("/courses/{id}/publish", PublishCourse);
+        staff.MapPost("/courses/{id}/unpublish", UnpublishCourse);
         admin.MapPut("/courses/{id}/activation", SetCourseActivation);
         admin.MapPost("/course-series", (SeriesInput input, SchoolDbContext db, CancellationToken ct) => SaveCourseSeries(null, input, db, ct));
         admin.MapPut("/course-series/{id}", SaveCourseSeries);
         admin.MapDelete("/course-series/{id}", DeleteCourseSeries);
-        admin.MapPost("/courses/{id}/chapters", CreateChapter);
-        admin.MapPut("/chapters/{id}", UpdateChapter);
-        admin.MapDelete("/chapters/{id}", DeleteChapter);
-        admin.MapPost("/chapters/{id}/sections", CreateSection);
-        admin.MapPut("/sections/{id}", UpdateSection);
-        admin.MapDelete("/sections/{id}", DeleteSection);
-        admin.MapPost("/sections/{id}/resources", CreateResource);
-        admin.MapGet("/resources/{id}", GetResourceDetail);
-        admin.MapGet("/course-topologies", ListTopologies);
-        admin.MapCaseTopology();
-        admin.MapPut("/resources/{id}", UpdateResource);
-        admin.MapDelete("/resources/{id}", DeleteResource);
+        staff.MapPost("/courses/{id}/chapters", CreateChapter);
+        staff.MapPut("/chapters/{id}", UpdateChapter);
+        staff.MapDelete("/chapters/{id}", DeleteChapter);
+        staff.MapPost("/chapters/{id}/sections", CreateSection);
+        staff.MapPut("/sections/{id}", UpdateSection);
+        staff.MapDelete("/sections/{id}", DeleteSection);
+        staff.MapPost("/sections/{id}/resources", CreateResource);
+        staff.MapGet("/resources/{id}", GetResourceDetail);
+        staff.MapGet("/course-topologies", ListTopologies);
+        staff.MapCaseTopology();
+        staff.MapPut("/resources/{id}", UpdateResource);
+        staff.MapDelete("/resources/{id}", DeleteResource);
 
         staff.MapGet("/teaching/classes", GetTeachingClasses);
         admin.MapGet("/teaching/teachers", GetTeachers);
@@ -60,26 +60,51 @@ public static class TeachingEndpoints
         learners.MapPost("/classrooms/{id}/resources/{resourceId}/submit", SubmitPractice);
     }
 
-    static async Task<IResult> ListTopologies(string? nodeId, SchoolDbContext db, CancellationToken ct)
-        => Results.Ok(await db.CourseResources.AsNoTracking()
-            .Where(item => item.Kind == "casePractice" && item.Topology != "" && item.StartupNodeId == nodeId)
-            .OrderBy(item => item.Name).Select(item => new { item.Id, item.Name, item.Topology })
-            .Take(100).ToListAsync(ct));
+    static async Task<IResult> ListTopologies(string? nodeId, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
+    {
+        var userId = ContentAccess.UserId(ctx.User);
+        var isAdmin = ctx.User.IsInRole("Admin");
+        var rows = await (from resource in db.CourseResources.AsNoTracking()
+                          join section in db.CourseSections.AsNoTracking() on resource.SectionId equals section.Id
+                          join chapter in db.CourseChapters.AsNoTracking() on section.ChapterId equals chapter.Id
+                          join course in db.Courses.AsNoTracking() on chapter.CourseId equals course.Id
+                          where resource.Kind == "casePractice" && resource.Topology != "" && resource.StartupNodeId == nodeId
+                                && (isAdmin || course.Visibility == ContentAccess.Published || course.Visibility == ContentAccess.Shared
+                                    || course.OwnerUserId == userId)
+                          orderby resource.Name
+                          select new { resource.Id, resource.Name, resource.Topology }).Take(100).ToListAsync(ct);
+        return Results.Ok(rows);
+    }
 
     static async Task<IResult> ListCourses(HttpRequest req, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var q = db.Courses.AsNoTracking();
         var isAdmin = ctx.User.IsInRole("Admin");
-        if (!isAdmin) q = q.Where(course => course.Status == "published");
+        var userId = ContentAccess.UserId(ctx.User);
+        var manage = req.Query["manage"] == "true";
+        if (!isAdmin)
+        {
+            if (ctx.User.IsInRole("Teacher"))
+                q = q.Where(course =>
+                    (course.Visibility == ContentAccess.Published && course.Status == "published")
+                    || (course.Visibility == ContentAccess.Shared && course.Status == "published")
+                    || (course.OwnerUserId == userId && (manage || course.Status == "published")));
+            else
+                q = q.Where(course => course.Visibility == ContentAccess.Published && course.Status == "published");
+        }
         var search = req.Query["search"].ToString().Trim();
         if (search.Length > 0) q = q.Where(course => course.Name.Contains(search) || course.Description.Contains(search));
         var type = req.Query["type"].ToString();
         if (TeachingLogic.CourseTypes.Contains(type)) q = q.Where(course => course.Type == type);
         var status = req.Query["status"].ToString();
-        if (isAdmin && status is "draft" or "published") q = q.Where(course => course.Status == status);
+        if ((isAdmin || ctx.User.IsInRole("Teacher")) && status is "draft" or "published") q = q.Where(course => course.Status == status);
         var seriesId = req.Query["seriesId"].ToString();
         if (seriesId.Length > 0) q = q.Where(course => course.SeriesId == seriesId);
-        if (req.Query["active"] == "true") q = q.Where(course => course.Status == "published" && course.IsActive);
+        if (req.Query["active"] == "true")
+            q = q.Where(course => course.Status == "published" && (
+                (course.Visibility == ContentAccess.Published && course.IsActive)
+                || course.Visibility == ContentAccess.Shared
+                || (course.Visibility == ContentAccess.Private && (isAdmin || course.OwnerUserId == userId))));
         var (page, size) = Validation.Page(req);
         var total = await q.CountAsync(ct);
         var rows = await q.OrderByDescending(course => course.CreatedAt).ThenBy(course => course.Name)
@@ -87,7 +112,7 @@ public static class TeachingEndpoints
             .Select(course => new
             {
                 course.Id, course.Name, course.Description, course.Type, course.Status, course.Remark, course.CreatedAt,
-                course.PublishedAt, course.IsActive, course.SeriesId, course.Version
+                course.PublishedAt, course.IsActive, course.SeriesId, course.Version, course.OwnerUserId, course.Visibility
             })
             .ToListAsync(ct);
         var ids = rows.Select(row => row.Id).ToArray();
@@ -110,7 +135,8 @@ public static class TeachingEndpoints
                 return new
                 {
                     row.Id, row.Name, row.Description, row.Type, row.Status, row.Remark, row.CreatedAt, row.PublishedAt, row.IsActive, row.SeriesId,
-                    row.Version,
+                    row.Version, row.OwnerUserId, row.Visibility,
+                    canEdit = ContentAccess.CanEdit(ctx.User, row.OwnerUserId, row.Visibility),
                     chapterCount = chapterCounts.GetValueOrDefault(row.Id),
                     sectionCount = sectionCounts.GetValueOrDefault(row.Id),
                     stats.ResourceCount, stats.TheoryCount, stats.TheoryPracticeCount, stats.CaseCount,
@@ -123,10 +149,12 @@ public static class TeachingEndpoints
     static async Task<IResult> ListCourseSeries(bool? manage, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var includeDrafts = manage == true && ctx.User.IsInRole("Admin");
+        var userId = ContentAccess.UserId(ctx.User);
         var rows = await db.CoreCourseSeries.AsNoTracking().OrderBy(item => item.Name).Select(item => new
         {
             item.Id, item.Name, item.Description, courseCount = db.Courses.Count(course => course.SeriesId == item.Id
-                && (includeDrafts || course.Status == "published"))
+                && (includeDrafts || (course.Status == "published" && (
+                    course.Visibility == ContentAccess.Published || course.Visibility == ContentAccess.Shared || course.OwnerUserId == userId))))
         }).Where(item => includeDrafts || item.courseCount > 0).ToListAsync(ct);
         return Results.Ok(rows);
     }
@@ -164,7 +192,11 @@ public static class TeachingEndpoints
     static async Task<IResult> GetAvailability(HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var userId = CurrentUserId(ctx);
-        var active = await db.Courses.AnyAsync(item => item.Status == "published" && item.IsActive, ct);
+        var isAdmin = ctx.User.IsInRole("Admin");
+        var active = await db.Courses.AnyAsync(item => item.Status == "published" && (
+            (item.Visibility == ContentAccess.Published && item.IsActive)
+            || ((isAdmin || ctx.User.IsInRole("Teacher")) && item.Visibility == ContentAccess.Shared)
+            || (item.Visibility == ContentAccess.Private && (isAdmin || item.OwnerUserId == userId))), ct);
         var hasHistory = !active && await db.Classrooms.AnyAsync(item => ctx.User.IsInRole("Admin")
             || (ctx.User.IsInRole("Teacher") && item.TeacherUserId == userId)
             || (ctx.User.IsInRole("Student") && db.ClassroomStudents.Any(student => student.ClassroomId == item.Id && student.StudentUserId == userId)), ct);
@@ -176,6 +208,7 @@ public static class TeachingEndpoints
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var course = await db.Courses.FindAsync([id], ct);
         if (course == null) return NotFound("课程不存在");
+        if (course.Visibility != ContentAccess.Published) return Conflict("只有公共标准库中的课程需要激活后才能开课");
         if (input.Active && course.Status != "published") return Conflict("请先发布课程");
         if (!input.Active && await db.Classrooms.AnyAsync(item => item.CourseId == id && item.Status != "closed", ct))
             return Conflict("课程仍有未结课的课堂");
@@ -214,7 +247,9 @@ public static class TeachingEndpoints
     {
         var course = await db.Courses.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (course == null) return NotFound("课程不存在");
-        if (!ctx.User.IsInRole("Admin") && course.Status != "published") return NotFound("课程不存在或尚未发布");
+        if (!ContentAccess.CanSee(ctx.User, course.OwnerUserId, course.Visibility)
+            || (course.Status != "published" && !ContentAccess.CanEdit(ctx.User, course.OwnerUserId, course.Visibility)))
+            return NotFound("课程不存在或尚未发布");
         var chapters = await db.CourseChapters.AsNoTracking().Where(item => item.CourseId == id).OrderBy(item => item.SortOrder).ToListAsync(ct);
         var chapterIds = chapters.Select(item => item.Id).ToArray();
         var sections = await db.CourseSections.AsNoTracking().Where(item => chapterIds.Contains(item.ChapterId)).OrderBy(item => item.SortOrder).ToListAsync(ct);
@@ -245,7 +280,8 @@ public static class TeachingEndpoints
         return Results.Ok(new
         {
             course.Id, course.Name, course.Description, course.Type, course.Status, course.Remark, course.CreatedAt, course.PublishedAt,
-            course.Version,
+            course.IsActive, course.SeriesId, course.Version, course.OwnerUserId, course.Visibility,
+            canEdit = ContentAccess.CanEdit(ctx.User, course.OwnerUserId, course.Visibility),
             chapterCount = chapters.Count, sectionCount = sections.Count, resourceCount = resources.Count,
             theoryCount = resources.Count(item => item.Kind == "theory"),
             theoryPracticeCount = resources.Count(item => item.Kind == "theoryPractice"),
@@ -261,12 +297,14 @@ public static class TeachingEndpoints
         var error = TeachingLogic.ValidateCourse(input);
         if (error != null) return Bad(error);
         if (!await ValidSeries(input, db, ct)) return Bad("请选择有效的专业核心课系列");
+        if (ContentAccess.TryNormalizeCreate(ctx.User, input.Visibility, out var visibility) is { } visibilityError) return Bad(visibilityError);
         var name = input.Name.Trim();
         if (await db.Courses.AnyAsync(course => course.Name == name, ct)) return Conflict("课程名称已存在");
         var entity = new TrainingCourse
         {
             Name = name, Type = input.Type, Description = (input.Description ?? "").Trim(), Remark = (input.Remark ?? "").Trim(),
-            SeriesId = string.IsNullOrEmpty(input.SeriesId) ? null : input.SeriesId
+            SeriesId = string.IsNullOrEmpty(input.SeriesId) ? null : input.SeriesId,
+            OwnerUserId = CurrentUserId(ctx), Visibility = visibility
         };
         db.Courses.Add(entity);
         Audit.Add(db, ctx, "新增课程", entity.Name);
@@ -278,6 +316,8 @@ public static class TeachingEndpoints
     {
         var entity = await db.Courses.FindAsync([id], ct);
         if (entity == null) return NotFound("课程不存在");
+        if (ContentAccess.RequireCourseEdit(ctx.User, entity.OwnerUserId, entity.Visibility, entity.Status) is { } denied) return denied;
+        if (ContentAccess.ApplyVisibility(ctx.User, entity.Visibility, input.Visibility, out var visibility) is { } visibilityError) return Bad(visibilityError);
         if (input.Version is not int version) return Concurrency.MissingVersion();
         if (!Concurrency.Matches(version, entity.Version)) return Concurrency.Conflict("课程");
         var error = TeachingLogic.ValidateCourse(input);
@@ -290,6 +330,7 @@ public static class TeachingEndpoints
         entity.SeriesId = string.IsNullOrEmpty(input.SeriesId) ? null : input.SeriesId;
         entity.Description = (input.Description ?? "").Trim();
         entity.Remark = (input.Remark ?? "").Trim();
+        entity.Visibility = visibility;
         entity.Version++;
         Audit.Add(db, ctx, "编辑课程", entity.Name);
         await db.SaveChangesAsync(ct);
@@ -300,6 +341,7 @@ public static class TeachingEndpoints
     {
         var entity = await db.Courses.FindAsync([id], ct);
         if (entity == null) return NotFound("课程不存在");
+        if (ContentAccess.RequireCourseEdit(ctx.User, entity.OwnerUserId, entity.Visibility, entity.Status) is { } denied) return denied;
         if (entity.Status == "published") return Conflict("课程已发布，请先下线后再删除");
         if (await db.Classrooms.AnyAsync(item => item.CourseId == id, ct)) return Conflict("课程已被课堂使用，请先删除或调整课堂");
         var resourceIds = await (from resource in db.CourseResources.AsNoTracking()
@@ -319,6 +361,7 @@ public static class TeachingEndpoints
     {
         var course = await db.Courses.FindAsync([id], ct);
         if (course == null) return NotFound("课程不存在");
+        if (ContentAccess.RequireCourseEdit(ctx.User, course.OwnerUserId, course.Visibility, course.Status) is { } denied) return denied;
         var resources = await (from resource in db.CourseResources.AsNoTracking()
                                join section in db.CourseSections.AsNoTracking() on resource.SectionId equals section.Id
                                join chapter in db.CourseChapters.AsNoTracking() on section.ChapterId equals chapter.Id
@@ -330,7 +373,8 @@ public static class TeachingEndpoints
             .Select(item => item.ResourceId).Distinct().ToListAsync(ct);
         var missing = resources.Where(item => item.Kind == "theoryPractice" && !withQuestions.Contains(item.Id)).ToArray();
         if (missing.Length > 0) return Conflict("以下理论练习还没有题目：" + string.Join("、", missing.Select(item => item.Name)));
-        if (course.Status != "published") course.IsActive = activate ?? true;
+        if (course.Status != "published")
+            course.IsActive = ctx.User.IsInRole("Admin") && course.Visibility == ContentAccess.Published && (activate ?? true);
         course.Status = "published";
         course.PublishedAt ??= DateTime.UtcNow;
         Audit.Add(db, ctx, "发布课程", course.Name);
@@ -343,6 +387,7 @@ public static class TeachingEndpoints
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var course = await db.Courses.FindAsync([id], ct);
         if (course == null) return NotFound("课程不存在");
+        if (ContentAccess.RequireCourseEdit(ctx.User, course.OwnerUserId, course.Visibility, course.Status) is { } denied) return denied;
         if (await db.Classrooms.AnyAsync(item => item.CourseId == id && item.Status != "closed", ct))
             return Conflict("课程仍有未结课的课堂，暂不能下线");
         course.Status = "draft";
@@ -355,7 +400,7 @@ public static class TeachingEndpoints
 
     static async Task<IResult> CreateChapter(string id, ChapterInput input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
-        if (!await db.Courses.AnyAsync(item => item.Id == id, ct)) return NotFound("课程不存在");
+        if (await RequireEditableCourse(db, ctx, id, ct) is { } denied) return denied;
         var error = TeachingLogic.ValidateChapterName(input.Name);
         if (error != null) return Bad(error);
         var next = await db.CourseChapters.Where(item => item.CourseId == id).Select(item => (int?)item.SortOrder).MaxAsync(ct) ?? -1;
@@ -370,6 +415,7 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseChapters.FindAsync([id], ct);
         if (entity == null) return NotFound("大章不存在");
+        if (await RequireEditableCourse(db, ctx, entity.CourseId, ct) is { } denied) return denied;
         if (input.Version is not int version) return Concurrency.MissingVersion();
         if (!Concurrency.Matches(version, entity.Version)) return Concurrency.Conflict("大章");
         var error = TeachingLogic.ValidateChapterName(input.Name);
@@ -385,6 +431,7 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseChapters.FindAsync([id], ct);
         if (entity == null) return NotFound("大章不存在");
+        if (await RequireEditableCourse(db, ctx, entity.CourseId, ct) is { } denied) return denied;
         if (await EnsureCourseDraft(db, entity.CourseId, ct) is { } chapterLock) return chapterLock;
         var resourceIds = await (from resource in db.CourseResources.AsNoTracking()
                                  join section in db.CourseSections.AsNoTracking() on resource.SectionId equals section.Id
@@ -401,7 +448,9 @@ public static class TeachingEndpoints
 
     static async Task<IResult> CreateSection(string id, SectionInput input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
-        if (!await db.CourseChapters.AnyAsync(item => item.Id == id, ct)) return NotFound("大章不存在");
+        var courseId = await CourseIdOfChapter(db, id, ct);
+        if (courseId == null) return NotFound("大章不存在");
+        if (await RequireEditableCourse(db, ctx, courseId, ct) is { } denied) return denied;
         var error = TeachingLogic.ValidateSectionName(input.Name) ?? TeachingLogic.ValidateSectionDuration(input.DurationMinutes);
         if (error != null) return Bad(error);
         var next = await db.CourseSections.Where(item => item.ChapterId == id).Select(item => (int?)item.SortOrder).MaxAsync(ct) ?? -1;
@@ -416,6 +465,7 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseSections.FindAsync([id], ct);
         if (entity == null) return NotFound("小节不存在");
+        if (await RequireEditableCourse(db, ctx, await CourseIdOfChapter(db, entity.ChapterId, ct), ct) is { } denied) return denied;
         if (input.Version is not int version) return Concurrency.MissingVersion();
         if (!Concurrency.Matches(version, entity.Version)) return Concurrency.Conflict("小节");
         var error = TeachingLogic.ValidateSectionName(input.Name) ?? TeachingLogic.ValidateSectionDuration(input.DurationMinutes);
@@ -432,8 +482,8 @@ public static class TeachingEndpoints
     {
         var entity = await db.CourseSections.FindAsync([id], ct);
         if (entity == null) return NotFound("小节不存在");
-        var courseId = await db.CourseChapters.AsNoTracking().Where(item => item.Id == entity.ChapterId)
-            .Select(item => item.CourseId).FirstOrDefaultAsync(ct);
+        var courseId = await CourseIdOfChapter(db, entity.ChapterId, ct);
+        if (await RequireEditableCourse(db, ctx, courseId, ct) is { } denied) return denied;
         if (await EnsureCourseDraft(db, courseId, ct) is { } sectionLock) return sectionLock;
         var resourceIds = await db.CourseResources.AsNoTracking().Where(item => item.SectionId == id).Select(item => item.Id).ToListAsync(ct);
         if (await HasLearningHistory(db, resourceIds, ct)) return Conflict("该小节下的资源已有学习记录或实操会话，不能删除。");
@@ -447,7 +497,9 @@ public static class TeachingEndpoints
 
     static async Task<IResult> CreateResource(string id, CourseResourceInput input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
-        if (!await db.CourseSections.AnyAsync(item => item.Id == id, ct)) return NotFound("小节不存在");
+        var courseId = await CourseIdOfSection(db, id, ct);
+        if (courseId == null) return NotFound("小节不存在");
+        if (await RequireEditableCourse(db, ctx, courseId, ct) is { } denied) return denied;
         var error = TeachingLogic.ValidateResource(input);
         if (error != null) return Bad(error);
         if (!await StartupNodeExists(db, input.StartupNodeId, ct)) return Bad("启动节点不存在");
@@ -462,10 +514,11 @@ public static class TeachingEndpoints
         return Results.Ok(new { entity.Id, entity.SortOrder });
     }
 
-    static async Task<IResult> GetResourceDetail(string id, SchoolDbContext db, CancellationToken ct)
+    static async Task<IResult> GetResourceDetail(string id, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var entity = await db.CourseResources.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (entity == null) return NotFound("资源不存在");
+        if (await RequireEditableCourse(db, ctx, await CourseIdOfResource(db, id, ct), ct) is { } denied) return denied;
         var questions = await db.CourseQuestions.AsNoTracking().Where(item => item.ResourceId == id).OrderBy(item => item.SortOrder).ToListAsync(ct);
         var files = await db.CourseResourceFiles.AsNoTracking().Where(item => item.ResourceId == id)
             .OrderByDescending(item => item.IsPinned).ThenBy(item => item.SortOrder).ToListAsync(ct);
@@ -491,6 +544,7 @@ var entity = await db.CourseResources.FindAsync([id], ct);
         var courseId = await db.CourseSections.AsNoTracking().Where(item => item.Id == entity.SectionId)
             .Join(db.CourseChapters.AsNoTracking(), section => section.ChapterId, chapter => chapter.Id, (_, chapter) => chapter.CourseId)
             .FirstOrDefaultAsync(ct);
+        if (await RequireEditableCourse(db, ctx, courseId, ct) is { } denied) return denied;
         if (await EnsureCourseDraft(db, courseId, ct) is { } updateLock) return updateLock;
         var error = TeachingLogic.ValidateResource(input);
         if (error != null) return Bad(error);
@@ -523,6 +577,7 @@ var entity = await db.CourseResources.FindAsync([id], ct);
         var courseId = await db.CourseSections.AsNoTracking().Where(item => item.Id == entity.SectionId)
             .Join(db.CourseChapters.AsNoTracking(), section => section.ChapterId, chapter => chapter.Id, (_, chapter) => chapter.CourseId)
             .FirstOrDefaultAsync(ct);
+        if (await RequireEditableCourse(db, ctx, courseId, ct) is { } denied) return denied;
         if (await EnsureCourseDraft(db, courseId, ct) is { } deleteLock) return deleteLock;
         if (await HasLearningHistory(db, [id], ct)) return Conflict("该资源已有学习记录或实操会话，不能删除。");
         var stored = await CourseFileStore.ListAsync(db, [id], ct);
@@ -634,9 +689,10 @@ var entity = await db.CourseResources.FindAsync([id], ct);
         if (error != null) return Bad(error);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var course = await db.Courses.AsNoTracking().FirstOrDefaultAsync(item => item.Id == input.CourseId, ct);
-        if (course == null || course.Status != "published" || !course.IsActive) return Bad("请选择已发布并激活的课程");
         var (teacherError, teacherUserId) = await ResolveTeacher(input.TeacherUserId, ctx, db, ct);
         if (teacherError != null) return teacherError;
+        if (course == null || !ContentAccess.UsableForClassroom(course.Status, course.Visibility, course.IsActive, course.OwnerUserId, ctx.User.IsInRole("Admin"), teacherUserId))
+            return Bad("请选择已发布并可用于开课的课程");
         var entity = new Classroom
         {
             Name = input.Name.Trim(), CourseId = input.CourseId, TeacherUserId = teacherUserId,
@@ -660,8 +716,7 @@ var entity = await db.CourseResources.FindAsync([id], ct);
         var error = ValidateClassroom(input);
         if (error != null) return Bad(error);
         var course = await db.Courses.AsNoTracking().FirstOrDefaultAsync(item => item.Id == input.CourseId, ct);
-        if (course == null || course.Status != "published" || (!course.IsActive && entity.CourseId != course.Id))
-            return Bad("请选择已发布并激活的课程");
+        if (course == null) return Bad("请选择已发布并可用于开课的课程");
         if (entity.CourseId != input.CourseId && await db.LearningRecords.AnyAsync(item => item.ClassroomId == id, ct))
             return Conflict("课堂已有学习记录，不能更换课程");
         var teacherUserId = entity.TeacherUserId;
@@ -671,11 +726,19 @@ var entity = await db.CourseResources.FindAsync([id], ct);
             if (teacherError != null) return teacherError;
             teacherUserId = resolvedTeacherId;
         }
+        var changingCourse = entity.CourseId != input.CourseId;
+        if (!changingCourse && course.Status != "published") return Bad("请选择已发布并可用于开课的课程");
+        if (changingCourse && !ContentAccess.UsableForClassroom(
+                course.Status, course.Visibility, course.IsActive, course.OwnerUserId, ctx.User.IsInRole("Admin"), teacherUserId))
+            return Bad("请选择已发布并可用于开课的课程");
+        var courseChanged = changingCourse;
         entity.Name = input.Name.Trim();
         entity.CourseId = input.CourseId;
         entity.TeacherUserId = teacherUserId;
         entity.OpenAt = input.OpenAt;
         entity.CloseAt = input.CloseAt;
+        if (courseChanged || TeachingLogic.EffectiveStatus(entity, DateTime.UtcNow) != "closed")
+            await ClassroomProgress.UnfreezeAsync(db, entity.Id, ct);
         Audit.Add(db, ctx, "编辑课堂", entity.Name);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -705,9 +768,11 @@ var entity = await db.CourseResources.FindAsync([id], ct);
         if (entity == null) return NotFound("课堂不存在");
         if (!CanManage(ctx, entity)) return Forbidden("无权管理该课堂");
         if (entity.CloseAt <= DateTime.UtcNow) return Conflict("课堂时间已结束，请先调整开放时间");
-        if (!await db.Courses.AnyAsync(item => item.Id == entity.CourseId && item.Status == "published" && item.IsActive, ct))
-            return Conflict("请先发布并激活课程");
+        var course = await db.Courses.AsNoTracking().FirstOrDefaultAsync(item => item.Id == entity.CourseId, ct);
+        if (course == null || !ContentAccess.UsableForClassroom(course.Status, course.Visibility, course.IsActive, course.OwnerUserId, ctx.User.IsInRole("Admin"), entity.TeacherUserId))
+            return Conflict("课程尚未发布，或公共标准库课程尚未激活");
         entity.Status = "open";
+        await ClassroomProgress.UnfreezeAsync(db, entity.Id, ct);
         Audit.Add(db, ctx, "开放课堂", entity.Name);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -724,6 +789,7 @@ var entity = await db.CourseResources.FindAsync([id], ct);
         await ClassroomCaseLogic.SuspendClassroomAsync(db, id, shares, ct);
         Audit.Add(db, ctx, "结课", entity.Name);
         await db.SaveChangesAsync(ct);
+        await ClassroomProgress.FreezeAsync(db, entity, ct);
         await transaction.CommitAsync(ct);
         return Results.Ok(new { entity.Id, entity.Status });
     }
@@ -767,6 +833,7 @@ var entity = await db.CourseResources.FindAsync([id], ct);
         db.ClassroomStudents.RemoveRange(enrollments);
         Audit.Add(db, ctx, "移除课堂学生", classroom.Name, $"移除 {enrollments.Count} 人");
         await db.SaveChangesAsync(ct);
+        await ClassroomProgress.ForgetStudentsAsync(db, id, enrollments.Select(item => item.StudentUserId).ToArray(), ct);
         return Results.Ok(new { removed = enrollments.Count });
     }
 
@@ -909,6 +976,7 @@ var entity = await db.CourseResources.FindAsync([id], ct);
             && await ClassroomCaseLogic.StartAsync(db, resource, record, userId!, now, ct) is { } caseError)
             return Conflict(caseError);
         await db.SaveChangesAsync(ct);
+        await ClassroomProgress.RefreshStudentAsync(db, id, userId!, ct);
         await transaction.CommitAsync(ct);
         return Results.Ok(RecordView(record));
     }
@@ -930,6 +998,7 @@ var entity = await db.CourseResources.FindAsync([id], ct);
         record.Status = "completed";
         record.CompletedAt ??= now;
         await db.SaveChangesAsync(ct);
+        await ClassroomProgress.RefreshStudentAsync(db, id, userId!, ct);
         return Results.Ok(RecordView(record));
     }
 
@@ -970,6 +1039,7 @@ var entity = await db.CourseResources.FindAsync([id], ct);
         record.PracticeStartedAt = null;
         db.PracticeAttempts.Add(attempt);
         await db.SaveChangesAsync(ct);
+        await ClassroomProgress.RefreshStudentAsync(db, id, userId!, ct);
         var history = await db.PracticeAttempts.Where(item => item.LearningRecordId == record.Id).ToListAsync(ct);
         PracticeHistory.Apply([record], history);
         await transaction.CommitAsync(ct);
@@ -1132,6 +1202,31 @@ var entity = await db.CourseResources.FindAsync([id], ct);
 
     static async Task<bool> StartupNodeExists(SchoolDbContext db, string? nodeId, CancellationToken ct)
         => string.IsNullOrWhiteSpace(nodeId) || await db.Nodes.AnyAsync(item => item.Id == nodeId, ct);
+
+    static async Task<IResult?> RequireEditableCourse(SchoolDbContext db, HttpContext ctx, string? courseId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(courseId)) return NotFound("课程不存在");
+        var course = await db.Courses.AsNoTracking().Where(item => item.Id == courseId)
+            .Select(item => new { item.OwnerUserId, item.Visibility, item.Status }).FirstOrDefaultAsync(ct);
+        if (course == null) return NotFound("课程不存在");
+        return ContentAccess.RequireCourseEdit(ctx.User, course.OwnerUserId, course.Visibility, course.Status);
+    }
+
+    static Task<string?> CourseIdOfChapter(SchoolDbContext db, string chapterId, CancellationToken ct)
+        => db.CourseChapters.AsNoTracking().Where(item => item.Id == chapterId).Select(item => (string?)item.CourseId).FirstOrDefaultAsync(ct);
+
+    static Task<string?> CourseIdOfSection(SchoolDbContext db, string sectionId, CancellationToken ct)
+        => (from section in db.CourseSections.AsNoTracking()
+            join chapter in db.CourseChapters.AsNoTracking() on section.ChapterId equals chapter.Id
+            where section.Id == sectionId
+            select (string?)chapter.CourseId).FirstOrDefaultAsync(ct);
+
+    static Task<string?> CourseIdOfResource(SchoolDbContext db, string resourceId, CancellationToken ct)
+        => (from resource in db.CourseResources.AsNoTracking()
+            join section in db.CourseSections.AsNoTracking() on resource.SectionId equals section.Id
+            join chapter in db.CourseChapters.AsNoTracking() on section.ChapterId equals chapter.Id
+            where resource.Id == resourceId
+            select (string?)chapter.CourseId).FirstOrDefaultAsync(ct);
 
     static async Task<IResult?> EnsureCourseDraft(SchoolDbContext db, string? courseId, CancellationToken ct)
     {

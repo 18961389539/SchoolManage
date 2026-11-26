@@ -61,7 +61,7 @@ public static class CampLogic
         return null;
     }
 
-    public static List<JobSkill> BuildSkills(string positionId, IEnumerable<CampSkillInput>? inputs)
+    public static List<JobSkill> BuildSkills(string positionId, IEnumerable<CampSkillInput>? inputs, int contentVersion = 1)
     {
         var order = 0;
         return (inputs ?? []).Select(input => new JobSkill
@@ -70,11 +70,12 @@ public static class CampLogic
             Name = input.Name.Trim(),
             SubName = (input.SubName ?? "").Trim(),
             Ability = (input.Ability ?? "").Trim(),
+            ContentVersion = contentVersion,
             SortOrder = order++
         }).ToList();
     }
 
-    public static void AddQuestions(SchoolDbContext db, string positionId, List<JobSkill> skills, CampQuestionInput[]? inputs)
+    public static void AddQuestions(SchoolDbContext db, string positionId, List<JobSkill> skills, CampQuestionInput[]? inputs, int contentVersion = 1)
     {
         var order = 0;
         foreach (var question in inputs ?? [])
@@ -92,6 +93,7 @@ public static class CampLogic
                 RubricJson = question.Type == "practical" ? SerializeRubric(question.Rubric) : "[]",
                 PracticalRubricJson = ClassroomCaseScoring.Write(question.Type == "practical" ? question.PracticalRubric ?? [] : []),
                 Score = question.Score,
+                ContentVersion = contentVersion,
                 SortOrder = order++
             });
         }
@@ -154,6 +156,11 @@ public static class CampLogic
     {
         if (position.DurationMinutes != input.DurationMinutes) return false;
         if (!string.Equals(position.StartupNodeId, string.IsNullOrWhiteSpace(input.StartupNodeId) ? null : input.StartupNodeId, StringComparison.Ordinal)) return false;
+        return PaperMatches(skills, questions, input);
+    }
+
+    public static bool PaperMatches(IEnumerable<JobSkill> skills, IEnumerable<JobQuestion> questions, CampPositionInput input)
+    {
         var skillInputs = input.Skills ?? [];
         var existingSkills = skills.OrderBy(item => item.SortOrder).ToArray();
         if (existingSkills.Length != skillInputs.Length) return false;

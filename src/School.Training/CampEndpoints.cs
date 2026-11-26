@@ -56,24 +56,24 @@ public static class CampEndpoints
         var positions = await query.OrderByDescending(item => item.UpdatedAt).ThenBy(item => item.Name).Take(500).ToListAsync(ct);
         var ids = positions.Select(item => item.Id).ToArray();
         var stats = await db.JobQuestions.AsNoTracking().Where(item => ids.Contains(item.PositionId))
-            .Select(item => new { item.PositionId, item.Type, item.Score }).ToListAsync(ct);
+            .Select(item => new { item.PositionId, item.ContentVersion, item.Type, item.Score }).ToListAsync(ct);
+        var skillStats = await db.JobSkills.AsNoTracking().Where(item => ids.Contains(item.PositionId))
+            .Select(item => new { item.PositionId, item.ContentVersion }).ToListAsync(ct);
         if (isAdmin)
         {
             var attemptCounts = await db.JobAttempts.AsNoTracking().Where(item => ids.Contains(item.PositionId))
-                .GroupBy(item => item.PositionId).Select(group => new { group.Key, Count = group.Count() })
-                .ToDictionaryAsync(item => item.Key, item => item.Count, ct);
-            var skillCounts = await db.JobSkills.AsNoTracking().Where(item => ids.Contains(item.PositionId))
-                .GroupBy(item => item.PositionId).Select(group => new { group.Key, Count = group.Count() })
+                .GroupBy(item => item.PositionId)
+                .Select(group => new { group.Key, Count = group.Select(item => item.UserId).Distinct().Count() })
                 .ToDictionaryAsync(item => item.Key, item => item.Count, ct);
             return Results.Ok(new
             {
                 items = positions.Select(item =>
                 {
-                    var own = stats.Where(stat => stat.PositionId == item.Id).ToArray();
+                    var own = stats.Where(stat => stat.PositionId == item.Id && stat.ContentVersion == item.ContentVersion).ToArray();
                     return new
                     {
                         item.Id, item.Name, item.Description, item.DurationMinutes, item.StartupNodeId, item.Published, item.CreatedAt, item.UpdatedAt,
-                        skillCount = skillCounts.GetValueOrDefault(item.Id),
+                        skillCount = skillStats.Count(skill => skill.PositionId == item.Id && skill.ContentVersion == item.ContentVersion),
                         questionCount = own.Length,
                         practicalCount = own.Count(question => question.Type == "practical"),
                         maxScore = own.Sum(question => question.Score),
@@ -85,31 +85,34 @@ public static class CampEndpoints
         var userId = CurrentUserId(ctx);
         var now = DateTime.UtcNow;
         var attempts = await db.JobAttempts.AsNoTracking().Where(item => item.UserId == userId && ids.Contains(item.PositionId)).ToListAsync(ct);
-        var byPosition = attempts.ToDictionary(item => item.PositionId, StringComparer.Ordinal);
-        var skillCountsForLearner = await db.JobSkills.AsNoTracking().Where(item => ids.Contains(item.PositionId))
-            .GroupBy(item => item.PositionId).Select(group => new { group.Key, Count = group.Count() })
-            .ToDictionaryAsync(item => item.Key, item => item.Count, ct);
+        var byPosition = attempts.GroupBy(item => item.PositionId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => PreferredAttempt(group)!, StringComparer.Ordinal);
+        var completedCounts = attempts.Where(item => item.Status == "graded")
+            .GroupBy(item => item.PositionId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         return Results.Ok(new
         {
             items = positions.Select(position =>
             {
-                var own = stats.Where(stat => stat.PositionId == position.Id).ToArray();
                 var attempt = byPosition.GetValueOrDefault(position.Id);
+                var version = attempt is { Status: "inProgress" } ? attempt.ContentVersion : position.ContentVersion;
+                var own = stats.Where(stat => stat.PositionId == position.Id && stat.ContentVersion == version).ToArray();
                 var remaining = attempt is { Status: "inProgress" }
                     ? Math.Max(0, (int)Math.Ceiling((attempt.Deadline - now).TotalSeconds)) : 0;
                 return new
                 {
                     position.Id, position.Name, position.Description, position.DurationMinutes, position.StartupNodeId, position.Published,
-                    skillCount = skillCountsForLearner.GetValueOrDefault(position.Id),
+                    skillCount = skillStats.Count(skill => skill.PositionId == position.Id && skill.ContentVersion == version),
                     questionCount = own.Length,
                     practicalCount = own.Count(question => question.Type == "practical"),
                     maxScore = own.Sum(question => question.Score),
+                    completedCount = completedCounts.GetValueOrDefault(position.Id),
                     attempt = attempt == null ? null : new
                     {
                         attempt.Id, attempt.Status, attempt.StartedAt, attempt.Deadline, attempt.SubmittedAt,
                         attempt.AutoSubmitted, attempt.TotalScore, attempt.MaxScore, remainingSeconds = remaining
                     },
-                    canStart = own.Length > 0 && (attempt == null || attempt.Status == "inProgress")
+                    canStart = own.Length > 0 && (attempt == null || attempt.Status is "inProgress" or "graded")
                 };
             })
         });
@@ -129,18 +132,20 @@ public static class CampEndpoints
         var questions = await db.JobQuestions.AsNoTracking().Where(item => item.PositionId == id).OrderBy(item => item.SortOrder).ToListAsync(ct);
         if (ctx.User.IsInRole("Admin"))
         {
-            var indexById = skills.Select((skill, index) => new { skill.Id, Index = index }).ToDictionary(item => item.Id, item => item.Index, StringComparer.Ordinal);
-            var attemptCount = await db.JobAttempts.CountAsync(item => item.PositionId == id, ct);
+            var currentSkills = skills.Where(item => item.ContentVersion == position.ContentVersion).ToList();
+            var currentQuestions = questions.Where(item => item.ContentVersion == position.ContentVersion).ToList();
+            var indexById = currentSkills.Select((skill, index) => new { skill.Id, Index = index }).ToDictionary(item => item.Id, item => item.Index, StringComparer.Ordinal);
+            var attemptCount = await db.JobAttempts.Where(item => item.PositionId == id).Select(item => item.UserId).Distinct().CountAsync(ct);
             return Results.Ok(new
             {
                 position.Id, position.Name, position.Description, position.DurationMinutes, position.StartupNodeId, position.Published,
                 position.CreatedAt, position.UpdatedAt, attemptCount,
-                canEditStructure = attemptCount == 0,
-                questionCount = questions.Count,
-                practicalCount = questions.Count(question => question.Type == "practical"),
-                maxScore = questions.Sum(question => question.Score),
-                skills = skills.Select(skill => new { skill.Id, skill.Name, skill.SubName, skill.Ability, skill.SortOrder }),
-                questions = questions.Select(question => new
+                canEditStructure = true,
+                questionCount = currentQuestions.Count,
+                practicalCount = currentQuestions.Count(question => question.Type == "practical"),
+                maxScore = currentQuestions.Sum(question => question.Score),
+                skills = currentSkills.Select(skill => new { skill.Id, skill.Name, skill.SubName, skill.Ability, skill.SortOrder }),
+                questions = currentQuestions.Select(question => new
                 {
                     question.Id, question.Type, question.Stem,
                     options = ExamLogic.DeserializeOptions(question.OptionsJson),
@@ -153,8 +158,12 @@ public static class CampEndpoints
             });
         }
         var userId = CurrentUserId(ctx);
-        var attempt = await db.JobAttempts.AsNoTracking().FirstOrDefaultAsync(item => item.PositionId == id && item.UserId == userId, ct);
+        var ownAttempts = await db.JobAttempts.AsNoTracking().Where(item => item.PositionId == id && item.UserId == userId).ToListAsync(ct);
+        var attempt = PreferredAttempt(ownAttempts);
         var now = DateTime.UtcNow;
+        var version = attempt is { Status: "inProgress" } ? attempt.ContentVersion : position.ContentVersion;
+        var versionSkills = skills.Where(item => item.ContentVersion == version).ToList();
+        var versionQuestions = questions.Where(item => item.ContentVersion == version).ToList();
         object? attemptState = attempt == null ? null : new
         {
             attempt.Id, attempt.Status, attempt.StartedAt, attempt.Deadline, attempt.SubmittedAt,
@@ -169,8 +178,8 @@ public static class CampEndpoints
             var projects = ReadProjects(attempt);
             var answers = await db.JobAnswers.AsNoTracking().Where(item => item.AttemptId == attempt.Id)
                 .ToDictionaryAsync(item => item.QuestionId, StringComparer.Ordinal, ct);
-            var skillNames = skills.ToDictionary(skill => skill.Id, skill => skill.Name, StringComparer.Ordinal);
-            questionRows = questions.Select(question =>
+            var skillNames = versionSkills.ToDictionary(skill => skill.Id, skill => skill.Name, StringComparer.Ordinal);
+            questionRows = versionQuestions.Select(question =>
             {
                 var answer = answers.GetValueOrDefault(question.Id);
                 return new
@@ -189,13 +198,14 @@ public static class CampEndpoints
         return Results.Ok(new
         {
             position.Id, position.Name, position.Description, position.DurationMinutes, position.StartupNodeId,
-            questionCount = questions.Count,
-            practicalCount = questions.Count(question => question.Type == "practical"),
-            maxScore = questions.Sum(question => question.Score),
-            skillCount = skills.Count,
+            questionCount = versionQuestions.Count,
+            practicalCount = versionQuestions.Count(question => question.Type == "practical"),
+            maxScore = versionQuestions.Sum(question => question.Score),
+            skillCount = versionSkills.Count,
+            completedCount = ownAttempts.Count(item => item.Status == "graded"),
             attempt = attemptState,
             serverNow = now,
-            canStart = attempt == null || attempt.Status == "inProgress",
+            canStart = versionQuestions.Count > 0 && (attempt == null || attempt.Status is "inProgress" or "graded"),
             canReview = attempt is { Status: "graded" } && (!position.Published || ctx.User.IsInRole("Admin") || ctx.User.IsInRole("Teacher")),
             questions = questionRows
         });
@@ -216,9 +226,9 @@ public static class CampEndpoints
             Published = false
         };
         db.JobPositions.Add(entity);
-        var skills = CampLogic.BuildSkills(entity.Id, input.Skills);
+        var skills = CampLogic.BuildSkills(entity.Id, input.Skills, entity.ContentVersion);
         db.JobSkills.AddRange(skills);
-        CampLogic.AddQuestions(db, entity.Id, skills, input.Questions);
+        CampLogic.AddQuestions(db, entity.Id, skills, input.Questions, entity.ContentVersion);
         Audit.Add(db, ctx, "新增岗位测评", entity.Name);
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { entity.Id });
@@ -236,32 +246,34 @@ public static class CampEndpoints
         var name = input.Name.Trim();
         if (await db.JobPositions.AnyAsync(item => item.Id != id && item.Name == name, ct)) return Conflict("岗位名称已存在");
         if (!await StartupNodeExists(db, input.StartupNodeId, ct)) return Bad("启动节点不存在");
-        var skills = await db.JobSkills.Where(item => item.PositionId == id).OrderBy(item => item.SortOrder).ToListAsync(ct);
-        var questions = await db.JobQuestions.Where(item => item.PositionId == id).OrderBy(item => item.SortOrder).ToListAsync(ct);
-        var hasAttempts = await db.JobAttempts.AnyAsync(item => item.PositionId == id, ct);
-        if (hasAttempts && !CampLogic.StructureMatches(entity, skills, questions, input))
-            return Conflict("该岗位已有测评记录，只能修改名称和简介；如需调整技能或题目，请新建岗位");
+        var skills = await db.JobSkills.Where(item => item.PositionId == id && item.ContentVersion == entity.ContentVersion).OrderBy(item => item.SortOrder).ToListAsync(ct);
+        var questions = await db.JobQuestions.Where(item => item.PositionId == id && item.ContentVersion == entity.ContentVersion).OrderBy(item => item.SortOrder).ToListAsync(ct);
         entity.Name = name;
         entity.Description = (input.Description ?? "").Trim();
+        entity.DurationMinutes = input.DurationMinutes;
+        entity.StartupNodeId = string.IsNullOrWhiteSpace(input.StartupNodeId) ? null : input.StartupNodeId;
         entity.UpdatedAt = DateTime.UtcNow;
-        if (!hasAttempts)
+        if (!CampLogic.PaperMatches(skills, questions, input))
         {
             if (await ValidatePracticalRubrics(input, db, ct) is { } rubricError) return Bad(rubricError);
-            entity.DurationMinutes = input.DurationMinutes;
-            entity.StartupNodeId = string.IsNullOrWhiteSpace(input.StartupNodeId) ? null : input.StartupNodeId;
-            if (questions.Count > 0)
+            var referenced = await db.JobAttempts.AnyAsync(item => item.PositionId == id && item.ContentVersion == entity.ContentVersion, ct);
+            if (referenced) entity.ContentVersion++;
+            else
             {
-                db.JobQuestions.RemoveRange(questions);
-                await db.SaveChangesAsync(ct);
+                if (questions.Count > 0)
+                {
+                    db.JobQuestions.RemoveRange(questions);
+                    await db.SaveChangesAsync(ct);
+                }
+                if (skills.Count > 0)
+                {
+                    db.JobSkills.RemoveRange(skills);
+                    await db.SaveChangesAsync(ct);
+                }
             }
-            if (skills.Count > 0)
-            {
-                db.JobSkills.RemoveRange(skills);
-                await db.SaveChangesAsync(ct);
-            }
-            var newSkills = CampLogic.BuildSkills(id, input.Skills);
+            var newSkills = CampLogic.BuildSkills(id, input.Skills, entity.ContentVersion);
             db.JobSkills.AddRange(newSkills);
-            CampLogic.AddQuestions(db, id, newSkills, input.Questions);
+            CampLogic.AddQuestions(db, id, newSkills, input.Questions, entity.ContentVersion);
         }
         Audit.Add(db, ctx, "编辑岗位测评", entity.Name);
         await db.SaveChangesAsync(ct);
@@ -283,7 +295,7 @@ public static class CampEndpoints
     static async Task<IResult> GetPracticalProject(string id, string questionId, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var userId = CurrentUserId(ctx);
-        var attempt = await db.JobAttempts.AsNoTracking().FirstOrDefaultAsync(item => item.PositionId == id && item.UserId == userId, ct);
+        var attempt = await OpenAttempt(db, id, userId, ct);
         if (attempt == null || ReadProjects(attempt).GetValueOrDefault(questionId) is not { } project) return NotFound("实操项目不存在");
         if (attempt.Status != "inProgress" || attempt.Deadline <= DateTime.UtcNow) return Conflict("本次测评已结束");
         return Results.Ok(project);
@@ -294,7 +306,7 @@ public static class CampEndpoints
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var userId = CurrentUserId(ctx);
-        var attempt = await db.JobAttempts.FirstOrDefaultAsync(item => item.PositionId == id && item.UserId == userId, ct);
+        var attempt = await OpenAttempt(db, id, userId, ct, tracking: true);
         if (attempt == null) return NotFound("实操项目不存在");
         if (attempt.Status != "inProgress" || attempt.Deadline <= DateTime.UtcNow) return Conflict("本次测评已结束");
         var projects = ReadProjects(attempt);
@@ -342,14 +354,11 @@ public static class CampEndpoints
         var userId = CurrentUserId(ctx);
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (position == null) return NotFound("岗位不存在");
-        var questions = await db.JobQuestions.AsNoTracking().Where(item => item.PositionId == id).ToListAsync(ct);
-        if (questions.Count == 0) return Conflict("该岗位还没有配置测评题，请联系管理员");
         var now = DateTime.UtcNow;
-        var attempt = await db.JobAttempts.FirstOrDefaultAsync(item => item.PositionId == id && item.UserId == userId, ct);
-        if (!position.Published && attempt is not { Status: "inProgress" }) return Conflict("该岗位尚未发布");
+        var attempt = await OpenAttempt(db, id, userId, ct, tracking: true);
+        if (!position.Published && attempt == null) return Conflict("该岗位尚未发布");
         if (attempt != null)
         {
-            if (attempt.Status != "inProgress") return Conflict("该岗位测评已完成，可在测评历史中查看");
             if (now >= attempt.Deadline)
             {
                 await FinalizeAttemptAsync(db, position, attempt, attempt.Deadline, autoSubmitted: true, now, ct);
@@ -360,6 +369,9 @@ public static class CampEndpoints
             }
             return Results.Ok(AttemptState(attempt, now));
         }
+        var questions = await db.JobQuestions.AsNoTracking()
+            .Where(item => item.PositionId == id && item.ContentVersion == position.ContentVersion).ToListAsync(ct);
+        if (questions.Count == 0) return Conflict("该岗位还没有配置测评题，请联系管理员");
         var person = await db.People.AsNoTracking().FirstOrDefaultAsync(item => item.UserId == userId && item.Kind == "student", ct);
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == userId, ct);
         if (person == null || user == null) return Conflict("学生档案不存在，请联系管理员");
@@ -387,13 +399,22 @@ public static class CampEndpoints
         {
             PositionId = id, UserId = userId, StudentName = person.Name, StudentUserName = user.UserName,
             StudentNumber = person.Number, ClassName = className, VirtualMachineId = vm?.Id,
+            StartupNodeId = string.IsNullOrWhiteSpace(position.StartupNodeId) ? null : position.StartupNodeId,
+            ContentVersion = position.ContentVersion,
             EnvironmentJson = ClassroomCaseScoring.Write(projects),
             StartedAt = now, Deadline = now.AddMinutes(position.DurationMinutes), MaxScore = questions.Sum(item => item.Score)
         };
         db.JobAttempts.Add(attempt);
         Audit.Add(db, ctx, "开始岗位测评", "岗位测评", position.Name);
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsActiveAttemptConflict(ex))
+        {
+            return Conflict("已有进行中的测评，请继续当前测评");
+        }
         return Results.Ok(AttemptState(attempt, now));
     }
 
@@ -403,9 +424,8 @@ public static class CampEndpoints
         var userId = CurrentUserId(ctx);
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (position == null) return NotFound("岗位不存在");
-        var attempt = await db.JobAttempts.FirstOrDefaultAsync(item => item.PositionId == id && item.UserId == userId, ct);
+        var attempt = await OpenAttempt(db, id, userId, ct, tracking: true);
         if (attempt == null) return Conflict("请先开始测评");
-        if (attempt.Status != "inProgress") return Conflict("本次测评已提交，不能修改答案");
         if (input.LoadedAt is not DateTime loadedAt) return Bad("请求缺少作答基线，请刷新后重试");
         if (await db.JobAnswers.AnyAsync(item => item.AttemptId == attempt.Id && item.AnsweredAt > loadedAt, ct))
             return Concurrency.Conflict("测评答案");
@@ -430,9 +450,8 @@ public static class CampEndpoints
         var userId = CurrentUserId(ctx);
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (position == null) return NotFound("岗位不存在");
-        var attempt = await db.JobAttempts.FirstOrDefaultAsync(item => item.PositionId == id && item.UserId == userId, ct);
+        var attempt = await OpenAttempt(db, id, userId, ct, tracking: true);
         if (attempt == null) return Conflict("请先开始测评");
-        if (attempt.Status != "inProgress") return Conflict("本次测评已提交，不能重复提交");
         var now = DateTime.UtcNow;
         var autoSubmitted = now >= attempt.Deadline;
         if (input?.Answers is { Length: > 0 })
@@ -573,15 +592,45 @@ public static class CampEndpoints
         if (attempt.Status == "inProgress") return Conflict("测评尚未提交，暂时没有岗位报告");
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attempt.PositionId, ct);
         if (position == null) return NotFound("岗位不存在");
-        var skills = await db.JobSkills.AsNoTracking().Where(item => item.PositionId == position.Id).OrderBy(item => item.SortOrder).ToListAsync(ct);
-        var questions = await db.JobQuestions.AsNoTracking().Where(item => item.PositionId == position.Id).OrderBy(item => item.SortOrder).ToListAsync(ct);
-        var answers = await db.JobAnswers.AsNoTracking().Where(item => item.AttemptId == attempt.Id).ToListAsync(ct);
-        var awarded = answers.ToDictionary(item => item.QuestionId, item => item.ScoreAwarded, StringComparer.Ordinal);
-        var rows = CampLogic.SkillRows(skills, questions, awarded);
+        var series = await db.JobAttempts.AsNoTracking()
+            .Where(item => item.PositionId == attempt.PositionId && item.UserId == attempt.UserId && item.Status == "graded")
+            .OrderBy(item => item.StartedAt).ThenBy(item => item.Id).ToListAsync(ct);
+        var versions = series.Select(item => item.ContentVersion).Distinct().ToArray();
+        var skills = await db.JobSkills.AsNoTracking().Where(item => item.PositionId == position.Id && versions.Contains(item.ContentVersion)).ToListAsync(ct);
+        var questions = await db.JobQuestions.AsNoTracking().Where(item => item.PositionId == position.Id && versions.Contains(item.ContentVersion)).ToListAsync(ct);
+        var attemptIds = series.Select(item => item.Id).ToArray();
+        var answers = await db.JobAnswers.AsNoTracking().Where(item => attemptIds.Contains(item.AttemptId)).ToListAsync(ct);
+        var history = series.Select((item, index) =>
+        {
+            var awarded = answers.Where(answer => answer.AttemptId == item.Id)
+                .ToDictionary(answer => answer.QuestionId, answer => answer.ScoreAwarded, StringComparer.Ordinal);
+            var rowsForAttempt = CampLogic.SkillRows(
+                skills.Where(skill => skill.ContentVersion == item.ContentVersion),
+                questions.Where(question => question.ContentVersion == item.ContentVersion), awarded);
+            return new
+            {
+                attemptId = item.Id,
+                attemptNumber = index + 1,
+                item.SubmittedAt,
+                item.TotalScore,
+                item.MaxScore,
+                percent = ExamLogic.Percent(item.TotalScore, item.MaxScore),
+                item.AutoSubmitted,
+                current = item.Id == attempt.Id,
+                radar = CampLogic.Radar(rowsForAttempt)
+            };
+        }).ToArray();
+        var currentIndex = Array.FindIndex(history, item => item.current);
+        var currentAwarded = answers.Where(answer => answer.AttemptId == attempt.Id)
+            .ToDictionary(answer => answer.QuestionId, answer => answer.ScoreAwarded, StringComparer.Ordinal);
+        var currentQuestions = questions.Where(item => item.ContentVersion == attempt.ContentVersion).ToList();
+        var rows = CampLogic.SkillRows(
+            skills.Where(item => item.ContentVersion == attempt.ContentVersion), currentQuestions, currentAwarded);
         var percent = ExamLogic.Percent(attempt.TotalScore, attempt.MaxScore);
         return Results.Ok(new
         {
             attemptId = attempt.Id,
+            attemptNumber = currentIndex < 0 ? 1 : history[currentIndex].attemptNumber,
             position = new { position.Id, position.Name, position.Description },
             attempt = new
             {
@@ -592,7 +641,8 @@ public static class CampEndpoints
             },
             skills = rows,
             radar = CampLogic.Radar(rows),
-            questionCount = questions.Count,
+            history,
+            questionCount = currentQuestions.Count,
             evaluatedAt = attempt.SubmittedAt ?? attempt.GradedAt
         });
     }
@@ -605,9 +655,12 @@ public static class CampEndpoints
         if (attempt.Status == "inProgress") return Conflict("测评尚未提交，请先完成测评");
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attempt.PositionId, ct);
         if (position == null) return NotFound("岗位不存在");
-        var skills = await db.JobSkills.AsNoTracking().Where(item => item.PositionId == position.Id).ToListAsync(ct);
+        var skills = await db.JobSkills.AsNoTracking()
+            .Where(item => item.PositionId == position.Id && item.ContentVersion == attempt.ContentVersion).ToListAsync(ct);
         var skillById = skills.ToDictionary(item => item.Id, StringComparer.Ordinal);
-        var questions = await db.JobQuestions.AsNoTracking().Where(item => item.PositionId == position.Id).OrderBy(item => item.SortOrder).ToListAsync(ct);
+        var questions = await db.JobQuestions.AsNoTracking()
+            .Where(item => item.PositionId == position.Id && item.ContentVersion == attempt.ContentVersion)
+            .OrderBy(item => item.SortOrder).ToListAsync(ct);
         var answers = await db.JobAnswers.AsNoTracking().Where(item => item.AttemptId == attempt.Id)
             .ToDictionaryAsync(item => item.QuestionId, StringComparer.Ordinal, ct);
         var revealAnswers = ctx.User.IsInRole("Admin") || ctx.User.IsInRole("Teacher") || !position.Published;
@@ -687,7 +740,7 @@ public static class CampEndpoints
                               VirtualMachineName = vm == null ? "" : vm.Name,
                               VirtualMachineStatus = vm == null ? "" : vm.Status,
                               vmNodeId = vm == null ? null : vm.NodeId,
-                              StartupNodeId = position.StartupNodeId
+                              StartupNodeId = attempt.StartupNodeId ?? position.StartupNodeId
                           }).OrderBy(item => item.StartedAt).ToListAsync(ct);
         return Results.Ok(new
         {
@@ -712,7 +765,8 @@ public static class CampEndpoints
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attempt.PositionId, ct);
         if (position == null) return NotFound("岗位不存在");
         var now = DateTime.UtcNow;
-        var vm = await SimulatedVirtualMachines.Acquire(db, position.StartupNodeId, attempt.VirtualMachineId, now, ct, campAttemptId: attempt.Id);
+        var nodeId = attempt.StartupNodeId ?? position.StartupNodeId;
+        var vm = await SimulatedVirtualMachines.Acquire(db, nodeId, attempt.VirtualMachineId, now, ct, campAttemptId: attempt.Id);
         if (vm == null) return Conflict("该岗位未配置启动节点或没有可用的虚拟机");
         vm.Status = "running";
         vm.StartedAt = now;
@@ -728,10 +782,10 @@ public static class CampEndpoints
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (position == null) return NotFound("岗位不存在");
         var userId = CurrentUserId(ctx);
-        var vmId = await SimulatedVirtualMachines.ActiveCamp(db, DateTime.UtcNow).AsNoTracking()
+        var active = await SimulatedVirtualMachines.ActiveCamp(db, DateTime.UtcNow).AsNoTracking()
             .Where(item => item.PositionId == id && item.UserId == userId)
-            .Select(item => item.VirtualMachineId).FirstOrDefaultAsync(ct);
-        return Results.Ok(await BuildEnvironment(db, ctx, position.StartupNodeId, vmId, ct));
+            .Select(item => new { item.VirtualMachineId, item.StartupNodeId }).FirstOrDefaultAsync(ct);
+        return Results.Ok(await BuildEnvironment(db, ctx, active?.StartupNodeId ?? position.StartupNodeId, active?.VirtualMachineId, ct));
     }
 
     static async Task<IResult> MonitorEnvironment(string attemptId, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
@@ -741,7 +795,7 @@ public static class CampEndpoints
         if (!await CampAccess.CanControlAsync(db, ctx, attempt)) return NotFound("测评记录不存在或无权操作");
         var position = await db.JobPositions.AsNoTracking().FirstOrDefaultAsync(item => item.Id == attempt.PositionId, ct);
         if (position == null) return NotFound("岗位不存在");
-        var nodeId = position.StartupNodeId;
+        var nodeId = attempt.StartupNodeId ?? position.StartupNodeId;
         if (attempt.VirtualMachineId != null)
         {
             nodeId = await db.VirtualMachines.AsNoTracking().Where(item => item.Id == attempt.VirtualMachineId)
@@ -778,12 +832,16 @@ public static class CampEndpoints
     {
         if (inputs == null || inputs.Length == 0) return (0, null);
         if (inputs.Length > 200) return (0, "单次保存的答案过多");
-        var questions = await db.JobQuestions.AsNoTracking().Where(item => item.PositionId == positionId)
+        var pending = inputs.Where(item => item != null).GroupBy(item => item.QuestionId).Select(group => group.Last()).ToArray();
+        if (pending.Length == 0) return (0, null);
+        var ids = pending.Select(item => item.QuestionId).Distinct(StringComparer.Ordinal).ToArray();
+        var questions = await db.JobQuestions.AsNoTracking()
+            .Where(item => item.PositionId == positionId && item.ContentVersion == attempt.ContentVersion && ids.Contains(item.Id))
             .ToDictionaryAsync(item => item.Id, StringComparer.Ordinal, ct);
-        var existing = await db.JobAnswers.Where(item => item.AttemptId == attempt.Id)
+        var existing = await db.JobAnswers.Where(item => item.AttemptId == attempt.Id && ids.Contains(item.QuestionId))
             .ToDictionaryAsync(item => item.QuestionId, StringComparer.Ordinal, ct);
         var saved = 0;
-        foreach (var item in inputs.Where(item => item != null).GroupBy(item => item.QuestionId).Select(group => group.Last()))
+        foreach (var item in pending)
         {
             if (!questions.TryGetValue(item.QuestionId, out var question)) return (0, "答案对应的题目不存在，请刷新后重试");
             var selected = ExamLogic.NormalizeSelection(item.Selected);
@@ -799,13 +857,19 @@ public static class CampEndpoints
                 var optionCount = ExamLogic.DeserializeOptions(question.OptionsJson).Length;
                 if (selected.Any(index => index < 0 || index >= optionCount)) return (0, "答案选项无效，请刷新后重新选择");
             }
+            var selectedJson = System.Text.Json.JsonSerializer.Serialize(selected);
             if (!existing.TryGetValue(item.QuestionId, out var answer))
             {
+                if (selected.Length == 0 && text.Length == 0) continue;
                 answer = new JobAnswer { AttemptId = attempt.Id, QuestionId = item.QuestionId };
                 db.JobAnswers.Add(answer);
                 existing[item.QuestionId] = answer;
             }
-            answer.SelectedJson = System.Text.Json.JsonSerializer.Serialize(selected);
+            else if (answer.SelectedJson == selectedJson && answer.TextAnswer == text)
+            {
+                continue;
+            }
+            answer.SelectedJson = selectedJson;
             answer.TextAnswer = text;
             answer.AnsweredAt = now;
             saved++;
@@ -816,7 +880,8 @@ public static class CampEndpoints
     static async Task FinalizeAttemptAsync(
         SchoolDbContext db, JobPosition position, JobAttempt attempt, DateTime submittedAt, bool autoSubmitted, DateTime now, CancellationToken ct)
     {
-        var questions = await db.JobQuestions.AsNoTracking().Where(item => item.PositionId == position.Id).ToListAsync(ct);
+        var questions = await db.JobQuestions.AsNoTracking()
+            .Where(item => item.PositionId == position.Id && item.ContentVersion == attempt.ContentVersion).ToListAsync(ct);
         var answers = await db.JobAnswers.Where(item => item.AttemptId == attempt.Id).ToListAsync(ct);
         var byQuestion = answers.ToDictionary(item => item.QuestionId, StringComparer.Ordinal);
         var projects = ReadProjects(attempt);
@@ -880,6 +945,33 @@ public static class CampEndpoints
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return rows.Count;
+    }
+
+    static JobAttempt? PreferredAttempt(IEnumerable<JobAttempt> attempts)
+    {
+        JobAttempt? active = null;
+        JobAttempt? latest = null;
+        foreach (var attempt in attempts)
+        {
+            if (attempt.Status == "inProgress" && (active == null || attempt.StartedAt > active.StartedAt)) active = attempt;
+            if (latest == null || attempt.StartedAt > latest.StartedAt
+                || (attempt.StartedAt == latest.StartedAt && string.CompareOrdinal(attempt.Id, latest.Id) > 0))
+                latest = attempt;
+        }
+        return active ?? latest;
+    }
+
+    static Task<JobAttempt?> OpenAttempt(SchoolDbContext db, string positionId, string userId, CancellationToken ct, bool tracking = false)
+    {
+        var query = tracking ? db.JobAttempts : db.JobAttempts.AsNoTracking();
+        return query.FirstOrDefaultAsync(item => item.PositionId == positionId && item.UserId == userId && item.Status == "inProgress", ct);
+    }
+
+    static bool IsActiveAttemptConflict(DbUpdateException exception)
+    {
+        var message = exception.InnerException?.Message ?? exception.Message;
+        return message.Contains("IX_JobAttempts_PositionId_UserId_Active", StringComparison.Ordinal)
+            || message.Contains("UNIQUE constraint failed", StringComparison.Ordinal);
     }
 
     static object AttemptState(JobAttempt attempt, DateTime now) => new

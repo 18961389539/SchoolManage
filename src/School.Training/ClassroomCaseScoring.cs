@@ -22,7 +22,6 @@ public static class ClassroomCaseScoring
         admin.MapGet("/nodes/{id}/case-devices", ListDevices);
         staff.MapGet("/classrooms/case-sessions/{id}/work", Monitor);
         staff.MapPut("/classrooms/case-sessions/{id}/work/devices/{deviceId}", Assist);
-        staff.MapClassroomLiveShare(learners);
         var work = learners.MapGroup("/classrooms/{id}/resources/{resourceId}/case-work");
         work.MapGet("", GetWork);
         work.MapPut("/devices/{deviceId}", UpdateDevice);
@@ -301,6 +300,7 @@ public static class ClassroomCaseScoring
         db.ClassroomCaseGrades.Add(grade);
         Audit.Add(db, ctx, isFinal ? "提交实操评分" : "尝试实操评分", resourceId, $"{score}/{maxScore}");
         await db.SaveChangesAsync(ct);
+        if (isFinal) await ClassroomProgress.RefreshStudentAsync(db, record!.ClassroomId, record.UserId, ct);
         await transaction.CommitAsync(ct);
         return Results.Ok(GradeView(grade));
     }

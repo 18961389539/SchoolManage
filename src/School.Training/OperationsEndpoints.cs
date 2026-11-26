@@ -59,7 +59,7 @@ public static class OperationsEndpoints
             var setting = await db.Settings.FindAsync(["schoolName"], ctx.RequestAborted); if (setting == null) db.Settings.Add(new AppSetting { Id = "schoolName", Value = input.SchoolName.Trim() }); else setting.Value = input.SchoolName.Trim();
             Audit.Add(db, ctx, "修改系统设置", "schoolName"); await db.SaveChangesAsync(ctx.RequestAborted); return Results.Ok(new { message = "已保存" });
         });
-        api.MapGet("/backups", async (AppPaths paths, SchoolDbContext db, AutomaticBackupOptions automatic, CancellationToken ct) =>
+        api.MapGet("/backups", async (AppPaths paths, SchoolDbContext db, AutomaticBackupOptions automatic, KeyProtectionMaterial keys, CancellationToken ct) =>
         {
             var state = await AutomaticBackupState.ReadAsync(db, ct);
             var items = Directory.EnumerateFiles(paths.Backups, "school-*.zip").Select(f => new FileInfo(f)).OrderByDescending(f => f.CreationTimeUtc).Select(f => new { fileName = f.Name, createdAt = f.CreationTimeUtc, size = f.Length }).ToArray();
@@ -73,9 +73,26 @@ public static class OperationsEndpoints
                     lastAttemptAt = state.LastAttemptAt,
                     lastSuccessAt = state.LastSuccessAt,
                     lastMessage = state.LastMessage
-                }
+                },
+                keyProtection = new { mode = keys.Mode, portable = keys.Portable, summary = keys.Summary }
             });
         });
+        api.MapPost("/backups/inspect", async (HttpContext ctx, SchoolDbContext db, KeyProtectionOptions protection) =>
+        {
+            if (!ctx.Request.HasFormContentType) return Results.BadRequest(new { message = "请选择备份包" });
+            var file = (await ctx.Request.ReadFormAsync(ctx.RequestAborted)).Files.GetFile("file");
+            if (file == null || file.Length == 0 || file.Length > Limits.MaxUploadBytes)
+                return Results.BadRequest(new { message = $"备份包为空或超过{Limits.MaxUploadMegabytes}MB。更大的文件请放入备份目录后，在列表中检查。" });
+            var tempZip = Path.Combine(Path.GetTempPath(), "school-inspect-" + Guid.NewGuid().ToString("N") + ".zip");
+            try
+            {
+                await using (var input = file.OpenReadStream())
+                await using (var output = File.Create(tempZip))
+                    await input.CopyToAsync(output, ctx.RequestAborted);
+                return await InspectPackage(tempZip, "上传的备份包", ctx, db, protection);
+            }
+            finally { TryDelete(tempZip); }
+        }).RequireRateLimiting("expensive");
         api.MapPost("/backups", async (AppPaths paths, SchoolDbContext db, StorageOptions storage, BackupCoordinator coordinator, HttpContext ctx) =>
         {
             if (!await coordinator.TryEnterAsync(ctx.RequestAborted))
@@ -93,6 +110,13 @@ public static class OperationsEndpoints
             if (Path.GetFileName(fileName) != fileName || !System.Text.RegularExpressions.Regex.IsMatch(fileName, "^school-[0-9]{14}-[a-f0-9]{8}\\.zip$")) return Results.NotFound();
             var path = Path.Combine(paths.Backups, fileName); if (!File.Exists(path)) return Results.NotFound(new { message = "备份文件不存在" });
             Audit.Add(db, ctx, "下载备份", fileName); await db.SaveChangesAsync(ctx.RequestAborted); return Results.File(path, "application/zip", fileName);
+        }).RequireRateLimiting("expensive");
+        api.MapPost("/backups/{fileName}/inspect", async (string fileName, AppPaths paths, HttpContext ctx, SchoolDbContext db, KeyProtectionOptions protection) =>
+        {
+            if (!IsBackupFileName(fileName)) return Results.NotFound();
+            var path = Path.Combine(paths.Backups, fileName);
+            if (!File.Exists(path)) return Results.NotFound(new { message = "备份文件不存在" });
+            return await InspectPackage(path, fileName, ctx, db, protection);
         }).RequireRateLimiting("expensive");
         api.MapGet("/licenses", async (SchoolDbContext db, LicenseQuotaPolicy policy, CancellationToken ct) =>
         {
@@ -169,6 +193,27 @@ public static class OperationsEndpoints
         }).RequireRateLimiting("expensive");
         api.MapGet("/licenses/guide", () => Results.File(Encoding.UTF8.GetBytes(LicenseGuide), "text/markdown; charset=utf-8", "license-guide.md"));
     }
+    static bool IsBackupFileName(string fileName)
+        => Path.GetFileName(fileName) == fileName && System.Text.RegularExpressions.Regex.IsMatch(fileName, "^school-[0-9]{14}-[a-f0-9]{8}\\.zip$");
+
+    static async Task<IResult> InspectPackage(string zipPath, string auditTarget, HttpContext ctx, SchoolDbContext db, KeyProtectionOptions protection)
+    {
+        BackupInspectionReport report;
+        try { report = await BackupInspection.InspectZipAsync(zipPath, protection, ctx.RequestAborted); }
+        catch (InvalidDataException ex) { return Results.BadRequest(new { message = ex.Message }); }
+        catch (IOException) { return Results.BadRequest(new { message = "无法读取备份包" }); }
+        Audit.Add(db, ctx, "检查备份", auditTarget);
+        await db.SaveChangesAsync(ctx.RequestAborted);
+        return Results.Ok(report);
+    }
+
+    static void TryDelete(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
     public static string MachineCode()
     {
         string machine = Environment.MachineName;

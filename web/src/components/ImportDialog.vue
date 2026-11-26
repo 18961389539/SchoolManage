@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, Download, CircleCheck, Warning, Delete } from '@element-plus/icons-vue'
 import { api, post, messageOf, ApiError, type Row } from '../api'
 import { appState, maxUploadMegabytes } from '../store'
-import { assertImportPreview, assertImportStatus } from '../importContract'
+import { assertImportPreview, assertImportRows, assertImportStatus } from '../importContract'
 import { registerLeaveGuard } from '../leaveGuard'
 import type {
   ImportCredential,
@@ -132,31 +132,70 @@ const columns = [
   { key: 'phone', label: '手机号码' },
   { key: 'email', label: '电子邮箱' }
 ]
-const rows = computed<ImportRow[]>(() => preview.value?.rows || [])
-const invalidCount = computed(() => rows.value.filter(row => row.errors?.length).length)
-const validCount = computed(() => rows.value.length - invalidCount.value)
-const filteredRows = computed(() =>
-  removedInvalid.value
-    ? rows.value.filter(row => !row.errors?.length)
-    : onlyInvalid.value
-      ? rows.value.filter(row => !!row.errors?.length)
-      : rows.value
+const localSnapshot = ref<ImportRow[] | null>(null)
+const pageRows = ref<ImportRow[]>([])
+const serverTotal = ref(0)
+let pageRequest = 0
+const invalidCount = computed(() =>
+  localSnapshot.value
+    ? localSnapshot.value.filter(row => row.errors?.length).length
+    : (preview.value?.errorCount ?? 0)
 )
+const validCount = computed(() =>
+  localSnapshot.value ? localSnapshot.value.length - invalidCount.value : (preview.value?.validCount ?? 0)
+)
+const filteredSnapshot = computed(() => {
+  const source = localSnapshot.value || []
+  if (removedInvalid.value) return source.filter(row => !row.errors?.length)
+  if (onlyInvalid.value) return source.filter(row => !!row.errors?.length)
+  return source
+})
 const pagedRows = computed(() =>
-  filteredRows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value)
+  localSnapshot.value
+    ? filteredSnapshot.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value)
+    : pageRows.value
 )
+const filteredTotal = computed(() => (localSnapshot.value ? filteredSnapshot.value.length : serverTotal.value))
 const rangeText = computed(() => {
-  const total = filteredRows.value.length
-  return total
-    ? `第 ${(page.value - 1) * pageSize.value + 1}–${Math.min(page.value * pageSize.value, total)} 行，共 ${total} 行`
-    : '没有匹配的数据行'
+  const total = filteredTotal.value
+  if (!total || !pagedRows.value.length) return '没有匹配的数据行'
+  const start = (page.value - 1) * pageSize.value + 1
+  const end = Math.min(start + pagedRows.value.length - 1, total)
+  return `第 ${start}–${end} 行，共 ${total} 行`
 })
-watch([() => filteredRows.value.length, pageSize], () => {
-  const last = Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value))
-  if (page.value > last) page.value = last
-})
+function rowFilter() {
+  if (removedInvalid.value) return 'valid'
+  if (onlyInvalid.value) return 'invalid'
+  return 'all'
+}
+async function loadPage() {
+  const target = preview.value
+  if (!target || localSnapshot.value) return
+  const request = ++pageRequest
+  const filter = rowFilter()
+  try {
+    const result = assertImportRows(
+      await api<unknown>(
+        `/imports/${target.batchId}/rows?page=${page.value}&pageSize=${pageSize.value}&filter=${filter}`
+      )
+    )
+    if (request !== pageRequest || preview.value !== target || localSnapshot.value) return
+    pageRows.value = result.rows
+    serverTotal.value = result.totalCount
+  } catch (err) {
+    if (request === pageRequest) error.value = messageOf(err)
+  }
+}
 watch([removedInvalid, onlyInvalid], () => {
   page.value = 1
+})
+watch([page, pageSize, onlyInvalid, removedInvalid], () => {
+  const last = Math.max(1, Math.ceil(filteredTotal.value / pageSize.value) || 1)
+  if (page.value > last) {
+    page.value = last
+    return
+  }
+  void loadPage()
 })
 async function chooseFile(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
@@ -171,20 +210,27 @@ async function chooseFile(event: Event) {
   busy.value = true
   error.value = ''
   preview.value = null
+  localSnapshot.value = null
+  pageRows.value = []
+  serverTotal.value = 0
+  pageRequest++
   removedInvalid.value = false
   const data = new FormData()
   data.append('file', file)
   try {
     const result = assertImportPreview(
-      await api<unknown>(`/imports/preview?kind=${props.kind}`, {
+      await api<unknown>(`/imports/preview?kind=${props.kind}&pageSize=${pageSize.value}`, {
         method: 'POST',
         body: data
       })
     )
     if (run !== previewRun) return
-    preview.value = result
     page.value = 1
     onlyInvalid.value = false
+    localSnapshot.value = null
+    pageRows.value = result.rows
+    serverTotal.value = result.validCount + result.errorCount
+    preview.value = result
   } catch (err) {
     if (run === previewRun) error.value = messageOf(err)
   } finally {
@@ -232,8 +278,10 @@ function applyServerFeedback(err: unknown) {
   if (!(err instanceof ApiError) || !preview.value) return
   const details = err.details as Row | undefined
   if (Array.isArray(details?.rows)) {
-    preview.value.rows = details.rows as ImportRow[]
+    localSnapshot.value = details.rows as ImportRow[]
+    page.value = 1
     removedInvalid.value = false
+    onlyInvalid.value = false
   }
 }
 async function startImport(target: ImportPreviewResponse) {
@@ -476,11 +524,11 @@ onBeforeUnmount(() => {
           ></el-table-column
         ></el-table
       >
-      <div v-if="filteredRows.length > pageSize" class="import-pager">
+      <div v-if="filteredTotal > pageSize" class="import-pager">
         <span>{{ rangeText }}</span><el-pagination
           v-model:current-page="page"
           v-model:page-size="pageSize"
-          :total="filteredRows.length"
+          :total="filteredTotal"
           :page-sizes="[50, 100, 200]"
           :pager-count="5"
           layout="sizes, prev, pager, next"

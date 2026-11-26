@@ -12,6 +12,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "check:time": "node scripts/check-time.mjs",
     "check:sizes": "node scripts/check-file-sizes.mjs",
+    "check:api": "node scripts/check-api-contract.mjs",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write \"src/**/*.{ts,vue,css}\" \"*.{ts,js,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,vue,css}\" \"*.{ts,js,json}\"",

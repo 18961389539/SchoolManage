@@ -254,7 +254,7 @@ function openEdit(item: ClassroomSummary) {
 
 function classroomFormError(): string | undefined {
   if (!form.name.trim()) return '请填写课堂名称'
-  if (!form.courseId) return '请选择已发布并激活的课程'
+  if (!form.courseId) return '请选择可用于开课的课程'
   if (props.admin && !form.teacherUserId) return '请选择授课教师。不选择时，这个课堂不会出现在教师端。'
   const openAt = shanghaiInputToIso(form.openAt)
   const closeAt = shanghaiInputToIso(form.closeAt)
@@ -470,7 +470,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       <el-tooltip
         :disabled="courseOptions.length > 0"
-        :content="admin ? '请先在课程管理中发布并激活课程' : '请联系管理员发布并激活课程后再新建课堂'"
+        :content="admin ? '请先在课程管理中发布并激活课程' : '请先发布本人课程，或等待公共标准库课程激活'"
         placement="bottom"
       >
         <span class="disabled-action-wrap">
@@ -487,7 +487,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
     :title="
       admin
         ? '尚无可组课的课程，请先在课程管理中发布并激活课程。'
-        : '尚无可组课的课程，请联系管理员发布并激活课程后再新建课堂。'
+        : '尚无可组课的课程。请先发布本人课程，或等待管理员激活公共标准库课程。'
     "
     type="info"
     show-icon
@@ -541,10 +541,10 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
               : filtering
                 ? '试试调整关键词或状态筛选，也可清除后查看全部课堂。'
                 : courseOptions.length
-                  ? '点击右上角「新建课堂」，选择已激活课程与班级。'
+                  ? '点击右上角「新建课堂」，选择可用课程与班级。'
                   : admin
                     ? '请先在课程管理中发布并激活课程，再来新建课堂。'
-                    : '请先联系管理员发布并激活课程，然后再新建课堂。'
+                    : '请先发布本人课程，或等待管理员激活公共标准库课程。'
           "
         >
           <template v-if="!error && filtering" #action>
@@ -644,7 +644,7 @@ onBeforeUnmount(() => tableViewport.removeEventListener('change', syncTableViewp
           />
         </el-form-item>
         <el-form-item label="课程" required>
-          <el-select v-model="form.courseId" filterable placeholder="选择已激活课程">
+          <el-select v-model="form.courseId" filterable placeholder="选择可用课程">
             <el-option v-for="option in courseOptions" :key="option.id" :label="option.name" :value="option.id" />
           </el-select>
           <small v-if="selectedCourse">{{ classroomResourceCounts(selectedCourse) }}</small>

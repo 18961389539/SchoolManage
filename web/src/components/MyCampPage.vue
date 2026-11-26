@@ -181,8 +181,9 @@ onBeforeUnmount(() => {
           <div v-if="item.attempt?.status === 'graded'" class="camp-result">
             <el-icon><Trophy /></el-icon>
             <div>
-              <strong>得分 {{ item.attempt.totalScore }} / {{ item.attempt.maxScore }}</strong>
-              <span v-if="item.attempt.submittedAt">{{ dateTime(item.attempt.submittedAt) }}</span>
+              <strong>最近得分 {{ item.attempt.totalScore }} / {{ item.attempt.maxScore }}</strong>
+              <span v-if="item.completedCount > 1">已完成 {{ item.completedCount }} 次</span>
+              <span v-else-if="item.attempt.submittedAt">{{ dateTime(item.attempt.submittedAt) }}</span>
             </div>
           </div>
           <div class="assessment-card-foot">
@@ -191,6 +192,7 @@ onBeforeUnmount(() => {
               <template v-if="item.attempt?.status === 'graded'">
                 <el-button link type="primary" @click="openReport(item.attempt.id)">能力报告</el-button>
                 <el-button link @click="openRecord(item.attempt.id)">作答记录</el-button>
+                <el-button v-if="item.canStart" type="primary" @click="enter(item)">再次测评</el-button>
               </template>
               <el-button v-else-if="item.canStart" type="primary" @click="enter(item)">
                 {{ item.attempt?.status === 'inProgress' ? '继续测评' : '开始测评' }}

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
 namespace School.Training;
@@ -9,31 +10,30 @@ public static class ExamQuestionEndpoints
     public static void MapExamQuestionEndpoints(this RouteGroupBuilder all)
     {
         var staff = all.MapGroup("").RequireAuthorization(policy => policy.RequireRole("Admin", "Teacher"));
-        var admin = all.MapGroup("").RequireAuthorization("Admin");
-        staff.MapExamQuestionBanks(admin);
+        staff.MapExamQuestionBanks();
 
-        staff.MapGet("/exam-questions", ListQuestions);
+        staff.MapGet("/exam-questions", ListQuestions).WithGroupName("contract");
         staff.MapGet("/exam-questions/template", Template);
-        staff.MapGet("/exam-questions/{id}", GetQuestion);
-        admin.MapPost("/exam-questions", CreateQuestion);
-        admin.MapPut("/exam-questions/{id}", UpdateQuestion);
-        admin.MapDelete("/exam-questions/{id}", DeleteQuestion);
-        admin.MapPost("/exam-questions/batch-delete", BatchDeleteQuestions);
-        admin.MapPost("/exam-questions/import", ImportQuestions);
+        staff.MapGet("/exam-questions/{id}", GetQuestion).WithGroupName("contract");
+        staff.MapPost("/exam-questions", CreateQuestion);
+        staff.MapPut("/exam-questions/{id}", UpdateQuestion);
+        staff.MapDelete("/exam-questions/{id}", DeleteQuestion);
+        staff.MapPost("/exam-questions/batch-delete", BatchDeleteQuestions);
+        staff.MapPost("/exam-questions/import", ImportQuestions);
 
         staff.MapGet("/exam-papers", ListPapers);
         staff.MapGet("/exam-papers/{id}", GetPaper);
-        admin.MapPost("/exam-papers", CreatePaper);
-        admin.MapPut("/exam-papers/{id}", UpdatePaper);
-        admin.MapDelete("/exam-papers/{id}", DeletePaper);
-        admin.MapPost("/exam-papers/batch-delete", BatchDeletePapers);
-        admin.MapPost("/exam-papers/{id}/questions", AddPaperQuestions);
-        admin.MapPut("/exam-papers/{id}/questions/{paperQuestionId}", UpdatePaperQuestionScore);
-        admin.MapDelete("/exam-papers/{id}/questions/{paperQuestionId}", DeletePaperQuestion);
-        admin.MapPost("/exam-papers/{id}/questions/remove", RemovePaperQuestions);
+        staff.MapPost("/exam-papers", CreatePaper);
+        staff.MapPut("/exam-papers/{id}", UpdatePaper);
+        staff.MapDelete("/exam-papers/{id}", DeletePaper);
+        staff.MapPost("/exam-papers/batch-delete", BatchDeletePapers);
+        staff.MapPost("/exam-papers/{id}/questions", AddPaperQuestions);
+        staff.MapPut("/exam-papers/{id}/questions/{paperQuestionId}", UpdatePaperQuestionScore);
+        staff.MapDelete("/exam-papers/{id}/questions/{paperQuestionId}", DeletePaperQuestion);
+        staff.MapPost("/exam-papers/{id}/questions/remove", RemovePaperQuestions);
     }
 
-    static async Task<IResult> ListQuestions(HttpRequest req, SchoolDbContext db, CancellationToken ct)
+    static async Task<ExamQuestionListResponse> ListQuestions(HttpRequest req, SchoolDbContext db, CancellationToken ct)
     {
         var query = QuestionsInScope(req, db).AsNoTracking();
         var search = req.Query["search"].ToString().Trim();
@@ -54,39 +54,32 @@ public static class ExamQuestionEndpoints
         var usage = await db.ExamPaperQuestions.AsNoTracking().Where(item => ids.Contains(item.QuestionId))
             .GroupBy(item => item.QuestionId).Select(group => new { group.Key, Count = group.Count() })
             .ToDictionaryAsync(item => item.Key, item => item.Count, ct);
-        return Results.Ok(new
-        {
-            total, page, pageSize = size,
-            items = rows.Select(item => new
-            {
-                item.Id, item.BankId, item.BankName, item.Type, item.Stem,
-                options = ExamLogic.DeserializeOptions(item.OptionsJson),
-                answers = ExamLogic.DeserializeAnswers(item.AnswerJson),
-                item.Analysis, item.Score, item.CreatedAt, item.UpdatedAt,
-                automaticPractical = item.PracticalNodeId != "",
-                paperCount = usage.GetValueOrDefault(item.Id)
-            })
-        });
+        return new ExamQuestionListResponse(total, page, size, rows.Select(item => new ExamQuestionSummaryResponse(
+            item.Id, item.BankId, item.BankName, item.Type, item.Stem,
+            ExamLogic.DeserializeOptions(item.OptionsJson),
+            ExamLogic.DeserializeAnswers(item.AnswerJson),
+            item.Analysis, item.Score, item.CreatedAt, item.UpdatedAt,
+            item.PracticalNodeId != "",
+            usage.GetValueOrDefault(item.Id))).ToArray());
     }
 
-    static async Task<IResult> GetQuestion(string id, HttpRequest request, SchoolDbContext db, CancellationToken ct)
+    static async Task<Results<Ok<ExamQuestionDetailResponse>, NotFound<MessageResponse>>> GetQuestion(string id, HttpRequest request, SchoolDbContext db, CancellationToken ct)
     {
         var item = await QuestionsInScope(request, db).AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
-        if (item == null) return NotFound("题目不存在");
+        if (item == null) return TypedResults.NotFound(new MessageResponse("题目不存在"));
         var bankName = await db.ExamQuestionBanks.Where(bank => bank.Id == item.BankId).Select(bank => bank.Name).SingleAsync(ct);
         var papers = await (from link in db.ExamPaperQuestions.AsNoTracking()
                             join paper in db.ExamPapers.AsNoTracking() on link.PaperId equals paper.Id
                             where link.QuestionId == id
                             select new { paper.Id, paper.Name }).Distinct().ToListAsync(ct);
-        return Results.Ok(new
-        {
+        return TypedResults.Ok(new ExamQuestionDetailResponse(
             item.Id, item.BankId, bankName, item.Type, item.Stem,
-            options = ExamLogic.DeserializeOptions(item.OptionsJson),
-            answers = ExamLogic.DeserializeAnswers(item.AnswerJson),
-            item.Analysis, item.Score, item.CreatedAt, item.UpdatedAt, papers, item.PracticalNodeId, item.PracticalResources,
-            automaticPractical = item.PracticalNodeId != "",
-            practicalRubric = ClassroomCaseScoring.Rubric(item.PracticalRubricJson)
-        });
+            ExamLogic.DeserializeOptions(item.OptionsJson),
+            ExamLogic.DeserializeAnswers(item.AnswerJson),
+            item.Analysis, item.Score, item.CreatedAt, item.UpdatedAt,
+            item.PracticalNodeId != "", item.PracticalNodeId, item.PracticalResources,
+            ClassroomCaseScoring.Rubric(item.PracticalRubricJson),
+            papers.Select(paper => new ExamQuestionPaperRef(paper.Id, paper.Name)).ToArray()));
     }
 
     static async Task<IResult> CreateQuestion(ExamQuestionInput input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
@@ -96,6 +89,7 @@ public static class ExamQuestionEndpoints
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var bank = await db.ExamQuestionBanks.FindAsync([input.BankId ?? ExamQuestionBank.DefaultId], ct);
         if (bank == null) return NotFound("题库不存在");
+        if (ContentAccess.RequireEdit(ctx.User, bank.OwnerUserId, bank.Visibility, "题库不存在", "只能编辑本人尚未纳入公共标准库的题库") is { } denied) return denied;
         if (!ExamQuestionBankEndpoints.Allows(bank.Type, input.Type)) return Bad("此题型不适用于所选题库。");
         if (await ExamPracticalEndpoints.ValidateQuestion(db, input, ct) is { } practicalError) return Bad(practicalError);
         var entity = BuildQuestion(input);
@@ -114,8 +108,13 @@ public static class ExamQuestionEndpoints
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var entity = await QuestionsInScope(ctx.Request, db).FirstOrDefaultAsync(x => x.Id == id, ct);
         if (entity == null) return NotFound("题目已移出此题库或不存在");
+        var currentBank = await db.ExamQuestionBanks.AsNoTracking().FirstOrDefaultAsync(item => item.Id == entity.BankId, ct);
+        if (currentBank == null) return NotFound("题目已移出此题库或不存在");
+        if (ContentAccess.RequireEdit(ctx.User, currentBank.OwnerUserId, currentBank.Visibility, "题目已移出此题库或不存在", "只能编辑本人尚未纳入公共标准库的题库") is { } currentDenied)
+            return currentDenied;
         var bank = await db.ExamQuestionBanks.FindAsync([input.BankId ?? entity.BankId], ct);
         if (bank == null) return NotFound("题库不存在");
+        if (ContentAccess.RequireEdit(ctx.User, bank.OwnerUserId, bank.Visibility, "题库不存在", "只能编辑本人尚未纳入公共标准库的题库") is { } denied) return denied;
         if (!ExamQuestionBankEndpoints.Allows(bank.Type, input.Type)) return Bad("此题型不适用于所选题库。");
         if (await ExamPracticalEndpoints.ValidateQuestion(db, input, ct) is { } practicalError) return Bad(practicalError);
         entity.BankId = bank.Id;
@@ -140,6 +139,7 @@ public static class ExamQuestionEndpoints
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var entity = await QuestionsInScope(ctx.Request, db).FirstOrDefaultAsync(x => x.Id == id, ct);
         if (entity == null) return NotFound("题目不存在");
+        if (await EditableQuestion(ctx, db, entity.BankId, "题目不存在", ct) is { } denied) return denied;
         var used = await db.ExamPaperQuestions.CountAsync(x => x.QuestionId == id, ct);
         if (used > 0) return Conflict($"该题目已被 {used} 份试卷引用，请先从试卷中移除");
         db.ExamQuestions.Remove(entity);
@@ -156,6 +156,8 @@ public static class ExamQuestionEndpoints
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var items = await QuestionsInScope(ctx.Request, db).Where(x => ids.Contains(x.Id)).ToListAsync(ct);
         if (items.Count != ids.Length) return NotFound("部分题目已移出此题库或不存在");
+        foreach (var bankId in items.Select(item => item.BankId).Distinct())
+            if (await EditableQuestion(ctx, db, bankId, "部分题目已移出此题库或不存在", ct) is { } denied) return denied;
         var used = await db.ExamPaperQuestions.AsNoTracking().Where(x => ids.Contains(x.QuestionId))
             .Select(x => x.QuestionId).Distinct().CountAsync(ct);
         if (used > 0) return Conflict($"所选题目中有 {used} 道已被试卷引用，请先从试卷中移除");
@@ -185,6 +187,7 @@ public static class ExamQuestionEndpoints
         var bankId = form["bankId"].FirstOrDefault() ?? ExamQuestionBank.DefaultId;
         var bank = await db.ExamQuestionBanks.FindAsync([bankId], ct);
         if (bank == null) return NotFound("要导入的题库不存在");
+        if (ContentAccess.RequireEdit(ctx.User, bank.OwnerUserId, bank.Visibility, "要导入的题库不存在", "只能编辑本人尚未纳入公共标准库的题库") is { } denied) return denied;
         if (!preview && form["expectedBankType"].FirstOrDefault() is { } expectedType && expectedType != bank.Type)
             return Conflict("题库类型已更改，请重新预览校验。");
         foreach (var row in rows)
@@ -236,16 +239,16 @@ public static class ExamQuestionEndpoints
         return Results.Ok(new { imported = valid.Length, skipped = invalid.Length });
     }
 
-    static async Task<IResult> ListPapers(HttpRequest req, SchoolDbContext db, CancellationToken ct)
+    static async Task<IResult> ListPapers(HttpRequest req, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
-        var query = db.ExamPapers.AsNoTracking();
+        var query = VisiblePapers(ctx, db);
         var search = req.Query["search"].ToString().Trim();
         if (search.Length > 0) query = query.Where(item => item.Name.Contains(search) || item.Description.Contains(search));
         var (page, size) = Validation.Page(req);
         var total = await query.CountAsync(ct);
         var papers = await query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Name)
             .Skip((page - 1) * size).Take(size)
-            .Select(item => new { item.Id, item.Name, item.Description, item.Remark, item.CreatedAt, item.UpdatedAt })
+            .Select(item => new { item.Id, item.Name, item.Description, item.Remark, item.CreatedAt, item.UpdatedAt, item.OwnerUserId, item.Visibility })
             .ToListAsync(ct);
         var ids = papers.Select(item => item.Id).ToArray();
         var questions = await db.ExamPaperQuestions.AsNoTracking().Where(item => ids.Contains(item.PaperId))
@@ -261,6 +264,8 @@ public static class ExamQuestionEndpoints
                 return new
                 {
                     paper.Id, paper.Name, paper.Description, paper.Remark, paper.CreatedAt, paper.UpdatedAt,
+                    paper.OwnerUserId, paper.Visibility,
+                    canEdit = ContentAccess.CanEdit(ctx.User, paper.OwnerUserId, paper.Visibility),
                     questionCount = own.Length,
                     totalScore = own.Sum(item => item.Score),
                     typeCounts = own.GroupBy(item => item.Type).ToDictionary(group => group.Key, group => group.Count()),
@@ -270,10 +275,11 @@ public static class ExamQuestionEndpoints
         });
     }
 
-    static async Task<IResult> GetPaper(string id, SchoolDbContext db, CancellationToken ct)
+    static async Task<IResult> GetPaper(string id, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var paper = await db.ExamPapers.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
-        if (paper == null) return NotFound("试卷不存在");
+        if (paper == null || !ContentAccess.CanSee(ctx.User, paper.OwnerUserId, paper.Visibility)) return NotFound("试卷不存在");
+        var canEdit = ContentAccess.CanEdit(ctx.User, paper.OwnerUserId, paper.Visibility);
         var questions = await db.ExamPaperQuestions.AsNoTracking().Where(item => item.PaperId == id)
             .OrderBy(item => item.SortOrder).ToListAsync(ct);
         var exams = await db.TrainingExams.AsNoTracking().Where(item => item.PaperId == id)
@@ -281,6 +287,7 @@ public static class ExamQuestionEndpoints
         return Results.Ok(new
         {
             paper.Id, paper.Name, paper.Description, paper.Remark, paper.CreatedAt, paper.UpdatedAt,
+            paper.OwnerUserId, paper.Visibility, canEdit,
             questions = questions.Select(item => new
             {
                 item.Id, item.QuestionId, item.Type, item.Stem,
@@ -292,7 +299,7 @@ public static class ExamQuestionEndpoints
             totalScore = questions.Sum(item => item.Score),
             typeCounts = questions.GroupBy(item => item.Type).ToDictionary(group => group.Key, group => group.Count()),
             exams,
-            questionEditable = exams.Count == 0
+            questionEditable = canEdit && exams.Count == 0
         });
     }
 
@@ -300,13 +307,16 @@ public static class ExamQuestionEndpoints
     {
         var error = ExamLogic.ValidatePaper(input);
         if (error != null) return Bad(error);
+        if (ContentAccess.TryNormalizeCreate(ctx.User, input.Visibility, out var visibility) is { } visibilityError) return Bad(visibilityError);
         var name = input.Name.Trim();
         if (await db.ExamPapers.AnyAsync(item => item.Name == name, ct)) return Conflict("试卷名称已存在");
         var entity = new ExamPaper
         {
             Name = name,
             Description = (input.Description ?? "").Trim(),
-            Remark = (input.Remark ?? "").Trim()
+            Remark = (input.Remark ?? "").Trim(),
+            OwnerUserId = ContentAccess.UserId(ctx.User),
+            Visibility = visibility
         };
         db.ExamPapers.Add(entity);
         Audit.Add(db, ctx, "新增试卷", "试卷", entity.Name);
@@ -320,11 +330,14 @@ public static class ExamQuestionEndpoints
         if (error != null) return Bad(error);
         var entity = await db.ExamPapers.FirstOrDefaultAsync(item => item.Id == id, ct);
         if (entity == null) return NotFound("试卷不存在");
+        if (ContentAccess.RequireEdit(ctx.User, entity.OwnerUserId, entity.Visibility, "试卷不存在", "只能编辑本人尚未纳入公共标准库的试卷") is { } denied) return denied;
+        if (ContentAccess.ApplyVisibility(ctx.User, entity.Visibility, input.Visibility, out var visibility) is { } visibilityError) return Bad(visibilityError);
         var name = input.Name.Trim();
         if (await db.ExamPapers.AnyAsync(item => item.Id != id && item.Name == name, ct)) return Conflict("试卷名称已存在");
         entity.Name = name;
         entity.Description = (input.Description ?? "").Trim();
         entity.Remark = (input.Remark ?? "").Trim();
+        entity.Visibility = visibility;
         entity.UpdatedAt = DateTime.UtcNow;
         Audit.Add(db, ctx, "编辑试卷", "试卷", entity.Name);
         await db.SaveChangesAsync(ct);
@@ -335,6 +348,7 @@ public static class ExamQuestionEndpoints
     {
         var entity = await db.ExamPapers.FirstOrDefaultAsync(item => item.Id == id, ct);
         if (entity == null) return NotFound("试卷不存在");
+        if (ContentAccess.RequireEdit(ctx.User, entity.OwnerUserId, entity.Visibility, "试卷不存在", "只能编辑本人尚未纳入公共标准库的试卷") is { } denied) return denied;
         var exams = await db.TrainingExams.AsNoTracking().Where(item => item.PaperId == id)
             .Select(item => item.Name).Take(5).ToListAsync(ct);
         if (exams.Count > 0) return Conflict($"试卷已被考试“{string.Join("、", exams)}”使用，不能删除");
@@ -352,7 +366,10 @@ public static class ExamQuestionEndpoints
             .Select(item => item.Name).Distinct().Take(5).ToListAsync(ct);
         if (used.Count > 0) return Conflict($"部分试卷已被考试“{string.Join("、", used)}”使用，不能删除");
         var items = await db.ExamPapers.Where(item => ids.Contains(item.Id)).ToListAsync(ct);
-        if (items.Count == 0) return NotFound("试卷不存在");
+        if (items.Count != ids.Length) return NotFound("试卷不存在");
+        if (items.Any(item => !ContentAccess.CanSee(ctx.User, item.OwnerUserId, item.Visibility))) return NotFound("试卷不存在");
+        if (items.Any(item => !ContentAccess.CanEdit(ctx.User, item.OwnerUserId, item.Visibility)))
+            return Results.Json(new { message = "只能编辑本人尚未纳入公共标准库的试卷" }, statusCode: StatusCodes.Status403Forbidden);
         db.ExamPapers.RemoveRange(items);
         Audit.Add(db, ctx, "批量删除试卷", "试卷", $"删除{items.Count}份试卷");
         await db.SaveChangesAsync(ct);
@@ -365,6 +382,7 @@ public static class ExamQuestionEndpoints
         await LockPaperAsync(db, id, ct);
         var paper = await db.ExamPapers.FirstOrDefaultAsync(item => item.Id == id, ct);
         if (paper == null) return NotFound("试卷不存在");
+        if (ContentAccess.RequireEdit(ctx.User, paper.OwnerUserId, paper.Visibility, "试卷不存在", "只能编辑本人尚未纳入公共标准库的试卷") is { } denied) return denied;
         if (await db.TrainingExams.AnyAsync(item => item.PaperId == id, ct))
             return Conflict("试卷已用于考试，不能再调整题目；请新建试卷");
         var requested = (input.Items ?? []).Where(item => item != null && !string.IsNullOrWhiteSpace(item.QuestionId)).ToArray();
@@ -372,6 +390,11 @@ public static class ExamQuestionEndpoints
         var questionIds = requested.Select(item => item.QuestionId).Distinct().ToArray();
         var questions = await db.ExamQuestions.AsNoTracking().Where(item => questionIds.Contains(item.Id)).ToListAsync(ct);
         if (questions.Count != questionIds.Length) return Bad("部分题目不存在，请刷新后重试");
+        var bankIds = questions.Select(item => item.BankId).Distinct().ToArray();
+        var sourceBanks = await db.ExamQuestionBanks.AsNoTracking().Where(item => bankIds.Contains(item.Id)).ToListAsync(ct);
+        if (sourceBanks.Count != questions.Select(item => item.BankId).Distinct().Count()
+            || sourceBanks.Any(item => !ContentAccess.CanSee(ctx.User, item.OwnerUserId, item.Visibility)))
+            return Bad("部分题目不存在，请刷新后重试");
         var existing = (await db.ExamPaperQuestions.Where(item => item.PaperId == id)
             .Select(item => item.QuestionId).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
         var existingCount = await db.ExamPaperQuestions.CountAsync(item => item.PaperId == id, ct);
@@ -409,6 +432,7 @@ public static class ExamQuestionEndpoints
         if (input.Score is < 1 or > 100) return Bad("题目分值应在 1–100 之间");
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await LockPaperAsync(db, id, ct);
+        if (await EditablePaper(ctx, db, id, ct) is { } denied) return denied;
         if (await db.TrainingExams.AnyAsync(item => item.PaperId == id, ct))
             return Conflict("试卷已用于考试，不能再调整题目分值");
         var link = await db.ExamPaperQuestions.FirstOrDefaultAsync(item => item.Id == paperQuestionId && item.PaperId == id, ct);
@@ -434,6 +458,7 @@ public static class ExamQuestionEndpoints
         if (ids.Length is < 1 or > 500) return Bad("请选择 1–500 道试卷题目");
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await LockPaperAsync(db, id, ct);
+        if (await EditablePaper(ctx, db, id, ct) is { } denied) return denied;
         if (await db.TrainingExams.AnyAsync(item => item.PaperId == id, ct))
             return Conflict("试卷已用于考试，不能再调整题目");
         var links = await db.ExamPaperQuestions.Where(item => item.PaperId == id && ids.Contains(item.Id)).ToListAsync(ct);
@@ -467,10 +492,40 @@ public static class ExamQuestionEndpoints
         Score = input.Score
     };
 
+    static IQueryable<ExamPaper> VisiblePapers(HttpContext ctx, SchoolDbContext db)
+    {
+        var query = db.ExamPapers.AsNoTracking();
+        if (ctx.User.IsInRole("Admin")) return query;
+        var userId = ContentAccess.UserId(ctx.User);
+        return query.Where(item => item.Visibility == ContentAccess.Published || item.Visibility == ContentAccess.Shared || item.OwnerUserId == userId);
+    }
+
+    static async Task<IResult?> EditablePaper(HttpContext ctx, SchoolDbContext db, string paperId, CancellationToken ct)
+    {
+        var paper = await db.ExamPapers.AsNoTracking().Where(item => item.Id == paperId)
+            .Select(item => new { item.OwnerUserId, item.Visibility }).FirstOrDefaultAsync(ct);
+        if (paper == null) return NotFound("试卷不存在");
+        return ContentAccess.RequireEdit(ctx.User, paper.OwnerUserId, paper.Visibility, "试卷不存在", "只能编辑本人尚未纳入公共标准库的试卷");
+    }
+
+    static async Task<IResult?> EditableQuestion(HttpContext ctx, SchoolDbContext db, string bankId, string hidden, CancellationToken ct)
+    {
+        var bank = await db.ExamQuestionBanks.AsNoTracking().Where(item => item.Id == bankId)
+            .Select(item => new { item.OwnerUserId, item.Visibility }).FirstOrDefaultAsync(ct);
+        if (bank == null) return NotFound(hidden);
+        return ContentAccess.RequireEdit(ctx.User, bank.OwnerUserId, bank.Visibility, hidden, "只能编辑本人尚未纳入公共标准库的题库");
+    }
+
     static IQueryable<ExamQuestion> QuestionsInScope(HttpRequest request, SchoolDbContext db)
     {
+        var user = request.HttpContext.User;
+        var userId = ContentAccess.UserId(user);
+        var admin = user.IsInRole("Admin");
+        var visibleBanks = db.ExamQuestionBanks.Where(bank =>
+            admin || bank.Visibility == ContentAccess.Published || bank.Visibility == ContentAccess.Shared || bank.OwnerUserId == userId);
+        var query = db.ExamQuestions.Where(item => visibleBanks.Any(bank => bank.Id == item.BankId));
         var bankId = request.Query["bankId"].ToString();
-        return bankId.Length == 0 ? db.ExamQuestions : db.ExamQuestions.Where(item => item.BankId == bankId);
+        return bankId.Length == 0 ? query : query.Where(item => item.BankId == bankId);
     }
 
     static string Truncate(string value, int length = 40)

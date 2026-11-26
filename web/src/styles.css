@@ -296,6 +296,9 @@ strong {
 .section-notice {
   margin-bottom: 20px;
 }
+.el-alert.section-notice {
+  margin-bottom: 12px;
+}
 .surface {
   background: #fff;
   border: 1px solid var(--surface-border);

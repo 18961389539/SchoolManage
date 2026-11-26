@@ -11,12 +11,17 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="School.Training.Tests" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.15">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.15" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.15" />
     <PackageReference Include="System.Management" Version="10.0.15" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="System.IO.Packaging" Version="10.0.15" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(SelfContained)' == 'true'">

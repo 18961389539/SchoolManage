@@ -4,7 +4,8 @@ namespace School.Training;
 
 public static class SetupAccess
 {
-    // Direct Kestrel connections only: forwarded client headers are deliberately not trusted.
+    // Pass the socket peer from before forwarded-header rewriting. A trusted proxy may
+    // replace RemoteIpAddress with the client, and that client must not become "local".
     // A server browser using its trusted HTTPS hostname may connect over its own LAN address.
     public static bool IsLocalEndpoint(IPAddress? remote, IPAddress? local)
     {

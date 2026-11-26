@@ -17,6 +17,20 @@ const CY = 154
 const RADIUS = 94
 
 const axes = computed(() => report.value?.radar || [])
+const history = computed(() => report.value?.history || [])
+const previous = computed(() => {
+  const index = history.value.findIndex(item => item.current)
+  return index > 0 ? history.value[index - 1] : null
+})
+const previousComparable = computed(
+  () =>
+    !!previous.value &&
+    previous.value.radar.length === axes.value.length &&
+    previous.value.radar.every((axis, index) => axis.name === axes.value[index]?.name)
+)
+const previousDelta = computed(() =>
+  previous.value && report.value ? report.value.attempt.percent - previous.value.percent : null
+)
 const canDrawRadar = computed(() => axes.value.length >= 3)
 const numberedAxes = computed(() => axes.value.length > 8)
 
@@ -32,6 +46,13 @@ function ringPoints(ratio: number) {
 
 const scorePoints = computed(() =>
   axes.value.map((axis, index) => point(index, Math.min(100, Math.max(0, axis.percent)) / 100).join(',')).join(' ')
+)
+const previousPoints = computed(() =>
+  previousComparable.value && previous.value
+    ? previous.value.radar
+        .map((axis, index) => point(index, Math.min(100, Math.max(0, axis.percent)) / 100).join(','))
+        .join(' ')
+    : ''
 )
 
 function labelPosition(index: number) {
@@ -85,6 +106,7 @@ watch(
         <div>
           <h2>{{ report.position.name }}</h2>
           <p>
+            第 {{ report.attemptNumber }} 次 ·
             {{ report.attempt.studentName }}（{{ report.attempt.studentNumber || report.attempt.studentUserName }}）
             <span v-if="report.attempt.className"> · {{ report.attempt.className }}</span>
           </p>
@@ -93,6 +115,9 @@ watch(
           <strong>{{ report.attempt.totalScore }}</strong>
           <span>/ {{ report.attempt.maxScore }}</span>
           <el-tag :type="campLevelType(report.attempt.level)" effect="dark">{{ report.attempt.level }}</el-tag>
+          <span v-if="previousDelta !== null" class="report-delta">
+            较上次 {{ previousDelta > 0 ? '+' : '' }}{{ previousDelta }} 个百分点
+          </span>
         </div>
       </header>
       <dl class="report-summary">
@@ -141,6 +166,13 @@ watch(
                 stroke="#e4eeea"
                 stroke-width="1"
               />
+              <polygon
+                v-if="previousPoints"
+                :points="previousPoints"
+                fill="rgba(184, 122, 46, 0.12)"
+                stroke="#b87a2e"
+                stroke-width="2"
+              />
               <polygon :points="scorePoints" fill="rgba(47, 109, 91, 0.22)" stroke="#2f6d5b" stroke-width="2" />
               <circle
                 v-for="(axis, index) in axes"
@@ -169,6 +201,19 @@ watch(
             <li v-for="axis in axes" :key="axis.name">
               <span>{{ axis.name }}</span>
               <strong>{{ axis.percent }}%</strong>
+            </li>
+          </ol>
+          <p v-if="history.length > 1" class="radar-legend">
+            <span class="legend-current">本次</span>
+            <span v-if="previousComparable" class="legend-previous">上次</span>
+            <span v-else-if="previous">技能项与上次不同，雷达只画本次</span>
+          </p>
+          <ol v-if="history.length > 1" class="attempt-history">
+            <li v-for="item in history" :key="item.attemptId" :class="{ current: item.current }">
+              <span>第 {{ item.attemptNumber }} 次</span>
+              <strong>{{ item.totalScore }} / {{ item.maxScore }}</strong>
+              <span>{{ item.percent }}%</span>
+              <span>{{ dateTime(item.submittedAt) }}</span>
             </li>
           </ol>
           <div v-if="!canDrawRadar" class="radar-fallback">
@@ -278,6 +323,58 @@ watch(
 .report-score :deep(.el-tag) {
   align-self: center;
   margin-inline-start: 2px;
+}
+
+.report-delta {
+  flex-basis: 100%;
+  color: #51687f;
+}
+
+.radar-legend {
+  display: flex;
+  gap: 14px;
+  margin: 0 0 8px;
+  color: #51687f;
+  font-size: 12px;
+}
+
+.legend-current::before,
+.legend-previous::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.legend-current::before {
+  background: #2f6d5b;
+}
+
+.legend-previous::before {
+  background: #b87a2e;
+}
+
+.attempt-history {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.attempt-history li {
+  display: grid;
+  grid-template-columns: 72px 88px 48px 1fr;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #e7eef0;
+  color: #51687f;
+  font-size: 13px;
+}
+
+.attempt-history li.current {
+  color: #1e3a34;
+  font-weight: 600;
 }
 
 .report-summary {

@@ -10,14 +10,14 @@ public static class CourseFileEndpoints
     public static void MapCourseFileEndpoints(this RouteGroupBuilder all)
     {
         var reader = all.MapGroup("");
-        var admin = all.MapGroup("").RequireAuthorization("Admin");
+        var staff = all.MapGroup("").RequireAuthorization(policy => policy.RequireRole("Admin", "Teacher"));
 
         reader.MapGet("/course-files/{id}/download", Download);
         reader.MapGet("/classrooms/{classroomId}/files/{id}", OpenClassroomFile);
-        admin.MapPost("/resources/{id}/files", Upload);
-        admin.MapPut("/course-files/{id}", Rename);
-        admin.MapDelete("/course-files/{id}", Delete);
-        admin.MapPost("/course-files/{id}/pin", Pin);
+        staff.MapPost("/resources/{id}/files", Upload);
+        staff.MapPut("/course-files/{id}", Rename);
+        staff.MapDelete("/course-files/{id}", Delete);
+        staff.MapPost("/course-files/{id}/pin", Pin);
     }
 
     static async Task<IResult> OpenClassroomFile(string classroomId, string id, bool? preview, HttpContext ctx, SchoolDbContext db, AppPaths paths, CancellationToken ct)
@@ -68,9 +68,10 @@ public static class CourseFileEndpoints
                          join chapter in db.CourseChapters.AsNoTracking() on section.ChapterId equals chapter.Id
                          join course in db.Courses.AsNoTracking() on chapter.CourseId equals course.Id
                          where file.Id == id
-                         select new { File = file, course.Status }).FirstOrDefaultAsync(ct);
-        if (row == null) return NotFound("附件不存在");
-        if (!ctx.User.IsInRole("Admin") && row.Status != "published") return NotFound("附件不存在或课程尚未发布");
+                         select new { File = file, course.Status, course.OwnerUserId, course.Visibility }).FirstOrDefaultAsync(ct);
+        if (row == null || !ContentAccess.CanSee(ctx.User, row.OwnerUserId, row.Visibility)) return NotFound("附件不存在");
+        if (row.Status != "published" && !ContentAccess.CanEdit(ctx.User, row.OwnerUserId, row.Visibility))
+            return NotFound("附件不存在或课程尚未发布");
         var path = CourseFileStore.PathFor(paths, row.File.ResourceId, row.File.StoredName);
         if (!File.Exists(path)) return NotFound("附件文件缺失，请联系管理员");
         return Results.File(path, "application/octet-stream", row.File.Name);
@@ -80,6 +81,7 @@ public static class CourseFileEndpoints
     {
         var resource = await db.CourseResources.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (resource == null) return NotFound("资源不存在");
+        if (await RequireResourceEdit(db, ctx, id, ct) is { } denied) return denied;
         if (!ctx.Request.HasFormContentType) return Bad("请选择要上传的附件");
         var form = await ctx.Request.ReadFormAsync(ct);
         var file = form.Files.GetFile("file");
@@ -125,6 +127,7 @@ public static class CourseFileEndpoints
     {
         var entity = await db.CourseResourceFiles.FirstOrDefaultAsync(item => item.Id == id, ct);
         if (entity == null) return NotFound("附件不存在");
+        if (await RequireResourceEdit(db, ctx, entity.ResourceId, ct) is { } denied) return denied;
         var name = (input.Name ?? "").Trim();
         var error = ValidateName(name);
         if (error != null) return Bad(error);
@@ -138,6 +141,7 @@ public static class CourseFileEndpoints
     {
         var entity = await db.CourseResourceFiles.FirstOrDefaultAsync(item => item.Id == id, ct);
         if (entity == null) return NotFound("附件不存在");
+        if (await RequireResourceEdit(db, ctx, entity.ResourceId, ct) is { } denied) return denied;
         db.CourseResourceFiles.Remove(entity);
         Audit.Add(db, ctx, "删除课程附件", entity.Name);
         await db.SaveChangesAsync(ct);
@@ -149,10 +153,23 @@ public static class CourseFileEndpoints
     {
         var entity = await db.CourseResourceFiles.FirstOrDefaultAsync(item => item.Id == id, ct);
         if (entity == null) return NotFound("附件不存在");
+        if (await RequireResourceEdit(db, ctx, entity.ResourceId, ct) is { } denied) return denied;
         entity.IsPinned = input.Pinned;
         Audit.Add(db, ctx, input.Pinned ? "置顶课程附件" : "取消置顶课程附件", entity.Name);
         await db.SaveChangesAsync(ct);
         return Results.Ok(View(entity));
+    }
+
+    static async Task<IResult?> RequireResourceEdit(SchoolDbContext db, HttpContext ctx, string resourceId, CancellationToken ct)
+    {
+        var course = await (from resource in db.CourseResources.AsNoTracking()
+                            join section in db.CourseSections.AsNoTracking() on resource.SectionId equals section.Id
+                            join chapter in db.CourseChapters.AsNoTracking() on section.ChapterId equals chapter.Id
+                            join item in db.Courses.AsNoTracking() on chapter.CourseId equals item.Id
+                            where resource.Id == resourceId
+                            select new { item.OwnerUserId, item.Visibility }).FirstOrDefaultAsync(ct);
+        if (course == null) return NotFound("资源不存在");
+        return ContentAccess.RequireEdit(ctx.User, course.OwnerUserId, course.Visibility, "资源不存在", "只能编辑本人尚未纳入公共标准库的课程");
     }
 
     static string? ValidateName(string name)

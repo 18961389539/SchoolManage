@@ -177,7 +177,7 @@ public static class ExamManagementEndpoints
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await ExamQuestionEndpoints.LockPaperAsync(db, input.PaperId, ct);
         var paper = await db.ExamPapers.AsNoTracking().FirstOrDefaultAsync(item => item.Id == input.PaperId, ct);
-        if (paper == null) return Bad("请选择有效的试卷");
+        if (paper == null || !ContentAccess.CanSee(ctx.User, paper.OwnerUserId, paper.Visibility)) return Bad("请选择有效的试卷");
         if (!await db.ExamPaperQuestions.AnyAsync(item => item.PaperId == paper.Id, ct)) return Bad("试卷还没有题目，请先在试卷管理中添加题目");
         var name = input.Name.Trim();
         if (await db.TrainingExams.AnyAsync(item => item.Name == name, ct)) return Conflict("考试名称已存在");
@@ -206,7 +206,7 @@ public static class ExamManagementEndpoints
         if (exam.Status != "scheduled") return Conflict("考试已开始或结束，不能再编辑");
         if (await db.ExamAttempts.AnyAsync(item => item.ExamId == id, ct)) return Conflict("已有学生开始作答，不能再编辑");
         var paper = await db.ExamPapers.AsNoTracking().FirstOrDefaultAsync(item => item.Id == input.PaperId, ct);
-        if (paper == null) return Bad("请选择有效的试卷");
+        if (paper == null || !ContentAccess.CanSee(ctx.User, paper.OwnerUserId, paper.Visibility)) return Bad("请选择有效的试卷");
         if (!await db.ExamPaperQuestions.AnyAsync(item => item.PaperId == paper.Id, ct)) return Bad("试卷还没有题目");
         var name = input.Name.Trim();
         if (await db.TrainingExams.AnyAsync(item => item.Id != id && item.Name == name, ct)) return Conflict("考试名称已存在");

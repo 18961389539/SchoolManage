@@ -2,14 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Clock, Grid, Promotion, Refresh, Select } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { focusQuestion, useAssessmentSession } from '../assessmentSession'
 import { api, messageOf, post } from '../api'
-import { clearDraft, readDraft, registerEmergencyFlush, writeDraft } from '../draftPersistence'
-import { registerLeaveGuard } from '../leaveGuard'
 import { appState } from '../store'
 import { campAttemptLabel, campAttemptStatusType } from '../camp'
 import { countdownText, examQuestionTypeLabel, optionLetters } from '../exam'
 import { durationText } from '../teaching'
-import { parseApiDate } from '../time'
 import type {
   CampPositionLearnerDetail,
   CampSaveAnswer,
@@ -32,54 +30,12 @@ const starting = ref(false)
 const submitting = ref(false)
 const autoSubmitting = ref(false)
 const activeTab = ref('objective')
-const now = ref(Date.now())
-const saveState = ref('')
 const reportVisible = ref(false)
 const recordVisible = ref(false)
 const practicalQuestionId = ref('')
 const questionIndexOpen = ref(false)
-const saving = ref(false)
-let ticker: number | undefined
-let saveTimer: number | undefined
-let saveQueued = false
-let saveRequested = false
-let serverOffset = 0
-let answerBaseAt = ''
-let emergencyRestorePending = true
 const autoSubmittedAttempts = new Set<string>()
-const draftKey = () =>
-  `school.camp.${appState.user?.id || 'anonymous'}.${props.positionId}.${detail.value?.attempt?.id || ''}`
-
-function saveEmergencyDraft() {
-  if (!inProgress.value || !detail.value?.attempt?.id) return
-  writeDraft(draftKey(), { answers: collectAnswers() })
-}
-
-function restoreEmergencyDraft() {
-  if (!emergencyRestorePending) return
-  emergencyRestorePending = false
-  if (!inProgress.value) return
-  const saved = readDraft<{ answers: CampSaveAnswer[] }>(draftKey())
-  if (!saved?.answers?.length) return
-  let restored = false
-  for (const answer of saved.answers) {
-    const target = questions.value.find(question => question.id === answer.questionId)
-    if (!target) continue
-    if (answer.selected?.length) {
-      target.selected = [...answer.selected]
-      restored = true
-    }
-    if (answer.text) {
-      target.textAnswer = answer.text
-      restored = true
-    }
-  }
-  if (restored) {
-    saveState.value = '待保存'
-    ElMessage.warning('已从本机恢复上次未保存的测评答案，请核对后继续作答')
-  }
-}
-const releaseEmergencyFlush = registerEmergencyFlush(saveEmergencyDraft)
+const dirtyQuestionIds = new Set<string>()
 
 const questions = computed(() => detail.value?.questions || [])
 const objectiveQuestions = computed(() => questions.value.filter(item => item.type !== 'practical'))
@@ -94,11 +50,6 @@ const practicalVisible = computed({
 const inProgress = computed(() => detail.value?.attempt?.status === 'inProgress')
 const graded = computed(() => detail.value?.attempt?.status === 'graded')
 const environmentUrl = computed(() => `/camp/positions/${props.positionId}/environment`)
-const remaining = computed(() => {
-  const attempt = detail.value?.attempt
-  if (!attempt || attempt.status !== 'inProgress') return 0
-  return Math.max(0, Math.ceil((parseApiDate(attempt.deadline).getTime() - now.value - serverOffset) / 1000))
-})
 const answeredCount = computed(() => questions.value.filter(answered).length)
 const answeredPercent = computed(() =>
   questions.value.length ? Math.round((answeredCount.value / questions.value.length) * 100) : 0
@@ -121,18 +72,21 @@ function questionNumber(question: CampTakingQuestion): number {
 
 function pickSingle(question: CampTakingQuestion, value: string | number | boolean | undefined) {
   question.selected = value === undefined || value === '' ? [] : [Number(value)]
-  scheduleSave()
+  dirtyQuestionIds.add(question.id)
+  session.schedule()
 }
 
 function toggleMultiple(question: CampTakingQuestion, index: number) {
   question.selected = question.selected.includes(index)
     ? question.selected.filter(item => item !== index)
     : [...question.selected, index].sort((left, right) => left - right)
-  scheduleSave()
+  dirtyQuestionIds.add(question.id)
+  session.schedule()
 }
 
 function onPracticalInput() {
-  scheduleSave(1200)
+  if (practicalQuestion.value) dirtyQuestionIds.add(practicalQuestion.value.id)
+  session.schedule(1200)
 }
 
 async function load(silent = false) {
@@ -140,13 +94,13 @@ async function load(silent = false) {
   error.value = ''
   try {
     const result = await api<CampPositionLearnerDetail>(`/camp/positions/${props.positionId}`)
-    serverOffset = parseApiDate(result.serverNow).getTime() - Date.now()
-    answerBaseAt = result.serverNow
+    session.clearSchedule()
+    dirtyQuestionIds.clear()
     detail.value = result
-    now.value = Date.now()
+    session.noteServerNow(result.serverNow)
     if (result.attempt?.status === 'inProgress') {
       activeTab.value = 'objective'
-      restoreEmergencyDraft()
+      session.restoreDraft()
     }
   } catch (failure) {
     if (!silent) error.value = messageOf(failure)
@@ -161,8 +115,8 @@ async function refreshPage() {
     return
   }
   if (inProgress.value) {
-    await flushSave()
-    if (saveState.value === '保存失败') {
+    await flush()
+    if (phase.value === 'error') {
       ElMessage.warning('答案尚未保存成功，已取消刷新，请检查网络后重试')
       return
     }
@@ -174,8 +128,10 @@ async function start() {
   if (!detail.value || starting.value) return
   try {
     await ElMessageBox.confirm(
-      `测评时长 ${durationText(detail.value.durationMinutes)}，开始后立即计时且不可暂停。确认开始测评吗？`,
-      '开始岗位测评',
+      detail.value.attempt?.status === 'graded'
+        ? `将开始一次新的测评，时长 ${durationText(detail.value.durationMinutes)}。以往成绩和能力报告会保留。确认开始吗？`
+        : `测评时长 ${durationText(detail.value.durationMinutes)}，开始后立即计时且不可暂停。确认开始测评吗？`,
+      detail.value.attempt?.status === 'graded' ? '再次测评' : '开始岗位测评',
       { type: 'warning', confirmButtonText: '开始测评', cancelButtonText: '稍后再做' }
     )
   } catch {
@@ -202,79 +158,70 @@ function collectAnswers(): CampSaveAnswer[] {
   }))
 }
 
-function scheduleSave(delay = 800) {
-  if (!inProgress.value) return
-  saveRequested = true
-  saveState.value = '待保存'
-  if (saveTimer !== undefined) window.clearTimeout(saveTimer)
-  saveTimer = window.setTimeout(() => void flushSave(), delay)
-}
-
-async function flushSave(announce = false): Promise<void> {
-  if (saveTimer !== undefined) {
-    window.clearTimeout(saveTimer)
-    saveTimer = undefined
-  }
-  if (!inProgress.value || !detail.value) return
-  if (saving.value) {
-    saveQueued = true
-    return
-  }
-  saving.value = true
-  saveRequested = false
-  saveState.value = '保存中…'
-  try {
-    const result = await post<{ serverNow: string }>(`/camp/positions/${props.positionId}/answers`, {
-      answers: collectAnswers(),
-      loadedAt: answerBaseAt
-    })
-    answerBaseAt = result.serverNow
-    if (!saveRequested) clearDraft(draftKey())
-    saveState.value = '答案已自动保存'
-    if (announce) ElMessage.success('答案已保存')
-  } catch (failure) {
-    saveState.value = '保存失败'
-    if (announce) ElMessage.error(messageOf(failure))
-  } finally {
-    saving.value = false
-    if (saveQueued || saveRequested) {
-      saveQueued = false
-      void flushSave()
+const session = useAssessmentSession<CampSaveAnswer>({
+  draftKey: () => `school.camp.${appState.user?.id || 'anonymous'}.${props.positionId}.${detail.value?.attempt?.id || ''}`,
+  active: () => inProgress.value,
+  deadline: () => detail.value?.attempt?.deadline,
+  submitting: () => submitting.value,
+  collectDraft: () => collectAnswers(),
+  restoreAnswer: answer => {
+    const target = questions.value.find(question => question.id === answer.questionId)
+    if (!target) return false
+    let changed = false
+    if (answer.selected?.length) {
+      target.selected = [...answer.selected]
+      changed = true
     }
+    if (answer.text) {
+      target.textAnswer = answer.text
+      changed = true
+    }
+    if (changed) dirtyQuestionIds.add(answer.questionId)
+    return changed
+  },
+  changedIds: () => [...dirtyQuestionIds],
+  fingerprint: id => id,
+  remember: () => {},
+  snapshot: ids =>
+    questions.value
+      .filter(question => ids.includes(question.id))
+      .map(question => ({
+        questionId: question.id,
+        selected: [...question.selected],
+        text: question.textAnswer
+      })),
+  detachSent: ids => {
+    for (const id of ids) dirtyQuestionIds.delete(id)
+  },
+  redirty: ids => {
+    for (const id of ids) dirtyQuestionIds.add(id)
+  },
+  savePath: () => `/camp/positions/${props.positionId}/answers`,
+  debounceMs: 800,
+  queue: 'immediate',
+  scheduleOnRestore: true,
+  flushOnUnmount: true,
+  draftOnUnmount: true,
+  blockLeave: () => submitting.value,
+  restoreNotice: '已从本机恢复上次未保存的测评答案，请核对后继续作答',
+  announceSaved: '答案已保存',
+  leave: {
+    title: '离开岗位测评',
+    unsaved: '答案没有保存成功，离开后这些修改可能丢失。仍要离开吗？',
+    saved: '测评仍在进行，离开后倒计时不会暂停。已作答内容会保留，可从「岗位训练营」继续。',
+    confirmUnsaved: '仍要离开',
+    confirmSaved: '离开测评',
+    cancel: '继续作答'
+  },
+  labels: {
+    idle: '自动保存已开启',
+    pending: '待保存',
+    saving: '保存中…',
+    error: '保存失败',
+    saved: () => '答案已自动保存'
   }
-}
-
-let leaveApproved = false
-const releaseLeaveGuard = registerLeaveGuard(async () => {
-  if (leaveApproved || !inProgress.value) return true
-  if (submitting.value) return false
-  await flushSave()
-  const unsaved = saveState.value === '保存失败'
-  try {
-    await ElMessageBox.confirm(
-      unsaved
-        ? '答案没有保存成功，离开后这些修改可能丢失。仍要离开吗？'
-        : '测评仍在进行，离开后倒计时不会暂停。已作答内容会保留，可从「岗位训练营」继续。',
-      '离开岗位测评',
-      {
-        type: 'warning',
-        confirmButtonText: unsaved ? '仍要离开' : '离开测评',
-        cancelButtonText: '继续作答'
-      }
-    )
-  } catch {
-    return false
-  }
-  leaveApproved = true
-  return true
 })
-
-function beforeUnload(event: BeforeUnloadEvent) {
-  saveEmergencyDraft()
-  if (!inProgress.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
+const { remaining, phase, text: saveText, saving, scheduled, flush } = session
 
 async function submit(auto = false) {
   const attempt = detail.value?.attempt
@@ -298,20 +245,16 @@ async function submit(auto = false) {
   }
   submitting.value = true
   autoSubmitting.value = auto
-  saveState.value = ''
-  if (saveTimer !== undefined) {
-    window.clearTimeout(saveTimer)
-    saveTimer = undefined
-  }
+  session.reset()
   try {
     const result = await post<CampSubmitResponse>(`/camp/positions/${props.positionId}/submit`, {
       answers: collectAnswers(),
-      loadedAt: answerBaseAt
+      loadedAt: session.loadedAt()
     })
     ElMessage[auto ? 'warning' : 'success'](
       auto ? '测评时间已到，系统已自动提交本次作答' : `测评已提交，得分 ${result.totalScore} / ${result.maxScore}`
     )
-    clearDraft(draftKey())
+    session.clearStoredDraft()
     await load(true)
   } catch (failure) {
     ElMessage.error(messageOf(failure))
@@ -325,16 +268,11 @@ async function submit(auto = false) {
 function switchTab(question: CampTakingQuestion) {
   activeTab.value = question.type === 'practical' ? 'practical' : 'objective'
   questionIndexOpen.value = false
-  void nextTick(() => {
-    const target = document.getElementById(`camp-question-${question.id}`)
-    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
-    target?.focus({ preventScroll: true })
-    target?.scrollIntoView({ behavior, block: 'start' })
-  })
+  void nextTick(() => focusQuestion(`camp-question-${question.id}`))
 }
 
 async function reviewReport() {
-  if (!saveRequested) await flushSave()
+  if (!scheduled.value) await flush()
   reportVisible.value = true
 }
 
@@ -350,20 +288,6 @@ watch(inProgress, active => {
 
 onMounted(() => {
   void load()
-  window.addEventListener('beforeunload', beforeUnload)
-  ticker = window.setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-})
-
-onBeforeUnmount(() => {
-  saveEmergencyDraft()
-  releaseEmergencyFlush()
-  releaseLeaveGuard()
-  window.removeEventListener('beforeunload', beforeUnload)
-  if (ticker !== undefined) window.clearInterval(ticker)
-  if (saveTimer !== undefined) window.clearTimeout(saveTimer)
-  if (inProgress.value) void flushSave()
 })
 </script>
 
@@ -458,12 +382,13 @@ onBeforeUnmount(() => {
       <div class="result-actions">
         <el-button type="primary" :icon="Select" @click="reviewReport">查看能力报告</el-button>
         <el-button @click="recordVisible = true">查看作答记录</el-button>
+        <el-button v-if="detail.canStart" :icon="Promotion" :loading="starting" @click="start">再次测评</el-button>
       </div>
     </div>
 
     <el-alert v-if="!detail.attempt" type="info" :closable="false" show-icon>
       <template #title>测评须知</template>
-      <p>开始后立即计时且不可暂停；作答内容自动保存，到时系统自动提交。每个岗位仅有一次测评机会。</p>
+      <p>开始后立即计时且不可暂停；作答内容自动保存，到时系统自动提交。完成后可以再次测评，以往成绩和能力报告会保留。</p>
     </el-alert>
   </section>
 
@@ -490,12 +415,10 @@ onBeforeUnmount(() => {
           >
             答题卡
           </el-button>
-          <el-button :loading="saving" :disabled="submitting" @click="flushSave(true)">保存答案</el-button>
+          <el-button :loading="saving" :disabled="submitting" @click="flush(true)">保存答案</el-button>
           <el-button type="primary" :loading="submitting && !autoSubmitting" @click="submit(false)">提交测评</el-button>
         </div>
-        <span class="save-state" :class="{ failed: saveState === '保存失败' }" role="status">
-          {{ saveState || '自动保存已开启' }}
-        </span>
+        <span class="save-state" :class="{ failed: phase === 'error' }" role="status">{{ saveText }}</span>
       </div>
       <div id="camp-answer-index" class="nav-panel" :class="{ 'is-expanded': questionIndexOpen }">
         <h2>答题卡</h2>
@@ -645,7 +568,7 @@ onBeforeUnmount(() => {
         type="primary"
         :loading="saving"
         :disabled="submitting"
-        @click="flushSave(true)"
+        @click="flush(true)"
       >
         保存答案
       </el-button>

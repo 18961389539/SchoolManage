@@ -555,9 +555,9 @@ onMounted(() => {
   >
     <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="section-notice" />
     <el-alert
-      v-if="locked"
-      title="该岗位已有测评记录，只能修改名称与描述；技能、题目和时长已锁定。"
-      type="warning"
+      v-if="editingDetail && editingDetail.attemptCount > 0"
+      title="已有学生完成或正在进行测评。修改技能、题目、时长或启动节点只影响之后开始的测评，已提交的报告仍按当时的题目计分。"
+      type="info"
       show-icon
       :closable="false"
       class="section-notice"

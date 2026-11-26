@@ -22,7 +22,7 @@
 
 - 对远端 Hyper-V 主机使用 WinRM HTTPS 和 Kerberos。学校需准备匹配主机名的受信证书，以及拥有对应 Hyper-V 和远程读取权限的 Windows 服务身份。安装器默认服务账户为 LocalService，远程管理需由学校配置有访问权限的身份。
 - 实训虚拟机需由学校管理员在 Hyper-V 备注中加入独立的 `SchoolTraining` 行。平台的电源操作与移除仅作用于这些虚拟机。移除仅对已关机的虚拟机开放，保留虚拟磁盘文件。
-- 「虚拟机管理 → Hyper-V」可查看虚拟机、搜索、启动、停止、重启与移除。来宾系统上报 IPv4 地址后可下载 RDP 连接文件，登录使用校方独立配置的账号。需由学校启用来宾系统远程桌面并配置网络访问。
+- 「虚拟机管理 → Hyper-V」可查看虚拟机、搜索、启动、停止、重启与移除。列表显示最近一次同步时间和仍在同步的节点，打开页面不会逐台等待 PowerShell。来宾系统上报 IPv4 地址后可下载 RDP 连接文件，登录使用校方独立配置的账号。需由学校启用来宾系统远程桌面并配置网络访问。
 - CPU 与内存来自 Hyper-V 主机，磁盘使用率对应默认虚拟磁盘目录所在卷。集群总数统计该主机全部虚拟机，虚拟机管理列表只显示实训虚拟机。无法采集的指标显示为空。
 - 考试部署、课堂实时助教和岗位测评的教学流程仍使用模拟环境。学校需提供 Hyper-V 测试主机、可重置的来宾系统模板、虚拟交换机及账号与会话权限模型，才能用真实环境验证这些流程。
 
@@ -90,13 +90,23 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-servic
 
 HTTP 本机模式用于安装初始化与模拟验证。局域网模式不接受明文 HTTP；证书域名匹配与客户端信任需一并验收，不能将开发证书作为生产证书。初始化仍在服务器本机执行，浏览器应使用证书匹配且解析到本机的学校主机名。端口冲突、证书信任和代理配置不应通过关闭认证绕过。
 
+学校网关或 Nginx 终结 HTTPS 后再转发到本机 Kestrel 时，在 `server.json` 的 `School` 节写明受信代理。本机 Nginx 示例：
+
+```json
+"ReverseProxy": { "TrustedProxies": [ "127.0.0.1" ] }
+```
+
+只有 TCP 对端落在该列表（单个地址或 CIDR，不能是 `0.0.0.0/0` 或 `::/0`）时，服务才采信 `X-Forwarded-For`、`X-Forwarded-Proto` 和 `X-Forwarded-Host`，且只取最靠近服务的一跳。未配置时忽略这些头，避免客户端伪造来源地址绕过登录限流。`X-Forwarded-Host` 还须出现在 `AllowedHosts`（或 `School:ReverseProxy:AllowedHosts`）中，通配符不会放行。
+
+登录按客户端地址每分钟 120 次（`School:Login:IpPermitLimit`）。同一地址对同一账号连续失败 8 次后冷却 5 分钟（`School:Login:FailureLimit`、`School:Login:LockoutMinutes`）；登录成功，或两次失败的间隔超过冷却时间，会重新计数。机房 NAT 下多名学生可以同时登录；某一账号输错密码不会拖住同一出口上的其他账号。首次初始化仍只看 TCP 对端是否为本机，不看转发头。
+
 ## 数据与权限
 
 程序目录只存放可替换的发布文件；所有者为 Administrators，并使用受保护 ACL：SYSTEM/Administrators 完全控制，LocalService/Users 只读执行。所有目录及发布清单文件均按此策略处理，未知文件不删除。数据目录存放数据库、Data Protection 密钥、配置、备份、日志和升级回退副本，所有者为 Administrators，SYSTEM/Administrators 完全控制，LocalService 可修改，不授予 Users 访问。
 
 程序和数据目录的现存父目录链也必须由系统或管理员控制，不得允许普通用户删除、重命名或改写权限；junction/reparse 路径被拒绝。默认 Program Files/ProgramData 可用；自定义目录请选择已有且权限受控的父目录，普通用户拥有或可替换的父目录会在安装前被拒绝。正式安装载荷使用原子创建的管理员专用 GUID 临时目录，验证模式仍仅使用用户 TEMP。
 
-不要删除、单独移动或重建 `keys` 目录；它用于已有受保护凭据和会话的解密。Windows 上密钥还使用 DPAPI LocalMachine 保护，恢复当前支持同一 Windows 安装。数据库备份包内含密钥，应按管理员凭据材料保存，不放到网站公开目录。
+不要删除、单独移动或重建 `keys` 目录；它用于已有受保护凭据和会话的解密。未另行配置时，Windows 用 DPAPI LocalMachine 保护密钥，这种备份只能在同一 Windows 安装上解密设备凭据。数据库备份包内含密钥，应按管理员凭据材料保存，不放到网站公开目录。
 
 ## 更新
 
@@ -132,7 +142,10 @@ dotnet ef migrations add <Name> --project src/School.Training --startup-project 
     "Logs": { "MinimumLevel": "Information", "RetentionDays": 14, "MaxFileBytes": 10485760, "MaxTotalBytes": 209715200 },
     "Backups": { "RetentionCount": 20, "MaxTotalBytes": 5368709120, "MinimumFreeBytes": 268435456, "Automatic": { "Enabled": true, "TimeOfDay": "02:30" } },
     "Audits": { "RetentionDays": 0, "CleanupTimeOfDay": "03:30" },
-    "Migrations": { "PreMigrationBackupCount": 5 }
+    "Migrations": { "PreMigrationBackupCount": 5 },
+    "Login": { "IpPermitLimit": 120, "FailureLimit": 8, "LockoutMinutes": 5 },
+    "ReverseProxy": { "TrustedProxies": [] },
+    "DataProtection": { "CertificatePath": "", "CertificatePassword": "", "RecoveryPassphrase": "" }
   }
 }
 ```
@@ -141,7 +154,7 @@ dotnet ef migrations add <Name> --project src/School.Training --startup-project 
 
 默认备份目录是数据目录下的 `backups`。可以把 `School:Backups:Directory` 设为另一个本地卷或已映射驱动器的绝对路径，让备份与数据库分开；UNC 路径也可用，但服务启动时共享必须可访问。服务账户必须对该目录有修改权限，路径无效或不可写会导致启动失败。备份包含数据库、DataProtection 密钥和可解密凭据，仍应按管理员凭据材料保管。
 
-服务提供匿名 `GET /healthz`，只返回数据库连通性和数据/备份卷空间状态（`healthy` 或 `unhealthy`），不包含路径、账号或版本信息，供本机监控或安装器探针使用。登录会话默认 8 小时滑动，并在 24 小时后要求重新登录；绝对时限可用 `School:Session:AbsoluteHours` 调整（1–168 小时）。导入预览/提交、备份创建/下载、诊断包、统计导出和许可证导入按用户每分钟 60 次限流。
+服务提供匿名 `GET /healthz`，只返回数据库连通性和数据/备份卷空间状态（`healthy` 或 `unhealthy`），不包含路径、账号或版本信息，供本机监控或安装器探针使用。登录会话默认 8 小时滑动，并在 24 小时后要求重新登录；绝对时限可用 `School:Session:AbsoluteHours` 调整（1–168 小时）。账号戳记核对缓存 5 秒；退出、修改密码、重置密码、变更账号或角色、删除账号会立即失效。登录按客户端每分钟 120 次，同一客户端对同一账号连续失败 8 次后冷却 5 分钟，见上文「局域网访问」。导入预览/提交、备份创建/下载、诊断包、统计导出和许可证导入按用户每分钟 60 次限流。
 
 管理员可在“服务器信息”或“系统设置”页下载诊断包（ZIP）：包含服务状态、保留策略、主机与进程信息、数据库表计数与 PRAGMA 检查结果、最近三个日志文件的尾部以及清单。诊断包不包含密码、会话 Cookie、DataProtection 密钥或数据库文件，每次下载都会记入审计。
 
@@ -172,7 +185,21 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\Program Files\School
 
 恢复失败时，脚本按已经执行的变更还原旧文件，保留失败实例的数据和日志。原服务曾在运行时，回退后会重新启动并验证旧数据库上的状态接口。若回退也失败，错误信息会同时显示恢复和回退原因，供管理员核对保留的文件、服务状态与日志。原备份文件和原日志保留。
 
-**当前备份不能承诺跨机器或重装 Windows 后直接恢复设备凭据。** DPAPI 保护绑定当前 Windows 安装；跨机器迁移需要单独的密钥迁移方案，或重新录入受保护的设备凭据。证书与设备特征码授权也需重新验证，复制数据库不会自动转移机器绑定许可证。
+要在重装 Windows 或更换服务器后还能解密设备凭据，先在 `server.json` 的 `School` 节配置一种可携带保护，然后重启服务并重新备份。证书和恢复口令只选一种。证书示例：
+
+```json
+"DataProtection": { "CertificatePath": "D:\\SchoolSecrets\\dataprotection.pfx", "CertificatePassword": "由学校填写的PFX密码" }
+```
+
+没有证书时，可以改用恢复口令。口令须为 12–128 位且同时包含字母和数字，服务会生成一把只写在密钥目录里的证书，并用这句口令加密保存。备份包带上这把证书，但不包含口令本身：
+
+```json
+"DataProtection": { "RecoveryPassphrase": "抄写到服务器以外的口令" }
+```
+
+重启后，已有的本机 DPAPI 密钥会改由所选方式保护，之后的备份才能在新系统上解开。新系统先写入同一份 `server.json`（证书还要把 PFX 放到同一路径），再执行恢复脚本。脚本检查时读取该数据目录里的配置。口令或 PFX 丢失后，历史设备凭据无法恢复。产品许可证仍绑定设备特征码，复制数据库不会转移授权。
+
+备份页可以上传 16MB 以内的备份包做只读检查，也可以检查已经在备份目录里的文件。检查只调用和恢复脚本相同的数据库与密钥校验，不会替换当前数据。未配置可携带保护时，检查会标明密钥仍绑定当前 Windows。
 
 ## 服务诊断
 

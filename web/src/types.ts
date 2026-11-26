@@ -1,41 +1,25 @@
 // Explicit request/response contracts mirrored from the ASP.NET Core endpoints.
-// Dynamic entity forms and tables still use Row (Record<string, any>) because their
-// fields are configured at runtime; everything with a stable shape belongs here.
+// Session, status, and exam-question reads come from api.generated.ts. Dynamic entity
+// forms and tables still use Row (Record<string, any>) because their fields are
+// configured at runtime; every other stable shape is still maintained in this file.
 import type { CaseGrade, CaseRubricItem, CaseTopologyBlueprint } from './caseWork'
+import type {
+  ExamQuestionDetailResponse,
+  ExamQuestionSummaryResponse,
+  MessageResponse as GeneratedMessageResponse,
+  SessionResponse as GeneratedSessionResponse,
+  SessionUserResponse,
+  StatusResponse as GeneratedStatusResponse
+} from './api.generated'
 
-export interface SessionUser {
-  id: string
-  userName: string
-  displayName: string
-  role: string
-  mustChangePassword: boolean
-}
-
-export interface SessionResponse {
-  user: SessionUser
-  csrfToken: string
-}
-
-export interface StatusResponse {
-  initialized: boolean
-  product: string
-  version: string
-  schemaVersion: number
-  logWriteFailures: number
-  maxUploadBytes: number
-  schoolName?: string | null
-  demo?: boolean
-  demoPassword?: string | null
-  demoAccounts?: { role: string; userName: string; displayName: string }[] | null
-}
+export type SessionUser = SessionUserResponse
+export type SessionResponse = GeneratedSessionResponse
+export type StatusResponse = GeneratedStatusResponse
+export type MessageResponse = GeneratedMessageResponse
 
 export interface Paged<T> {
   total: number
   items: T[]
-}
-
-export interface MessageResponse {
-  message: string
 }
 
 export interface AuditEntry {
@@ -87,9 +71,26 @@ export interface AutomaticBackupStatus {
   lastMessage: string
 }
 
+export interface KeyProtectionStatus {
+  mode: 'dpapi' | 'certificate' | 'passphrase' | 'none'
+  portable: boolean
+  summary: string
+}
+
+export interface BackupInspection {
+  ok: boolean
+  message: string
+  schemaVersion: number | null
+  keyProtection: string
+  portable: boolean
+  credentialCount: number
+  warnings: string[]
+}
+
 export interface BackupListResponse {
   items: BackupItem[]
   automatic: AutomaticBackupStatus
+  keyProtection?: KeyProtectionStatus
 }
 
 export interface LicenseResource {
@@ -187,6 +188,7 @@ export interface MyResourcesResponse {
 
 export type CourseType = 'general' | 'core' | 'open'
 export type CourseStatus = 'draft' | 'published'
+export type ContentVisibility = 'private' | 'shared' | 'published'
 export type ResourceKind = 'theory' | 'case' | 'theoryPractice' | 'casePractice'
 export type QuestionType = 'single' | 'multiple' | 'judge'
 export type ClassroomStatus = 'scheduled' | 'open' | 'closed'
@@ -204,6 +206,8 @@ export interface CourseSummary {
   seriesId: string | null
   /** Revision the editor must echo back; a mismatch means someone else saved first. */
   version: number
+  visibility: ContentVisibility
+  canEdit: boolean
   chapterCount: number
   sectionCount: number
   resourceCount: number
@@ -571,31 +575,19 @@ export interface ExamQuestionBank {
   isDefault: boolean
   questionCount: number
   createdAt: string
+  visibility: ContentVisibility
+  canEdit: boolean
 }
 export type ExamStatus = 'scheduled' | 'open' | 'closed'
 export type AttemptStatus = 'notStarted' | 'inProgress' | 'submitted' | 'graded'
 
-export interface ExamQuestionSummary {
-  bankId: string
-  bankName: string
-  automaticPractical: boolean
-  id: string
+export interface ExamQuestionSummary extends Omit<ExamQuestionSummaryResponse, 'type'> {
   type: ExamQuestionType
-  stem: string
-  options: string[]
-  answers: number[]
-  analysis: string
-  score: number
-  createdAt: string
-  updatedAt: string
-  paperCount: number
 }
 
-export interface ExamQuestionDetail extends Omit<ExamQuestionSummary, 'paperCount'> {
-  practicalNodeId: string
+export interface ExamQuestionDetail extends Omit<ExamQuestionDetailResponse, 'type' | 'practicalRubric'> {
+  type: ExamQuestionType
   practicalRubric: CaseRubricItem[]
-  practicalResources: string
-  papers: { id: string; name: string }[]
 }
 
 export interface ExamQuestionInput {
@@ -622,6 +614,8 @@ export interface ExamPaperSummary {
   totalScore: number
   typeCounts: Partial<Record<ExamQuestionType, number>>
   examCount: number
+  visibility: ContentVisibility
+  canEdit: boolean
 }
 
 export interface ExamPaperQuestion {
@@ -1032,6 +1026,13 @@ export interface ImportPreviewResponse {
   errorCount: number
 }
 
+export interface ImportRowsPage {
+  rows: ImportRow[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
 export type ImportJobState = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
 
 export interface ImportCredential {
@@ -1174,6 +1175,7 @@ export interface CampPositionLearnerSummary {
   questionCount: number
   practicalCount: number
   maxScore: number
+  completedCount: number
   attempt: CampAttemptSnapshot | null
   canStart: boolean
 }
@@ -1217,6 +1219,7 @@ export interface CampPositionLearnerDetail {
   practicalCount: number
   maxScore: number
   skillCount: number
+  completedCount: number
   attempt: CampAttemptState | null
   serverNow: string
   canStart: boolean
@@ -1283,8 +1286,21 @@ export interface CampRadarAxis {
   percent: number
 }
 
+export interface CampReportHistoryPoint {
+  attemptId: string
+  attemptNumber: number
+  submittedAt: string | null
+  totalScore: number
+  maxScore: number
+  percent: number
+  autoSubmitted: boolean
+  current: boolean
+  radar: CampRadarAxis[]
+}
+
 export interface CampReport {
   attemptId: string
+  attemptNumber: number
   position: { id: string; name: string; description: string }
   attempt: {
     studentName: string
@@ -1303,6 +1319,7 @@ export interface CampReport {
   }
   skills: CampSkillRow[]
   radar: CampRadarAxis[]
+  history: CampReportHistoryPoint[]
   questionCount: number
   evaluatedAt: string | null
 }

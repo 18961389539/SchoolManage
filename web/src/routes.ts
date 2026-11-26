@@ -240,9 +240,13 @@ export function createRoutes(host: RouteHost) {
       }
     }),
     page('courses', CourseLibraryPage, {
-      roles: ['Admin'],
+      roles: ['Admin', 'Teacher'],
       on: { ...go, 'activation-changed': host.refreshClassrooms },
-      nav: nav('教学中心', 1, '课程管理', Collection)
+      props: context => ({ admin: context.admin }),
+      nav: {
+        Admin: nav('教学中心', 1, '课程管理', Collection),
+        Teacher: nav('教学空间', 3, '课程', Collection)
+      }
     }),
     page('course-preview', CoursePreviewPage, {
       title: '课程预览',
@@ -292,7 +296,7 @@ export function createRoutes(host: RouteHost) {
     }),
     page('exam-questions', ExamQuestionBanksPage, {
       roles: ['Admin', 'Teacher'],
-      props: context => ({ readOnly: !context.admin }),
+      props: context => ({ admin: context.admin }),
       nav: {
         Admin: nav('教学中心', 2, '题库管理', EditPen),
         Teacher: nav('教学空间', 6, '题库', EditPen)
@@ -300,10 +304,10 @@ export function createRoutes(host: RouteHost) {
     }),
     page('exam-papers', PaperLibraryPage, {
       roles: ['Admin', 'Teacher'],
-      props: context => ({ readOnly: !context.admin }),
+      props: context => ({ admin: context.admin }),
       nav: {
         Admin: nav('教学中心', 3, '试卷管理', Document),
-        Teacher: nav('教学空间', 5, '试卷库', Document)
+        Teacher: nav('教学空间', 5, '试卷', Document)
       }
     }),
     page('exams', ExamCenterPage, {

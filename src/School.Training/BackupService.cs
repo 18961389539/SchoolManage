@@ -54,6 +54,8 @@ public static class BackupService
                 zip.CreateEntryFromFile(dbPath, "school.db", CompressionLevel.Optimal);
                 zip.CreateEntryFromFile(Path.Combine(paths.Data, ".schooltraining-data.json"), ".schooltraining-data.json", CompressionLevel.Optimal);
                 foreach (var key in Directory.EnumerateFiles(paths.Keys, "*.xml")) zip.CreateEntryFromFile(key, "keys/" + Path.GetFileName(key), CompressionLevel.Optimal);
+                var recovery = Path.Combine(paths.Keys, KeyProtectionMaterial.RecoveryFileName);
+                if (File.Exists(recovery)) zip.CreateEntryFromFile(recovery, "keys/" + KeyProtectionMaterial.RecoveryFileName, CompressionLevel.Optimal);
                 AddBusinessFiles(zip, paths.CourseFiles, "course-files");
                 AddBusinessFiles(zip, paths.CaseEvidence, "case-evidence");
                 var entry = zip.CreateEntry("manifest.json");

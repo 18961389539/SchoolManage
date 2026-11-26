@@ -20,9 +20,15 @@ public partial class SchoolDbContext
         modelBuilder.Entity<ExamQuestion>().HasIndex(x => x.CreatedAt).HasDatabaseName("IX_ExamQuestions_CreatedAt");
         modelBuilder.Entity<ExamQuestionBank>().Property(x => x.Name).UseCollation("NOCASE");
         modelBuilder.Entity<ExamQuestionBank>().HasIndex(x => x.Name).IsUnique();
+        modelBuilder.Entity<ExamQuestionBank>().Property(x => x.Visibility).HasDefaultValue(ContentAccess.Published);
+        modelBuilder.Entity<ExamQuestionBank>().HasIndex(x => x.OwnerUserId).HasDatabaseName("IX_ExamQuestionBanks_OwnerUserId");
+        modelBuilder.Entity<ExamQuestionBank>().HasIndex(x => x.Visibility).HasDatabaseName("IX_ExamQuestionBanks_Visibility");
         modelBuilder.Entity<ExamQuestion>().HasIndex(x => new { x.BankId, x.Type });
         modelBuilder.Entity<ExamQuestion>().HasOne<ExamQuestionBank>().WithMany().HasForeignKey(x => x.BankId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ExamPaper>().HasIndex(x => x.Name).IsUnique().HasDatabaseName("IX_ExamPapers_Name");
+        modelBuilder.Entity<ExamPaper>().Property(x => x.Visibility).HasDefaultValue(ContentAccess.Published);
+        modelBuilder.Entity<ExamPaper>().HasIndex(x => x.OwnerUserId).HasDatabaseName("IX_ExamPapers_OwnerUserId");
+        modelBuilder.Entity<ExamPaper>().HasIndex(x => x.Visibility).HasDatabaseName("IX_ExamPapers_Visibility");
         modelBuilder.Entity<ExamPaperQuestion>().HasIndex(x => new { x.PaperId, x.QuestionId }).IsUnique().HasDatabaseName("IX_ExamPaperQuestions_PaperId_QuestionId");
         modelBuilder.Entity<ExamPaperQuestion>().HasIndex(x => new { x.PaperId, x.SortOrder }).HasDatabaseName("IX_ExamPaperQuestions_PaperId_SortOrder");
         modelBuilder.Entity<ExamPaperQuestion>().HasIndex(x => x.QuestionId).HasDatabaseName("IX_ExamPaperQuestions_QuestionId");
@@ -79,6 +85,8 @@ public sealed class ExamQuestionBank
     public string Name { get; set; } = "";
     public string Type { get; set; } = "mixed";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string? OwnerUserId { get; set; }
+    public string Visibility { get; set; } = ContentAccess.Published;
 }
 
 public class ExamPaper
@@ -89,6 +97,8 @@ public class ExamPaper
     public string Remark { get; set; } = "";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public string? OwnerUserId { get; set; }
+    public string Visibility { get; set; } = ContentAccess.Published;
 }
 
 /// <summary>
@@ -194,9 +204,9 @@ public sealed class ExamPracticalEnvironment
 public record ExamQuestionInput(string Type, string Stem, string[]? Options, int[]? Answers, int Score = 10,
     string? Analysis = null, string? PracticalNodeId = null, CaseRubricItem[]? PracticalRubric = null, string? BankId = null,
     string? PracticalResources = null);
-public record ExamQuestionBankInput(string Name, string Type);
+public record ExamQuestionBankInput(string Name, string Type, string? Visibility = null);
 public record ExamDeviceUpdate(int Revision, SimulatedDeviceState Configuration);
-public record ExamPaperInput(string Name, string? Description, string? Remark);
+public record ExamPaperInput(string Name, string? Description, string? Remark, string? Visibility = null);
 public record TrainingExamInput(
     string Name, string PaperId, string? Description, DateTime StartAt, DateTime EndAt,
     int DurationMinutes, string[]? ClassIds = null, string[]? ProfessionIds = null, string[]? ClassroomIds = null);

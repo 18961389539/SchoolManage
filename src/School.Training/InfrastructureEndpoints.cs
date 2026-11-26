@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.DataProtection;
@@ -9,7 +8,13 @@ namespace School.Training;
 public static partial class InfrastructureEndpoints
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
-        => services.AddSingleton<SimulationSessions>().AddSingleton<SimulatedVmConsole>().AddSingleton<ClassroomLiveShare>().AddSingleton<HyperVProvider>();
+        => services.AddSingleton<SimulationSessions>().AddSingleton<SimulatedVmConsole>().AddSingleton<ClassroomLiveShare>()
+            .AddSingleton<IHyperVCommand, PowerShellHyperVCommand>().AddSingleton<HyperVProvider>()
+            .AddSingleton<IDeviceTerminalTransport, SimulatedCliTransport>()
+            .AddSingleton<IDeviceTerminalTransport, RawTcpTelnetTransport>()
+            .AddSingleton<IDeviceTerminalTransport, SshChannelTransport>()
+            .AddSingleton<IJumpHostTunnel, UnavailableJumpHostTunnel>()
+            .AddSingleton<DeviceTerminalCatalog>();
 
     public static RouteGroupBuilder MapInfrastructureEndpoints(this RouteGroupBuilder api)
     {
@@ -185,13 +190,8 @@ public static partial class InfrastructureEndpoints
             var nodeIds = rows.Select(x => x.Id).ToArray();
             var usage = await ReadNodeUsageAsync(db, nodeIds, ct);
             var accountCounts = await db.NodeAccountAssignments.AsNoTracking().Where(x => nodeIds.Contains(x.NodeId)).GroupBy(x => x.NodeId).Select(g => new { NodeId = g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.NodeId, x => x.Count, ct);
-            var inspections = new ConcurrentDictionary<string, HyperVResult?>(StringComparer.OrdinalIgnoreCase);
-            var hyperVNodes = rows.Where(row => row.Provider == HyperVProvider.Name).ToArray();
-            if (hyperVNodes.Length > 0)
-            {
-                await Parallel.ForEachAsync(hyperVNodes, new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = ct },
-                    async (row, token) => inspections[row.Id] = await hyperV.InspectAsync(row.Host, token));
-            }
+            var inspections = rows.Where(row => row.Provider == HyperVProvider.Name)
+                .ToDictionary(row => row.Id, row => hyperV.Read(row.Host).Result, StringComparer.Ordinal);
             var items = rows.Select(row => NodeView(
                 row, usage.GetValueOrDefault(row.Id), accountCounts.GetValueOrDefault(row.Id),
                 inspections.GetValueOrDefault(row.Id)?.Metrics)).ToList();
@@ -264,9 +264,22 @@ public static partial class InfrastructureEndpoints
             var row = await db.Nodes.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct); if (row is null) return Missing();
             if (row.Provider == HyperVProvider.Name && hyperV.IsConfigured(row.Host))
             {
-                var real = await hyperV.InspectAsync(row.Host, ct);
-                if (real?.Metrics is not { } host) return HyperVEndpoints.Unavailable();
+                var view = hyperV.Read(row.Host);
                 var accounts = await db.NodeAccountAssignments.CountAsync(x => x.NodeId == id, ct);
+                var host = view.Result?.Metrics;
+                if (view.SyncedAt == null)
+                    return Results.Ok(new
+                    {
+                        row.Id, row.Name, row.Host, row.Provider, isSimulated = false, row.Enabled,
+                        status = row.Enabled ? "ready" : "disabled", healthStatus = (string?)null,
+                        cpuUsagePercent = (double?)null, memoryUsagePercent = (double?)null, diskUsagePercent = (double?)null,
+                        row.TotalCpu, row.TotalMemoryMb, row.TotalDiskGb, virtualMachineCount = 0,
+                        row.VirtualMachineQuota, runningCount = 0,
+                        accountCount = accounts, row.AccountQuota, metricsSource = "hyperv-host",
+                        message = "正在同步 Hyper-V 主机。",
+                        collectedAt = (DateTime?)null, refreshing = true
+                    });
+                if (host == null) return HyperVEndpoints.Unavailable();
                 return Results.Ok(new
                 {
                     row.Id, row.Name, row.Host, row.Provider, isSimulated = false, row.Enabled,
@@ -276,7 +289,7 @@ public static partial class InfrastructureEndpoints
                     row.VirtualMachineQuota, runningCount = host.RunningVms,
                     accountCount = accounts, row.AccountQuota, metricsSource = "hyperv-host",
                     message = "Hyper-V 主机实测。账号数量表示平台分配的账号。",
-                    collectedAt = DateTime.UtcNow
+                    collectedAt = view.SyncedAt, refreshing = view.Refreshing
                 });
             }
             if (!ResourceProviders.IsSimulated(row.Provider)) return Results.Json(new { message = "此节点的虚拟化管理尚未配置。", provider = row.Provider, available = false, isSimulated = false }, statusCode: 501);

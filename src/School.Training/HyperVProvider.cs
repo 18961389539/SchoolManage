@@ -3,39 +3,21 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 
 namespace School.Training;
 
-public sealed class HyperVProvider(IConfiguration configuration, ILogger<HyperVProvider> logger)
+public interface IHyperVCommand
 {
-    public const string Name = "hyperv";
-    readonly ConcurrentDictionary<string, CacheEntry> inspectCache = new(StringComparer.OrdinalIgnoreCase);
-    sealed record CacheEntry(DateTime ExpiresAt, HyperVResult? Result);
+    Task<HyperVResult?> RunAsync(string host, string action, Guid? id, CancellationToken cancellationToken);
+}
 
-    public bool IsConfigured(string host)
-        => OperatingSystem.IsWindows() && configuration.GetSection("School:HyperV:Hosts").GetChildren()
-            .Any(entry => string.Equals(entry.Value?.Trim(), host, StringComparison.OrdinalIgnoreCase));
-
-    public async Task<HyperVResult?> InspectAsync(string host, CancellationToken ct)
+public sealed class PowerShellHyperVCommand(ILogger<PowerShellHyperVCommand> logger) : IHyperVCommand
+{
+    public async Task<HyperVResult?> RunAsync(string host, string action, Guid? id, CancellationToken cancellationToken)
     {
-        if (inspectCache.TryGetValue(host, out var cached) && cached.ExpiresAt > DateTime.UtcNow) return cached.Result;
-        var result = await RunAsync(host, "inspect", null, ct);
-        inspectCache[host] = new CacheEntry(DateTime.UtcNow.AddSeconds(10), result);
-        return result;
-    }
-
-    public async Task<HyperVResult?> ControlAsync(string host, Guid id, string action, CancellationToken ct)
-    {
-        var result = await RunAsync(host, action, id, ct);
-        if (result != null) inspectCache.TryRemove(host, out _);
-        return result;
-    }
-
-    async Task<HyperVResult?> RunAsync(string host, string action, Guid? id, CancellationToken ct)
-    {
-        if (!IsConfigured(host)) return null;
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(action == "inspect" ? 12 : 40));
         using var process = new Process
         {
@@ -67,7 +49,7 @@ public sealed class HyperVProvider(IConfiguration configuration, ILogger<HyperVP
             if (process.ExitCode == 0) return JsonSerializer.Deserialize<HyperVResult>(result, JsonSerializerOptions.Web);
             logger.LogWarning("Hyper-V {Action} on {Host} exited with code {Code}.", action, host, process.ExitCode);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning("Hyper-V {Action} on {Host} timed out.", action, host);
         }
@@ -170,6 +152,185 @@ public sealed class HyperVProvider(IConfiguration configuration, ILogger<HyperVP
         }
         ConvertTo-Json -InputObject $result -Depth 5 -Compress
         """));
+}
+
+public readonly record struct HyperVView(HyperVResult? Result, DateTime? SyncedAt, bool Refreshing, bool Configured);
+
+public sealed class HyperVProvider(IConfiguration configuration, IHyperVCommand commands, IHostApplicationLifetime lifetime)
+{
+    public const string Name = "hyperv";
+    public const int MaxConcurrentInspections = 4;
+    internal TimeSpan Freshness { get; set; } = TimeSpan.FromSeconds(10);
+    readonly SemaphoreSlim inspections = new(MaxConcurrentInspections, MaxConcurrentInspections);
+    readonly ConcurrentDictionary<string, Snapshot> snapshots = new(StringComparer.OrdinalIgnoreCase);
+
+    sealed class Snapshot
+    {
+        public readonly object Sync = new();
+        public HyperVResult? Result;
+        public DateTime? SyncedAt;
+        public int Refreshing;
+        public bool Again;
+    }
+
+    public bool IsConfigured(string host)
+        => OperatingSystem.IsWindows() && configuration.GetSection("School:HyperV:Hosts").GetChildren()
+            .Any(entry => string.Equals(entry.Value?.Trim(), host, StringComparison.OrdinalIgnoreCase));
+
+    public HyperVView Read(string host)
+    {
+        if (!IsConfigured(host)) return new(null, null, false, false);
+        var snapshot = snapshots.GetOrAdd(host, _ => new Snapshot());
+        HyperVResult? result;
+        DateTime? syncedAt;
+        var stale = false;
+        lock (snapshot.Sync)
+        {
+            result = snapshot.Result;
+            syncedAt = snapshot.SyncedAt;
+            stale = syncedAt == null || DateTime.UtcNow - syncedAt.Value >= Freshness;
+        }
+        var refreshing = stale ? BeginRefresh(host, snapshot) : Busy(snapshot);
+        return new(syncedAt == null ? null : result, syncedAt, refreshing, true);
+    }
+
+    public async Task<HyperVView> WaitForSyncAsync(string host, CancellationToken cancellationToken)
+    {
+        var view = Read(host);
+        if (!view.Configured || view.SyncedAt != null || !snapshots.TryGetValue(host, out var snapshot)) return view;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(12));
+        try
+        {
+            while (Busy(snapshot))
+                await Task.Delay(50, timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
+        return Read(host);
+    }
+
+    public async Task<HyperVResult?> ControlAsync(string host, Guid id, string action, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured(host)) return null;
+        await inspections.WaitAsync(cancellationToken);
+        HyperVResult? result;
+        try { result = await commands.RunAsync(host, action, id, cancellationToken); }
+        finally { inspections.Release(); }
+        if (result?.Completed == true) Remember(host, id, action);
+        if (result != null) BeginRefresh(host, snapshots.GetOrAdd(host, _ => new Snapshot()));
+        return result;
+    }
+
+    static bool Busy(Snapshot snapshot)
+    {
+        lock (snapshot.Sync) return snapshot.Refreshing == 1;
+    }
+
+    bool BeginRefresh(string host, Snapshot snapshot)
+    {
+        lock (snapshot.Sync)
+        {
+            snapshot.Again = true;
+            if (snapshot.Refreshing == 1) return true;
+            snapshot.Refreshing = 1;
+            snapshot.Again = false;
+        }
+        _ = RefreshAsync(host, snapshot);
+        return true;
+    }
+
+    async Task RefreshAsync(string host, Snapshot snapshot)
+    {
+        try
+        {
+            while (!lifetime.ApplicationStopping.IsCancellationRequested)
+            {
+                var acquired = false;
+                try
+                {
+                    await inspections.WaitAsync(lifetime.ApplicationStopping);
+                    acquired = true;
+                    var result = await commands.RunAsync(host, "inspect", null, lifetime.ApplicationStopping);
+                    lock (snapshot.Sync)
+                    {
+                        snapshot.Result = result;
+                        snapshot.SyncedAt = DateTime.UtcNow;
+                    }
+                }
+                catch (OperationCanceledException) when (lifetime.ApplicationStopping.IsCancellationRequested)
+                {
+                    return;
+                }
+                finally
+                {
+                    if (acquired) inspections.Release();
+                }
+                lock (snapshot.Sync)
+                {
+                    if (!snapshot.Again) return;
+                    snapshot.Again = false;
+                }
+            }
+        }
+        finally
+        {
+            bool restart;
+            lock (snapshot.Sync)
+            {
+                restart = snapshot.Again && !lifetime.ApplicationStopping.IsCancellationRequested;
+                if (restart) snapshot.Again = false;
+                else snapshot.Refreshing = 0;
+            }
+            if (restart) _ = RefreshAsync(host, snapshot);
+        }
+    }
+
+    void Remember(string host, Guid id, string action)
+    {
+        var snapshot = snapshots.GetOrAdd(host, _ => new Snapshot());
+        lock (snapshot.Sync)
+        {
+            if (snapshot.Result?.Machines == null) return;
+            var machines = snapshot.Result.Machines;
+            if (action == "destroy")
+                snapshot.Result = snapshot.Result with { Machines = machines.Where(machine => machine.Uuid != id).ToArray() };
+            else if (action is "start" or "restart" or "stop")
+            {
+                var status = action == "stop" ? "Off" : "Running";
+                snapshot.Result = snapshot.Result with
+                {
+                    Machines = machines.Select(machine => machine.Uuid == id ? machine with { Status = status } : machine).ToArray()
+                };
+            }
+        }
+    }
+}
+
+public sealed class HyperVSnapshotWorker(HyperVProvider provider, IServiceScopeFactory scopes, ILogger<HyperVSnapshotWorker> logger) : BackgroundService
+{
+    internal static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var scope = scopes.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
+                var hosts = await db.Nodes.AsNoTracking().Where(node => node.Provider == HyperVProvider.Name)
+                    .Select(node => node.Host).Distinct().ToListAsync(stoppingToken);
+                foreach (var host in hosts) provider.Read(host);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception exception)
+            {
+                logger.LogWarning("Hyper-V snapshot refresh failed ({ErrorType}).", exception.GetType().Name);
+            }
+            try { await Task.Delay(Interval, stoppingToken); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
 }
 
 public sealed record HyperVResult(HyperVMetrics? Metrics, HyperVMachine[]? Machines, bool Completed, string? Error);

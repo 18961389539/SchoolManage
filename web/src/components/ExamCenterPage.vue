@@ -204,7 +204,9 @@ function openEdit(item: TrainingExamSummary) {
         questionCount: item.questionCount,
         totalScore: item.totalScore,
         typeCounts: {},
-        examCount: 0
+        examCount: 0,
+        visibility: 'published',
+        canEdit: false
       },
       ...papers.value
     ]

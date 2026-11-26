@@ -90,9 +90,12 @@ public static class AcademicEndpoints
             var user = await db.Users.SingleAsync(x => x.Id == p.UserId, ctx.RequestAborted); var role = input.Kind == "student" ? "Student" : input.Role;
             if (user.Role == "Admin" && role != "Admin" && await db.Users.CountAsync(x => x.Role == "Admin", ctx.RequestAborted) <= 1) return Results.Conflict(new { message = "必须保留至少一个管理员" });
             p.Name = input.Name.Trim(); p.Number = input.Number.Trim(); p.ClassId = string.IsNullOrWhiteSpace(input.ClassId) ? null : input.ClassId; p.Gender = input.Gender.Trim(); p.Phone = input.Phone.Trim(); p.Email = input.Email.Trim();
-            if (user.UserName != input.UserName.Trim().ToLowerInvariant() || user.Role != role) user.SecurityStamp = Guid.NewGuid().ToString("N");
+            var stampRotated = user.UserName != input.UserName.Trim().ToLowerInvariant() || user.Role != role;
+            if (stampRotated) user.SecurityStamp = Guid.NewGuid().ToString("N");
             user.UserName = input.UserName.Trim().ToLowerInvariant(); user.DisplayName = p.Name; user.Role = role;
-            Audit.Add(db, ctx, "编辑师生", p.Name); await db.SaveChangesAsync(ctx.RequestAborted); ctx.RequestServices.GetRequiredService<SimulationSessions>().RevokeUser(user.Id); return Results.Ok(new { p.Id });
+            Audit.Add(db, ctx, "编辑师生", p.Name); await db.SaveChangesAsync(ctx.RequestAborted);
+            if (stampRotated) ctx.RequestServices.GetRequiredService<SecurityStampCache>().Revoke(user.Id, user.SecurityStamp);
+            ctx.RequestServices.GetRequiredService<SimulationSessions>().RevokeUser(user.Id); return Results.Ok(new { p.Id });
         }, ctx.RequestAborted));
         api.MapDelete("/people/{id}", async (string id, HttpContext ctx, SchoolDbContext db) => await DeletePeople([id], ctx, db));
         api.MapPost("/people/batch-delete", async (IdsRequest input, HttpContext ctx, SchoolDbContext db) => await DeletePeople(input.Ids, ctx, db));
@@ -101,7 +104,9 @@ public static class AcademicEndpoints
             var error = Validation.Password(input.NewPassword); if (error != null) return Results.BadRequest(new { message = error });
             var p = await db.People.FindAsync([id], ctx.RequestAborted); if (p == null) return Results.NotFound(new { message = "师生记录不存在" });
             var user = await db.Users.SingleAsync(x => x.Id == p.UserId, ctx.RequestAborted); user.PasswordHash = hasher.HashPassword(user, input.NewPassword); user.SecurityStamp = Guid.NewGuid().ToString("N"); user.MustChangePassword = true;
-            Audit.Add(db, ctx, "重置密码", p.Name); await db.SaveChangesAsync(ctx.RequestAborted); ctx.RequestServices.GetRequiredService<SimulationSessions>().RevokeUser(user.Id); return Results.Ok(new { message = "密码已重置，原登录会话已失效" });
+            Audit.Add(db, ctx, "重置密码", p.Name); await db.SaveChangesAsync(ctx.RequestAborted);
+            ctx.RequestServices.GetRequiredService<SecurityStampCache>().Revoke(user.Id, user.SecurityStamp);
+            ctx.RequestServices.GetRequiredService<SimulationSessions>().RevokeUser(user.Id); return Results.Ok(new { message = "密码已重置，原登录会话已失效" });
         });
     }
     const string DuplicateClassMessage = "该专业下已存在同名班级";
@@ -147,7 +152,13 @@ public static class AcademicEndpoints
         if (history.HasHistory) return Results.Conflict(new { message = history.Message, history });
         db.People.RemoveRange(people); db.Users.RemoveRange(users); Audit.Add(db, ctx, "删除师生", string.Join(",", people.Select(x => x.Name))); await db.SaveChangesAsync(ctx.RequestAborted);
         await transaction.CommitAsync(ctx.RequestAborted);
-        foreach (var id in userIds) ctx.RequestServices.GetRequiredService<SimulationSessions>().RevokeUser(id);
+        var stamps = ctx.RequestServices.GetRequiredService<SecurityStampCache>();
+        var sessions = ctx.RequestServices.GetRequiredService<SimulationSessions>();
+        foreach (var id in userIds)
+        {
+            stamps.Revoke(id);
+            sessions.RevokeUser(id);
+        }
         return Results.Ok(new { deletedCount = people.Count });
     }, ctx.RequestAborted);
 }

@@ -285,12 +285,16 @@ public static class ExamStudentEndpoints
     {
         if (inputs == null || inputs.Length == 0) return (0, null);
         if (inputs.Length > 500) return (0, "单次保存的答案过多");
-        var questions = await db.ExamPaperQuestions.AsNoTracking().Where(item => item.PaperId == exam.PaperId)
+        var pending = inputs.Where(item => item != null).GroupBy(item => item.PaperQuestionId).Select(group => group.Last()).ToArray();
+        if (pending.Length == 0) return (0, null);
+        var ids = pending.Select(item => item.PaperQuestionId).Distinct(StringComparer.Ordinal).ToArray();
+        var questions = await db.ExamPaperQuestions.AsNoTracking()
+            .Where(item => item.PaperId == exam.PaperId && ids.Contains(item.Id))
             .ToDictionaryAsync(item => item.Id, StringComparer.Ordinal, ct);
-        var existing = await db.ExamAnswers.Where(item => item.AttemptId == attempt.Id)
+        var existing = await db.ExamAnswers.Where(item => item.AttemptId == attempt.Id && ids.Contains(item.PaperQuestionId))
             .ToDictionaryAsync(item => item.PaperQuestionId, StringComparer.Ordinal, ct);
         var saved = 0;
-        foreach (var item in inputs.Where(item => item != null).GroupBy(item => item.PaperQuestionId).Select(group => group.Last()))
+        foreach (var item in pending)
         {
             if (!questions.TryGetValue(item.PaperQuestionId, out var question)) return (0, "答案对应的题目不存在，请刷新后重试");
             if (question.PracticalNodeId != "") continue;
@@ -307,13 +311,19 @@ public static class ExamStudentEndpoints
                 var optionCount = ExamLogic.DeserializeOptions(question.OptionsJson).Length;
                 if (selected.Any(index => index < 0 || index >= optionCount)) return (0, "答案选项无效，请刷新后重新选择");
             }
+            var selectedJson = System.Text.Json.JsonSerializer.Serialize(selected);
             if (!existing.TryGetValue(item.PaperQuestionId, out var answer))
             {
+                if (selected.Length == 0 && text.Length == 0) continue;
                 answer = new ExamAnswer { AttemptId = attempt.Id, PaperQuestionId = item.PaperQuestionId };
                 db.ExamAnswers.Add(answer);
                 existing[item.PaperQuestionId] = answer;
             }
-            answer.SelectedJson = System.Text.Json.JsonSerializer.Serialize(selected);
+            else if (answer.SelectedJson == selectedJson && answer.TextAnswer == text)
+            {
+                continue;
+            }
+            answer.SelectedJson = selectedJson;
             answer.TextAnswer = text;
             answer.AnsweredAt = now;
             saved++;

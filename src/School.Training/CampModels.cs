@@ -21,7 +21,13 @@ public partial class SchoolDbContext
         modelBuilder.Entity<JobQuestion>().HasIndex(x => x.SkillId).HasDatabaseName("IX_JobQuestions_SkillId");
         modelBuilder.Entity<JobQuestion>().HasOne<JobPosition>().WithMany().HasForeignKey(x => x.PositionId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<JobQuestion>().HasOne<JobSkill>().WithMany().HasForeignKey(x => x.SkillId).OnDelete(DeleteBehavior.SetNull);
-        modelBuilder.Entity<JobAttempt>().HasIndex(x => new { x.PositionId, x.UserId }).IsUnique().HasDatabaseName("IX_JobAttempts_PositionId_UserId");
+        modelBuilder.Entity<JobPosition>().Property(x => x.ContentVersion).HasDefaultValue(1);
+        modelBuilder.Entity<JobSkill>().Property(x => x.ContentVersion).HasDefaultValue(1);
+        modelBuilder.Entity<JobQuestion>().Property(x => x.ContentVersion).HasDefaultValue(1);
+        modelBuilder.Entity<JobAttempt>().Property(x => x.ContentVersion).HasDefaultValue(1);
+        modelBuilder.Entity<JobAttempt>().HasIndex(x => new { x.PositionId, x.UserId }, "IX_JobAttempts_PositionId_UserId");
+        modelBuilder.Entity<JobAttempt>().HasIndex(x => new { x.PositionId, x.UserId }, "IX_JobAttempts_PositionId_UserId_Active")
+            .IsUnique().HasFilter("\"Status\" = 'inProgress'");
         modelBuilder.Entity<JobAttempt>().HasIndex(x => x.UserId).HasDatabaseName("IX_JobAttempts_UserId");
         modelBuilder.Entity<JobAttempt>().HasIndex(x => x.Status).HasDatabaseName("IX_JobAttempts_Status");
         modelBuilder.Entity<JobAttempt>().HasIndex(x => x.VirtualMachineId).HasDatabaseName("IX_JobAttempts_VirtualMachineId");
@@ -43,6 +49,7 @@ public class JobPosition
     public int DurationMinutes { get; set; } = 60;
     public string? StartupNodeId { get; set; }
     public bool Published { get; set; }
+    public int ContentVersion { get; set; } = 1;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -54,6 +61,7 @@ public class JobSkill
     public string Name { get; set; } = "";
     public string SubName { get; set; } = "";
     public string Ability { get; set; } = "";
+    public int ContentVersion { get; set; } = 1;
     public int SortOrder { get; set; }
 }
 
@@ -70,6 +78,7 @@ public class JobQuestion
     public string RubricJson { get; set; } = "[]";
     public string PracticalRubricJson { get; set; } = "[]";
     public int Score { get; set; } = 10;
+    public int ContentVersion { get; set; } = 1;
     public int SortOrder { get; set; }
 }
 
@@ -83,6 +92,8 @@ public class JobAttempt
     public string StudentNumber { get; set; } = "";
     public string ClassName { get; set; } = "";
     public string? VirtualMachineId { get; set; }
+    public string? StartupNodeId { get; set; }
+    public int ContentVersion { get; set; } = 1;
     public string EnvironmentJson { get; set; } = "[]";
     public string Status { get; set; } = "inProgress";
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;

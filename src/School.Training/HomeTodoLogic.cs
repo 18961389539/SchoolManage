@@ -107,7 +107,10 @@ public static class HomeTodoLogic
     {
         var now = DateTime.UtcNow;
         var items = new List<object>();
-        var canCreate = await db.Courses.AsNoTracking().AnyAsync(item => item.Status == "published" && item.IsActive, ct);
+        var canCreate = await db.Courses.AsNoTracking().AnyAsync(item => item.Status == "published" && (
+            (item.Visibility == ContentAccess.Published && item.IsActive)
+            || item.Visibility == ContentAccess.Shared
+            || (item.Visibility == ContentAccess.Private && item.OwnerUserId == userId)), ct);
         var exams = await db.TrainingExams.AsNoTracking().Where(item => item.CreatedByUserId == userId).ToListAsync(ct);
         await CollectStaffExamTodos(db, exams, items, now, "exams", ct);
         return (Prioritize(items, 10), canCreate);
@@ -119,7 +122,7 @@ public static class HomeTodoLogic
         var items = new List<object>();
 
         var inactive = await db.Courses.AsNoTracking()
-            .Where(item => item.Status == "published" && !item.IsActive)
+            .Where(item => item.Status == "published" && item.Visibility == ContentAccess.Published && !item.IsActive)
             .OrderBy(item => item.Name).Select(item => item.Name).ToListAsync(ct);
         if (inactive.Count > 0)
         {

@@ -7,11 +7,11 @@ public static class TeachingImportEndpoints
 {
     public static void MapTeachingImportEndpoints(this RouteGroupBuilder all)
     {
-        var admin = all.MapGroup("").RequireAuthorization("Admin");
-        admin.MapGet("/courses/questions/template", Template);
-        admin.MapPost("/courses/questions/parse", ParseQuestions);
-        admin.MapGet("/sections/{id}/importable-resources", ListImportable);
-        admin.MapPost("/sections/{id}/resources/import", ImportResources);
+        var staff = all.MapGroup("").RequireAuthorization(policy => policy.RequireRole("Admin", "Teacher"));
+        staff.MapGet("/courses/questions/template", Template);
+        staff.MapPost("/courses/questions/parse", ParseQuestions);
+        staff.MapGet("/sections/{id}/importable-resources", ListImportable);
+        staff.MapPost("/sections/{id}/resources/import", ImportResources);
     }
 
     static IResult Template()
@@ -84,12 +84,18 @@ public static class TeachingImportEndpoints
     {
         var target = await db.CourseSections.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (target == null) return NotFound("小节不存在");
+        if (await EditableSection(request.HttpContext, db, target.ChapterId, ct) is { } denied) return denied;
+        var user = request.HttpContext.User;
+        var userId = ContentAccess.UserId(user);
+        var isAdmin = user.IsInRole("Admin");
         var search = request.Query["search"].ToString().Trim();
         var query = from resource in db.CourseResources.AsNoTracking()
                     join section in db.CourseSections.AsNoTracking() on resource.SectionId equals section.Id
                     join chapter in db.CourseChapters.AsNoTracking() on section.ChapterId equals chapter.Id
                     join course in db.Courses.AsNoTracking() on chapter.CourseId equals course.Id
                     where section.Id != id
+                          && (isAdmin || course.Visibility == ContentAccess.Published || course.Visibility == ContentAccess.Shared
+                              || course.OwnerUserId == userId)
                     select new
                     {
                         resource.Id, resource.Name, resource.Kind, resource.DurationMinutes, resource.SortOrder,
@@ -124,10 +130,19 @@ public static class TeachingImportEndpoints
     {
         var target = await db.CourseSections.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
         if (target == null) return NotFound("小节不存在");
+        if (await EditableSection(ctx, db, target.ChapterId, ct) is { } denied) return denied;
         var ids = (input.ResourceIds ?? []).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct().ToArray();
         if (ids.Length is < 1 or > 100) return Bad("每次选择 1–100 个资源");
         var sources = await db.CourseResources.AsNoTracking().Where(item => ids.Contains(item.Id)).ToListAsync(ct);
         if (sources.Count != ids.Length) return Bad("部分资源不存在，请刷新后重试");
+        var visibleSources = await (from resource in db.CourseResources.AsNoTracking()
+                                    join section in db.CourseSections.AsNoTracking() on resource.SectionId equals section.Id
+                                    join chapter in db.CourseChapters.AsNoTracking() on section.ChapterId equals chapter.Id
+                                    join course in db.Courses.AsNoTracking() on chapter.CourseId equals course.Id
+                                    where ids.Contains(resource.Id)
+                                    select new { course.OwnerUserId, course.Visibility }).ToListAsync(ct);
+        if (visibleSources.Count != ids.Length || visibleSources.Any(item => !ContentAccess.CanSee(ctx.User, item.OwnerUserId, item.Visibility)))
+            return Bad("部分资源不存在，请刷新后重试");
         if (sources.Any(item => item.SectionId == id)) return Bad("不能从当前小节导入资源");
         var sourceQuestions = await db.CourseQuestions.AsNoTracking().Where(item => ids.Contains(item.ResourceId)).ToListAsync(ct);
         var sourceFiles = await db.CourseResourceFiles.AsNoTracking().Where(item => ids.Contains(item.ResourceId)).ToListAsync(ct);
@@ -194,6 +209,16 @@ public static class TeachingImportEndpoints
             CourseFileStore.Delete(paths, copied);
             throw;
         }
+    }
+
+    static async Task<IResult?> EditableSection(HttpContext ctx, SchoolDbContext db, string chapterId, CancellationToken ct)
+    {
+        var course = await (from chapter in db.CourseChapters.AsNoTracking()
+                            join item in db.Courses.AsNoTracking() on chapter.CourseId equals item.Id
+                            where chapter.Id == chapterId
+                            select new { item.OwnerUserId, item.Visibility }).FirstOrDefaultAsync(ct);
+        if (course == null) return NotFound("小节不存在");
+        return ContentAccess.RequireEdit(ctx.User, course.OwnerUserId, course.Visibility, "小节不存在", "只能编辑本人尚未纳入公共标准库的课程");
     }
 
     static string ColumnOf(string message)

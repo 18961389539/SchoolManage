@@ -23,13 +23,25 @@ public static class HyperVEndpoints
         var query = Nodes(db);
         if (!string.IsNullOrEmpty(requestedNode)) query = query.Where(node => node.Id == requestedNode);
         var nodes = await query.OrderBy(node => node.Name).ToListAsync(ct);
-        var offline = new List<string>();
-        var available = new List<(TrainingNode Node, HyperVMachine Machine)>();
-        foreach (var node in nodes)
+        using var gate = new SemaphoreSlim(HyperVProvider.MaxConcurrentInspections);
+        var pairs = await Task.WhenAll(nodes.Select(async node =>
         {
-            var snapshot = await provider.InspectAsync(node.Host, ct);
-            if (snapshot?.Machines == null) offline.Add(node.Name);
-            else available.AddRange(snapshot.Machines.Select(vm => (node, vm)));
+            await gate.WaitAsync(ct);
+            try { return (node, view: provider.Read(node.Host)); }
+            finally { gate.Release(); }
+        }));
+        var offline = new List<string>();
+        var pending = new List<string>();
+        var available = new List<(TrainingNode Node, HyperVMachine Machine)>();
+        DateTime? syncedAt = null;
+        var refreshing = false;
+        foreach (var (node, view) in pairs)
+        {
+            if (view.Configured && (view.Refreshing || view.SyncedAt == null)) refreshing = true;
+            if (view.SyncedAt is { } at && (syncedAt == null || at > syncedAt)) syncedAt = at;
+            if (!view.Configured || (view.SyncedAt != null && view.Result?.Machines == null)) offline.Add(node.Name);
+            else if (view.SyncedAt == null) pending.Add(node.Name);
+            else available.AddRange(view.Result!.Machines!.Select(vm => (node, vm)));
         }
 
         var search = request.Query["search"].ToString().Trim();
@@ -43,6 +55,9 @@ public static class HyperVEndpoints
         {
             total = filtered.Length,
             unavailableNodes = offline,
+            pendingNodes = pending,
+            syncedAt,
+            refreshing,
             items = filtered.Skip((page - 1) * size).Take(size).Select(pair => new
             {
                 id = pair.Machine.Uuid, pair.Machine.Uuid, pair.Machine.Name, pair.Machine.IpAddress, pair.Machine.CpuCount,
@@ -73,9 +88,10 @@ public static class HyperVEndpoints
     {
         var node = await Nodes(db).SingleOrDefaultAsync(item => item.Id == nodeId, ct);
         if (node == null) return Results.NotFound();
-        var snapshot = await provider.InspectAsync(node.Host, ct);
-        if (snapshot == null) return Unavailable();
-        var machine = snapshot.Machines?.SingleOrDefault(item => item.Uuid == uuid);
+        var view = provider.Read(node.Host);
+        if (view.Configured && view.SyncedAt == null) view = await provider.WaitForSyncAsync(node.Host, ct);
+        if (view.Result == null) return Unavailable();
+        var machine = view.Result.Machines?.SingleOrDefault(item => item.Uuid == uuid);
         if (machine == null) return Results.NotFound();
         if (!CanConnect(machine)) return Results.Conflict(new { message = "虚拟机尚未运行或未上报可用的 IPv4 地址。" });
         var address = IPAddress.Parse(machine.IpAddress);

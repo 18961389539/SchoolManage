@@ -1,4 +1,4 @@
-import type { ClassroomStatus, CourseStatus, CourseType, QuestionType, ResourceKind } from './types'
+import type { ClassroomStatus, ContentVisibility, CourseStatus, CourseType, QuestionType, ResourceKind } from './types'
 
 export interface LabelOption<T extends string> {
   value: T
@@ -15,6 +15,16 @@ export const courseStatusOptions: LabelOption<CourseStatus>[] = [
   { value: 'draft', label: '草稿' },
   { value: 'published', label: '已发布' }
 ]
+
+export const contentVisibilityOptions: LabelOption<ContentVisibility>[] = [
+  { value: 'private', label: '仅自己可见' },
+  { value: 'shared', label: '共享给其他教师' },
+  { value: 'published', label: '公共标准库' }
+]
+
+export function visibilityLabel(value: string) {
+  return contentVisibilityOptions.find(item => item.value === value)?.label ?? '公共标准库'
+}
 
 export const resourceKindOptions: LabelOption<ResourceKind>[] = [
   { value: 'theory', label: '理论知识' },

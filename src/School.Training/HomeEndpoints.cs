@@ -44,13 +44,16 @@ public static class HomeEndpoints
         });
     }
 
-    static async Task<IResult> GetTeacherHome(HttpContext ctx, SchoolDbContext db, CancellationToken ct)
+    static async Task<IResult> GetTeacherHome(HttpContext ctx, SchoolDbContext db, HomeSnapshotCache cache, CancellationToken ct)
     {
         var userId = CurrentUserId(ctx) ?? "";
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == userId, ct);
         if (user == null) return Results.NotFound(new { message = "账号不存在" });
         var classrooms = await db.Classrooms.AsNoTracking().Where(item => item.TeacherUserId == userId).ToListAsync(ct);
-        var context = await HomeContext.LoadAsync(db, classrooms, ct);
+        await ClassroomProgress.EnsureAsync(db, classrooms, ct);
+        var key = await HomeSnapshotCache.VersionAsync(db, "teacher:" + userId, ct);
+        if (cache.TryGet(key, out var cached)) return Results.Ok(cached);
+        var context = await HomeContext.LoadAsync(db, classrooms, ct, staffAggregates: true);
         var summaries = context.Students.Select(item => (Student: item, Summary: Summarize(context, item.UserId, ResourcesForUser(context, item.UserId)))).ToArray();
         var passed = summaries.Count(item => AnalyticsLogic.MeetsOverallTarget(item.Summary.Overall));
         var today = SchoolTime.TodayUtc();
@@ -58,7 +61,7 @@ public static class HomeEndpoints
         var passedToday = TodayPassedStudents(context, today);
         var aggregate = Aggregate(summaries.Select(item => item.Summary));
         var (todos, canCreateClassroom) = await HomeTodoLogic.TeacherTodosAsync(db, userId, ct);
-        return Results.Ok(new
+        var result = new
         {
             teacher = new { user.Id, user.DisplayName, user.UserName },
             today = new { activeStudents, passedStudents = passedToday },
@@ -76,13 +79,18 @@ public static class HomeEndpoints
             todos,
             canCreateClassroom,
             serverNow = DateTime.UtcNow
-        });
+        };
+        cache.Set(key, result);
+        return Results.Ok(result);
     }
 
-    static async Task<IResult> GetAdminHome(SchoolDbContext db, LicenseQuotaPolicy licenses, CancellationToken ct)
+    static async Task<IResult> GetAdminHome(SchoolDbContext db, LicenseQuotaPolicy licenses, HomeSnapshotCache cache, CancellationToken ct)
     {
         var classrooms = await db.Classrooms.AsNoTracking().ToListAsync(ct);
-        var context = await HomeContext.LoadAsync(db, classrooms, ct);
+        await ClassroomProgress.EnsureAsync(db, classrooms, ct);
+        var key = await HomeSnapshotCache.VersionAsync(db, "admin", ct);
+        if (cache.TryGet(key, out var cached)) return Results.Ok(cached);
+        var context = await HomeContext.LoadAsync(db, classrooms, ct, staffAggregates: true);
         var summaries = context.Students.Select(item => (Student: item, Summary: Summarize(context, item.UserId, ResourcesForUser(context, item.UserId)))).ToArray();
         var passed = summaries.Count(item => AnalyticsLogic.MeetsOverallTarget(item.Summary.Overall));
         var today = SchoolTime.TodayUtc();
@@ -136,7 +144,7 @@ public static class HomeEndpoints
         }).OrderByDescending(item => item.auditCount).ThenByDescending(item => item.managedClasses)
         .ThenBy(item => item.DisplayName).Take(10).ToArray();
 
-        return Results.Ok(new
+        var result = new
         {
             today = new { activeClasses, activeStudents, passedStudents = TodayPassedStudents(context, today) },
             overview = new
@@ -153,7 +161,9 @@ public static class HomeEndpoints
             teacherActivity,
             todos = await HomeTodoLogic.AdminTodosAsync(db, licenses, ct),
             serverNow = DateTime.UtcNow
-        });
+        };
+        cache.Set(key, result);
+        return Results.Ok(result);
     }
 
     static async Task<List<Classroom>> EnrolledClassroomsAsync(SchoolDbContext db, string userId, CancellationToken ct)
@@ -187,6 +197,14 @@ public static class HomeEndpoints
 
 static StudentSummary Summarize(HomeContext context, string userId, IEnumerable<AnalyticsResource> resources, string? classroomId = null)
     {
+        if (context.Staff != null)
+        {
+            var overall = classroomId == null
+                ? context.Staff.Overall(context.ClassroomById, context.ClassroomsByUser, context.ResourcesByCourse, userId)
+                : context.Staff.Classroom(context.ClassroomById, context.ResourcesByCourse, classroomId, userId);
+            var blank = new KindStats(0, 0, 0, 0, 0);
+            return new StudentSummary(overall, blank, blank, blank, blank);
+        }
         var list = resources as IReadOnlyCollection<AnalyticsResource> ?? resources.ToArray();
         LearningRecord? RecordFor(AnalyticsResource resource) => classroomId == null
             ? context.Data.BestFor(userId, resource.Id)
@@ -241,7 +259,19 @@ static StudentSummary Summarize(HomeContext context, string userId, IEnumerable<
             .Select(item =>
             {
                 var summary = Summarize(context, item.UserId, ResourcesForUser(context, item.UserId));
-                var activities = context.Data.Activities.Where(activity => activity.UserId == item.UserId).Select(activity => activity.At);
+                int activeDays;
+                DateTime? lastActivity;
+                if (context.Staff != null)
+                {
+                    activeDays = context.Staff.ActiveDays(context.ClassroomsByUser, item.UserId);
+                    lastActivity = context.Staff.LastActivity(context.ClassroomsByUser, item.UserId);
+                }
+                else
+                {
+                    var activities = context.Data.Activities.Where(activity => activity.UserId == item.UserId).Select(activity => activity.At);
+                    activeDays = AnalyticsLogic.ActiveDays(activities);
+                    lastActivity = AnalyticsLogic.LastActivity(activities);
+                }
                 return new
                 {
                     item.UserId, item.Name, item.Number, item.ClassName,
@@ -251,8 +281,8 @@ static StudentSummary Summarize(HomeContext context, string userId, IEnumerable<
                     totalResources = summary.Overall.Total,
                     learningRate = summary.Overall.LearningRate,
                     passRate = summary.Overall.PassRate,
-                    activeDays = AnalyticsLogic.ActiveDays(activities),
-                    lastActivity = AnalyticsLogic.LastActivity(activities)
+                    activeDays,
+                    lastActivity
                 };
             }).OrderByDescending(item => item.learned).ThenByDescending(item => item.passed)
             .ThenByDescending(item => item.passRate).ThenBy(item => item.Number).Take(10).ToArray();
@@ -326,8 +356,9 @@ static StudentSummary Summarize(HomeContext context, string userId, IEnumerable<
         public Dictionary<string, List<string>> StudentsByClassroom { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, string> TeacherNames { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, AnalyticsResource> ResourceById { get; } = new(StringComparer.Ordinal);
+        public StaffProgress? Staff { get; private set; }
 
-        public static async Task<HomeContext> LoadAsync(SchoolDbContext db, IReadOnlyCollection<Classroom> classrooms, CancellationToken ct)
+        public static async Task<HomeContext> LoadAsync(SchoolDbContext db, IReadOnlyCollection<Classroom> classrooms, CancellationToken ct, bool staffAggregates = false)
         {
             var context = new HomeContext();
             context.Classrooms.AddRange(classrooms);
@@ -351,10 +382,15 @@ static StudentSummary Summarize(HomeContext context, string userId, IEnumerable<
                 }
             }
             context.Students.AddRange(await AnalyticsLoader.LoadStudentsAsync(db, classroomIds, ct));
-            var learnerData = await AnalyticsLoader.LoadLearnerDataAsync(db, classroomIds, ct);
-            foreach (var (key, record) in learnerData.Records) context.Data.Records[key] = record;
-            foreach (var (key, attempts) in learnerData.Attempts) context.Data.Attempts[key] = attempts;
-            context.Data.Activities.AddRange(learnerData.Activities);
+            if (staffAggregates)
+                context.Data.Activities.AddRange(await ClassroomProgress.LoadTodayAsync(db, classroomIds, SchoolTime.TodayUtc(), ct));
+            else
+            {
+                var learnerData = await AnalyticsLoader.LoadLearnerDataAsync(db, classroomIds, ct);
+                foreach (var (key, record) in learnerData.Records) context.Data.Records[key] = record;
+                foreach (var (key, attempts) in learnerData.Attempts) context.Data.Attempts[key] = attempts;
+                context.Data.Activities.AddRange(learnerData.Activities);
+            }
             if (classroomIds.Length > 0)
             {
                 var enrollments = await db.ClassroomStudents.AsNoTracking().Where(item => classroomIds.Contains(item.ClassroomId))
@@ -373,6 +409,8 @@ static StudentSummary Summarize(HomeContext context, string userId, IEnumerable<
                     .Select(item => new { item.Id, item.DisplayName }).ToListAsync(ct);
                 foreach (var teacher in teachers) context.TeacherNames[teacher.Id] = teacher.DisplayName;
             }
+            if (staffAggregates)
+                context.Staff = await ClassroomProgress.ReadStaffAsync(db, context.ClassroomById, context.ClassroomsByUser, context.ResourcesByCourse, ct);
             return context;
         }
     }

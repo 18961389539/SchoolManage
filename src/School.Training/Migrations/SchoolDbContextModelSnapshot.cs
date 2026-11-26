@@ -339,6 +339,9 @@ namespace School.Training.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("IsFinal", "ScoredAt")
+                        .HasDatabaseName("IX_ClassroomCaseGrades_IsFinal_ScoredAt");
+
                     b.HasIndex("SessionId", "ScoredAt");
 
                     b.ToTable("ClassroomCaseGrades");
@@ -487,6 +490,31 @@ namespace School.Training.Migrations
                     b.ToTable("ClassroomGroupMembers");
                 });
 
+            modelBuilder.Entity("School.Training.ClassroomProgressFreeze", b =>
+                {
+                    b.Property<string>("ClassroomId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("FrozenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ResourceCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ResourcesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
+
+                    b.Property<int>("VerifiableCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ClassroomId");
+
+                    b.ToTable("ClassroomProgressFreezes");
+                });
+
             modelBuilder.Entity("School.Training.ClassroomStudent", b =>
                 {
                     b.Property<string>("Id")
@@ -517,6 +545,58 @@ namespace School.Training.Migrations
                         .HasDatabaseName("IX_ClassroomStudents_ClassroomId_StudentUserId");
 
                     b.ToTable("ClassroomStudents");
+                });
+
+            modelBuilder.Entity("School.Training.ClassroomStudentStat", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ActiveDates")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ClassroomId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("GradeCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastActivityAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LearnedCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PassedCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RecordCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("SourceStamp")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ClassroomId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ClassroomStudentStats_ClassroomId_UserId");
+
+                    b.ToTable("ClassroomStudentStats");
                 });
 
             modelBuilder.Entity("School.Training.CoreCourseSeries", b =>
@@ -910,6 +990,9 @@ namespace School.Training.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OwnerUserId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Remark")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -917,11 +1000,23 @@ namespace School.Training.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Visibility")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("published");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Name")
                         .IsUnique()
                         .HasDatabaseName("IX_ExamPapers_Name");
+
+                    b.HasIndex("OwnerUserId")
+                        .HasDatabaseName("IX_ExamPapers_OwnerUserId");
+
+                    b.HasIndex("Visibility")
+                        .HasDatabaseName("IX_ExamPapers_Visibility");
 
                     b.ToTable("ExamPapers");
                 });
@@ -1117,14 +1212,29 @@ namespace School.Training.Migrations
                         .HasColumnType("TEXT")
                         .UseCollation("NOCASE");
 
+                    b.Property<string>("OwnerUserId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("Visibility")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("published");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Name")
                         .IsUnique();
+
+                    b.HasIndex("OwnerUserId")
+                        .HasDatabaseName("IX_ExamQuestionBanks_OwnerUserId");
+
+                    b.HasIndex("Visibility")
+                        .HasDatabaseName("IX_ExamQuestionBanks_Visibility");
 
                     b.ToTable("ExamQuestionBanks");
                 });
@@ -1241,6 +1351,34 @@ namespace School.Training.Migrations
                     b.ToTable("ImportBatches");
                 });
 
+            modelBuilder.Entity("School.Training.ImportBatchRow", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BatchId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("HasError")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RowNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId", "RowNumber")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ImportBatchRows_BatchId_RowNumber");
+
+                    b.ToTable("ImportBatchRows");
+                });
+
             modelBuilder.Entity("School.Training.JobAnswer", b =>
                 {
                     b.Property<string>("Id")
@@ -1296,6 +1434,11 @@ namespace School.Training.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("ContentVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
                     b.Property<DateTime>("Deadline")
                         .HasColumnType("TEXT");
 
@@ -1320,6 +1463,9 @@ namespace School.Training.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StartupNodeId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Status")
@@ -1362,9 +1508,11 @@ namespace School.Training.Migrations
                     b.HasIndex("VirtualMachineId")
                         .HasDatabaseName("IX_JobAttempts_VirtualMachineId");
 
-                    b.HasIndex("PositionId", "UserId")
+                    b.HasIndex(new[] { "PositionId", "UserId" }, "IX_JobAttempts_PositionId_UserId");
+
+                    b.HasIndex(new[] { "PositionId", "UserId" }, "IX_JobAttempts_PositionId_UserId_Active")
                         .IsUnique()
-                        .HasDatabaseName("IX_JobAttempts_PositionId_UserId");
+                        .HasFilter("\"Status\" = 'inProgress'");
 
                     b.ToTable("JobAttempts");
                 });
@@ -1373,6 +1521,11 @@ namespace School.Training.Migrations
                 {
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("ContentVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
@@ -1421,6 +1574,11 @@ namespace School.Training.Migrations
                     b.Property<string>("AnswerJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("ContentVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
 
                     b.Property<string>("OptionsJson")
                         .IsRequired()
@@ -1474,6 +1632,11 @@ namespace School.Training.Migrations
                     b.Property<string>("Ability")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("ContentVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1672,6 +1835,12 @@ namespace School.Training.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("StartedAt")
+                        .HasDatabaseName("IX_PracticeAttempts_StartedAt");
+
+                    b.HasIndex("SubmittedAt")
+                        .HasDatabaseName("IX_PracticeAttempts_SubmittedAt");
+
                     b.HasIndex("LearningRecordId", "SubmittedAt")
                         .HasDatabaseName("IX_PracticeAttempts_LearningRecordId_SubmittedAt");
 
@@ -1747,6 +1916,9 @@ namespace School.Training.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OwnerUserId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("PublishedAt")
                         .HasColumnType("TEXT");
 
@@ -1769,13 +1941,25 @@ namespace School.Training.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Visibility")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("published");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Name")
                         .IsUnique()
                         .HasDatabaseName("IX_Courses_Name");
 
+                    b.HasIndex("OwnerUserId")
+                        .HasDatabaseName("IX_Courses_OwnerUserId");
+
                     b.HasIndex("SeriesId");
+
+                    b.HasIndex("Visibility")
+                        .HasDatabaseName("IX_Courses_Visibility");
 
                     b.HasIndex("Status", "Type")
                         .HasDatabaseName("IX_Courses_Status_Type");
@@ -2173,6 +2357,15 @@ namespace School.Training.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("School.Training.ClassroomProgressFreeze", b =>
+                {
+                    b.HasOne("School.Training.Classroom", null)
+                        .WithMany()
+                        .HasForeignKey("ClassroomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("School.Training.ClassroomStudent", b =>
                 {
                     b.HasOne("School.Training.Classroom", null)
@@ -2184,6 +2377,21 @@ namespace School.Training.Migrations
                     b.HasOne("School.Training.AppUser", null)
                         .WithMany()
                         .HasForeignKey("StudentUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("School.Training.ClassroomStudentStat", b =>
+                {
+                    b.HasOne("School.Training.Classroom", null)
+                        .WithMany()
+                        .HasForeignKey("ClassroomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("School.Training.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -2323,6 +2531,15 @@ namespace School.Training.Migrations
                     b.HasOne("School.Training.AppUser", null)
                         .WithMany()
                         .HasForeignKey("StudentUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("School.Training.ImportBatchRow", b =>
+                {
+                    b.HasOne("School.Training.ImportBatch", null)
+                        .WithMany()
+                        .HasForeignKey("BatchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.RateLimiting;
-using System.Text.Json;
 using System.IO.Compression;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Identity;
@@ -11,7 +10,6 @@ namespace School.Training;
 
 public static class ImportEndpoints
 {
-    static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     public static void MapImportEndpoints(this RouteGroupBuilder all)
     {
         var api = all.MapGroup("/imports").RequireAuthorization("Admin");
@@ -20,7 +18,7 @@ public static class ImportEndpoints
             if (kind is not ("student" or "teacher")) return Results.BadRequest(new { message = "师生类型无效" });
             return Results.File(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("姓名,账号," + (kind == "teacher" ? "工号" : "学号") + ",班级,性别,手机号,电子邮箱\r\n")).ToArray(), "text/csv; charset=utf-8", kind + "-template.csv");
         });
-        api.MapPost("/preview", async (string kind, HttpContext ctx, SchoolDbContext db) =>
+        api.MapPost("/preview", async (string kind, int? pageSize, HttpContext ctx, SchoolDbContext db) =>
         {
             if (kind is not ("student" or "teacher")) return Results.BadRequest(new { message = "师生类型无效" });
             if (!ctx.Request.HasFormContentType) return Results.BadRequest(new { message = "请选择Excel或CSV文件" });
@@ -66,10 +64,16 @@ public static class ImportEndpoints
                     || (x.Status != ImportBatchStatus.Preview && x.Status != ImportBatchStatus.Queued
                         && x.Status != ImportBatchStatus.Running && x.Status != ImportBatchStatus.Cancelling && x.CreatedAt < resultExpired))
                 .ExecuteDeleteAsync(ctx.RequestAborted);
-            var batch = new ImportBatch { Kind = kind, UserId = owner, RowsJson = JsonSerializer.Serialize(rows, JsonOptions) }; db.ImportBatches.Add(batch);
-            Audit.Add(db, ctx, "预览导入", kind, $"共{rows.Count}行"); await db.SaveChangesAsync(ctx.RequestAborted);
+            var batch = new ImportBatch { Kind = kind, UserId = owner, RowsJson = "[]" };
+            await using var previewTransaction = await db.Database.BeginTransactionAsync(ctx.RequestAborted);
+            db.ImportBatches.Add(batch);
+            Audit.Add(db, ctx, "预览导入", kind, $"共{rows.Count}行");
+            await db.SaveChangesAsync(ctx.RequestAborted);
+            await ImportBatchStore.InsertAsync(db, batch.Id, rows, ctx.RequestAborted);
+            await previewTransaction.CommitAsync(ctx.RequestAborted);
+            var firstPage = rows.Take(ImportBatchStore.ClampPageSize(pageSize)).ToList();
             return Results.Ok(new ImportPreviewResponse(
-                batch.Id, rows, rows.Count(r => r.Errors.Count == 0), rows.Count(r => r.Errors.Count > 0)));
+                batch.Id, firstPage, rows.Count(r => r.Errors.Count == 0), rows.Count(r => r.Errors.Count > 0)));
         }).RequireRateLimiting("expensive");
         api.MapPost("/{id}/commit", async (string id, CommitImportRequest input, HttpContext ctx, SchoolDbContext db, ImportJobQueue jobs) =>
         {
@@ -78,8 +82,7 @@ public static class ImportEndpoints
             var batch = await db.ImportBatches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.UserId == owner, ctx.RequestAborted);
             if (batch == null || batch.CreatedAt < DateTime.UtcNow.AddHours(-1)) return Results.NotFound(new { message = "导入预览已过期，请重新上传" });
             if (batch.Status != ImportBatchStatus.Preview) return Results.Conflict(new { message = StatusMessage(batch.Status) });
-            var rows = JsonSerializer.Deserialize<List<ImportRow>>(batch.RowsJson, JsonOptions)
-                ?? throw new InvalidDataException("导入预览数据无法读取，请重新上传");
+            var rows = await ImportBatchStore.LoadAsync(db, batch, ctx.RequestAborted);
             await ValidateRows(rows, batch.Kind, db, ctx.RequestAborted);
             if (!input.RemoveInvalidRows && rows.Any(r => r.Errors.Count > 0)) return Results.BadRequest(new { message = "存在问题行，请先移除问题数据或修正文件后重新上传", rows });
             var valid = rows.Where(r => r.Errors.Count == 0).ToList();
@@ -91,7 +94,7 @@ public static class ImportEndpoints
                 .Where(x => x.Id == id && x.UserId == owner && x.Status == ImportBatchStatus.Preview)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.Status, ImportBatchStatus.Queued)
-                    .SetProperty(x => x.RowsJson, JsonSerializer.Serialize(valid, JsonOptions))
+                    .SetProperty(x => x.RowsJson, "[]")
                     .SetProperty(x => x.RemoveInvalidRows, input.RemoveInvalidRows)
                     .SetProperty(x => x.TotalCount, valid.Count)
                     .SetProperty(x => x.RemovedCount, removedCount)
@@ -101,6 +104,7 @@ public static class ImportEndpoints
                 await transaction.RollbackAsync(ctx.RequestAborted);
                 return Results.Conflict(new { message = "该导入批次已提交，不能重复导入" });
             }
+            await ImportBatchStore.KeepValidAsync(db, id, rows, valid, ctx.RequestAborted);
             Audit.Add(db, ctx, "提交导入", batch.Kind, $"排队{valid.Count}行，移除问题行{removedCount}行");
             await db.SaveChangesAsync(ctx.RequestAborted);
             await transaction.CommitAsync(ctx.RequestAborted);
@@ -110,7 +114,9 @@ public static class ImportEndpoints
                 await db.ImportBatches.Where(x => x.Id == id && x.Status == ImportBatchStatus.Queued).ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.Status, ImportBatchStatus.Failed)
                     .SetProperty(x => x.FailureMessage, "导入队列已满，请稍后重新预览并提交")
+                    .SetProperty(x => x.RowsJson, "[]")
                     .SetProperty(x => x.CompletedAt, DateTime.UtcNow), ctx.RequestAborted);
+                await ImportBatchStore.DeleteAsync(db, id, ctx.RequestAborted);
                 return Results.Json(new { message = "导入队列已满，请稍后重试" }, statusCode: 503);
             }
             batch.Status = ImportBatchStatus.Queued;
@@ -124,6 +130,15 @@ public static class ImportEndpoints
             var owner = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
             var batch = await db.ImportBatches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.UserId == owner, ctx.RequestAborted);
             return batch == null ? Results.NotFound(new { message = "导入批次不存在" }) : Results.Ok(StatusResponse(batch));
+        });
+        api.MapGet("/{id}/rows", async (string id, int? page, int? pageSize, string? filter, HttpContext ctx, SchoolDbContext db) =>
+        {
+            var owner = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var batch = await db.ImportBatches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.UserId == owner, ctx.RequestAborted);
+            if (batch == null || (batch.Status == ImportBatchStatus.Preview && batch.CreatedAt < DateTime.UtcNow.AddHours(-1)))
+                return Results.NotFound(new { message = "导入预览已过期，请重新上传" });
+            var rows = await ImportBatchStore.PageAsync(db, batch, page ?? 1, pageSize ?? ImportBatchStore.DefaultPageSize, filter, ctx.RequestAborted);
+            return Results.Ok(rows);
         });
         api.MapGet("/{id}/receipt", async (string id, HttpContext ctx, SchoolDbContext db, ImportPasswordReceipts receipts) =>
         {
@@ -143,13 +158,22 @@ public static class ImportEndpoints
             if (batch == null) return Results.NotFound(new { message = "导入批次不存在" });
             if (ImportBatchStatus.IsTerminal(batch.Status)) return Results.Conflict(new { message = StatusMessage(batch.Status) });
 
-            var status = batch.Status == ImportBatchStatus.Running ? ImportBatchStatus.Cancelling : ImportBatchStatus.Cancelled;
-            await db.ImportBatches.Where(x => x.Id == id && x.UserId == owner
-                    && (x.Status == ImportBatchStatus.Preview || x.Status == ImportBatchStatus.Queued || x.Status == ImportBatchStatus.Running))
-                .ExecuteUpdateAsync(setters => setters
+            var cancelling = batch.Status == ImportBatchStatus.Running;
+            var status = cancelling ? ImportBatchStatus.Cancelling : ImportBatchStatus.Cancelled;
+            var pending = db.ImportBatches.Where(x => x.Id == id && x.UserId == owner
+                && (x.Status == ImportBatchStatus.Preview || x.Status == ImportBatchStatus.Queued || x.Status == ImportBatchStatus.Running));
+            var cancelled = cancelling
+                ? await pending.ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.Status, status)
                     .SetProperty(x => x.FailureMessage, "导入任务已取消")
-                    .SetProperty(x => x.CompletedAt, status == ImportBatchStatus.Cancelled ? DateTime.UtcNow : null), ctx.RequestAborted);
+                    .SetProperty(x => x.CompletedAt, (DateTime?)null), ctx.RequestAborted)
+                : await pending.ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, status)
+                    .SetProperty(x => x.FailureMessage, "导入任务已取消")
+                    .SetProperty(x => x.RowsJson, "[]")
+                    .SetProperty(x => x.CompletedAt, DateTime.UtcNow), ctx.RequestAborted);
+            if (cancelled > 0 && !cancelling)
+                await ImportBatchStore.DeleteAsync(db, id, ctx.RequestAborted);
             if (status == ImportBatchStatus.Cancelling) jobs.Cancel(id);
             var current = await db.ImportBatches.AsNoTracking().SingleAsync(x => x.Id == id, ctx.RequestAborted);
             return Results.Ok(StatusResponse(current));

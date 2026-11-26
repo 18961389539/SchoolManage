@@ -142,7 +142,8 @@ try {
             @{name='frontend-lint'; command='npm.cmd'; args=@('--prefix',$frontendRoot,'run','lint')},
             @{name='frontend-tests'; command='npm.cmd'; args=@('--prefix',$frontendRoot,'run','test')},
             @{name='frontend-time'; command='npm.cmd'; args=@('--prefix',$frontendRoot,'run','check:time')},
-            @{name='frontend-sizes'; command='npm.cmd'; args=@('--prefix',$frontendRoot,'run','check:sizes')}
+            @{name='frontend-sizes'; command='npm.cmd'; args=@('--prefix',$frontendRoot,'run','check:sizes')},
+            @{name='frontend-api-contract'; command='npm.cmd'; args=@('--prefix',$frontendRoot,'run','check:api')}
         )
     }
     foreach ($test in $gateTests) {

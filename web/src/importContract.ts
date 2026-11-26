@@ -1,4 +1,4 @@
-import type { ImportPreviewResponse, ImportStatusResponse } from './types'
+import type { ImportPreviewResponse, ImportRowsPage, ImportStatusResponse } from './types'
 
 const previewKeys = ['batchId', 'rows', 'validCount', 'errorCount'] as const
 const statusKeys = [
@@ -15,6 +15,7 @@ const statusKeys = [
   'completedAt',
   'message'
 ] as const
+const rowPageKeys = ['rows', 'totalCount', 'page', 'pageSize'] as const
 const rowKeys = ['rowNumber', 'data', 'errors'] as const
 const dataKeys = ['name', 'userName', 'number', 'className', 'gender', 'phone', 'email'] as const
 const issueKeys = ['column', 'message'] as const
@@ -49,6 +50,19 @@ export function assertImportPreview(value: unknown): ImportPreviewResponse {
       expectKeys(record(rawIssue, '导入预览错误'), issueKeys, '导入预览错误')
   }
   return payload as unknown as ImportPreviewResponse
+}
+
+export function assertImportRows(value: unknown): ImportRowsPage {
+  const payload = record(value, '导入预览分页')
+  expectKeys(payload, rowPageKeys, '导入预览分页')
+  for (const raw of expectArray(payload.rows, '导入预览分页 rows')) {
+    const row = record(raw, '导入预览行')
+    expectKeys(row, rowKeys, '导入预览行')
+    expectKeys(record(row.data, '导入预览行数据'), dataKeys, '导入预览行数据')
+    for (const rawIssue of expectArray(row.errors, '导入预览错误'))
+      expectKeys(record(rawIssue, '导入预览错误'), issueKeys, '导入预览错误')
+  }
+  return payload as unknown as ImportRowsPage
 }
 
 export function assertImportStatus(value: unknown): ImportStatusResponse {

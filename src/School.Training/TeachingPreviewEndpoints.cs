@@ -20,7 +20,9 @@ public static class TeachingPreviewEndpoints
         var isAdmin = ctx.User.IsInRole("Admin");
         var isStaff = isAdmin || ctx.User.IsInRole("Teacher");
         var isStudent = ctx.User.IsInRole("Student");
-        if (!isStaff && course.Status != "published") return NotFound("课程不存在或尚未发布");
+        if (!ContentAccess.CanSee(ctx.User, course.OwnerUserId, course.Visibility)
+            || (course.Status != "published" && !ContentAccess.CanEdit(ctx.User, course.OwnerUserId, course.Visibility)))
+            return NotFound("课程不存在或尚未发布");
         var chapters = await db.CourseChapters.AsNoTracking().Where(item => item.CourseId == id).OrderBy(item => item.SortOrder).ToListAsync(ct);
         var chapterIds = chapters.Select(item => item.Id).ToArray();
         var sections = await db.CourseSections.AsNoTracking().Where(item => chapterIds.Contains(item.ChapterId)).OrderBy(item => item.SortOrder).ToListAsync(ct);
@@ -74,9 +76,7 @@ public static class TeachingPreviewEndpoints
     static async Task<IResult> PreviewPractice(string id, string resourceId, PracticeSubmissionInput input, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var row = await FindResource(db, id, resourceId, ct);
-        if (row == null) return NotFound("资源不属于该课程");
-        if (!ctx.User.IsInRole("Admin") && !ctx.User.IsInRole("Teacher") && row.CourseStatus != "published")
-            return NotFound("课程不存在或尚未发布");
+        if (row == null || !MayPreview(ctx.User, row)) return NotFound("资源不属于该课程");
         if (row.Kind != "theoryPractice") return Bad("该资源不是理论练习");
         var questions = await db.CourseQuestions.AsNoTracking().Where(item => item.ResourceId == resourceId).ToListAsync(ct);
         if (questions.Count == 0) return Conflict("该练习尚未配置题目");
@@ -101,10 +101,8 @@ public static class TeachingPreviewEndpoints
     static async Task<IResult> Environment(string id, string resourceId, HttpContext ctx, SchoolDbContext db, CancellationToken ct)
     {
         var row = await FindResource(db, id, resourceId, ct);
-        if (row == null) return NotFound("资源不属于该课程");
+        if (row == null || !MayPreview(ctx.User, row)) return NotFound("资源不属于该课程");
         var isAdmin = ctx.User.IsInRole("Admin");
-        if (!isAdmin && !ctx.User.IsInRole("Teacher") && row.CourseStatus != "published")
-            return NotFound("课程不存在或尚未发布");
         var blueprint = CaseTopology.Read(row.TopologyBlueprintJson);
         var templateDevices = blueprint?.DeviceIds ?? [];
         var node = string.IsNullOrWhiteSpace(row.StartupNodeId) ? null
@@ -164,8 +162,12 @@ public static class TeachingPreviewEndpoints
                   join course in db.Courses.AsNoTracking() on chapter.CourseId equals course.Id
                   where resource.Id == resourceId && course.Id == courseId
                   select new PreviewResourceRow(resource.Id, resource.Name, resource.Kind, resource.Topology, resource.StartupNodeId,
-                      course.Status, resource.TopologyBlueprintJson))
+                      course.Status, resource.TopologyBlueprintJson, course.OwnerUserId, course.Visibility))
             .FirstOrDefaultAsync(ct);
+
+    static bool MayPreview(ClaimsPrincipal user, PreviewResourceRow row)
+        => ContentAccess.CanSee(user, row.OwnerUserId, row.Visibility)
+            && (row.CourseStatus == "published" || ContentAccess.CanEdit(user, row.OwnerUserId, row.Visibility));
 
     static string CurrentUserId(HttpContext ctx) => ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
 
@@ -175,4 +177,4 @@ public static class TeachingPreviewEndpoints
 }
 
 public sealed record PreviewResourceRow(string Id, string Name, string Kind, string Topology, string? StartupNodeId, string CourseStatus,
-    string TopologyBlueprintJson);
+    string TopologyBlueprintJson, string? OwnerUserId, string Visibility);

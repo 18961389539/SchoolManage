@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,10 +31,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     readonly string? previousAutomaticBackups;
     readonly IPAddress clientAddress;
     readonly bool demo;
+    readonly IReadOnlyDictionary<string, string?> settings;
+    readonly Action<IServiceCollection>? configureServices;
 
-    public ApiFactory(IPAddress? remoteAddress = null, bool demo = false)
+    public ApiFactory(IPAddress? remoteAddress = null, bool demo = false, IReadOnlyDictionary<string, string?>? settings = null, Action<IServiceCollection>? configureServices = null)
     {
         this.demo = demo;
+        this.settings = settings ?? new Dictionary<string, string?>();
+        this.configureServices = configureServices;
         clientAddress = remoteAddress ?? IPAddress.Loopback;
         previousDataDir = Environment.GetEnvironmentVariable("SCHOOL_DATA_DIR");
         previousAutomaticBackups = Environment.GetEnvironmentVariable("School__Backups__Automatic__Enabled");
@@ -44,10 +49,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("School:Demo", demo ? "1" : "0");
+        foreach (var setting in settings)
+            builder.UseSetting(setting.Key, setting.Value);
         builder.UseEnvironment("Development");
         builder.UseContentRoot(Path.GetFullPath(Path.Combine(
             Path.GetDirectoryName(typeof(Program).Assembly.Location)!, "..", "..", "..")));
         builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new ConnectionInfoStartupFilter(clientAddress)));
+        if (configureServices != null) builder.ConfigureTestServices(configureServices);
     }
 
     protected override void Dispose(bool disposing)
@@ -93,6 +101,13 @@ public static class Http
 
     public static Task<ApiResponse> Post(HttpClient client, string path, object body, string? csrf = null, string? origin = null)
         => Send(client, Request(HttpMethod.Post, path, body, csrf, origin));
+
+    public static Task<ApiResponse> Post(HttpClient client, string path, object body, Action<HttpRequestMessage> configure)
+    {
+        var request = Request(HttpMethod.Post, path, body, null, null);
+        configure(request);
+        return Send(client, request);
+    }
 
     public static Task<ApiResponse> Put(HttpClient client, string path, object body, string? csrf = null, string? origin = null)
         => Send(client, Request(HttpMethod.Put, path, body, csrf, origin));
@@ -585,6 +600,64 @@ public sealed class HttpApiTests(ApiScenario scenario) : IClassFixture<ApiScenar
         Assert.False(automatic.GetProperty("enabled").GetBoolean());
         Assert.Equal("02:30", automatic.GetProperty("timeOfDay").GetString());
         Assert.Equal(JsonValueKind.String, automatic.GetProperty("lastMessage").ValueKind);
+        Assert.Equal("dpapi", response.Body.GetProperty("keyProtection").GetProperty("mode").GetString());
+        Assert.False(response.Body.GetProperty("keyProtection").GetProperty("portable").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Backup_inspection_reports_machine_bound_keys_and_does_not_restore()
+    {
+        var created = await Http.Post(scenario.Admin, "/api/backups", new { }, scenario.AdminCsrf);
+        Assert.Equal(HttpStatusCode.OK, created.Status);
+        var fileName = created.Body.GetProperty("fileName").GetString()!;
+        var report = await Http.Post(scenario.Admin, "/api/backups/" + Uri.EscapeDataString(fileName) + "/inspect", new { }, scenario.AdminCsrf);
+        Assert.Equal(HttpStatusCode.OK, report.Status);
+        Assert.True(report.Body.GetProperty("ok").GetBoolean());
+        Assert.False(report.Body.GetProperty("portable").GetBoolean());
+        Assert.Equal("dpapi", report.Body.GetProperty("keyProtection").GetString());
+        var stillThere = await Http.Get(scenario.Admin, "/api/status");
+        Assert.Equal("接口测试学校", stillThere.Body.GetProperty("schoolName").GetString());
+    }
+
+    [Fact]
+    public async Task Uploaded_backup_inspection_rejects_a_file_that_is_not_a_backup()
+    {
+        using var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent("not a zip"u8.ToArray());
+        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+        content.Add(file, "file", "notes.zip");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/backups/inspect") { Content = content };
+        request.Headers.Add("X-CSRF-TOKEN", scenario.AdminCsrf);
+        using var response = await scenario.Admin.SendAsync(request);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("不是有效的 ZIP", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Recovery_passphrase_makes_the_backup_inspection_portable()
+    {
+        using var factory = new ApiFactory(settings: new Dictionary<string, string?>
+        {
+            ["School:DataProtection:RecoveryPassphrase"] = "RecoverPass2026"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var setup = await Http.Post(client, "/api/setup", new
+        {
+            schoolName = "可携带密钥学校",
+            userName = "admin",
+            displayName = "管理员",
+            password = ApiScenario.AdminPassword
+        });
+        Assert.Equal(HttpStatusCode.OK, setup.Status);
+        var csrf = setup.Body.GetProperty("csrfToken").GetString()!;
+        var created = await Http.Post(client, "/api/backups", new { }, csrf);
+        Assert.Equal(HttpStatusCode.OK, created.Status);
+        var fileName = created.Body.GetProperty("fileName").GetString()!;
+        var report = await Http.Post(client, "/api/backups/" + Uri.EscapeDataString(fileName) + "/inspect", new { }, csrf);
+        Assert.Equal(HttpStatusCode.OK, report.Status);
+        Assert.True(report.Body.GetProperty("ok").GetBoolean());
+        Assert.True(report.Body.GetProperty("portable").GetBoolean());
+        Assert.Equal("passphrase", report.Body.GetProperty("keyProtection").GetString());
     }
 
     [Fact]
@@ -645,16 +718,176 @@ public sealed class HttpApiTests(ApiScenario scenario) : IClassFixture<ApiScenar
     }
 
     [Fact]
-    public async Task Login_rate_limit_returns_429_after_ten_failures()
+    public async Task Login_locks_one_account_after_eight_failures_and_leaves_other_accounts_open()
     {
         using var factory = new ApiFactory(IPAddress.Parse("198.51.100.7"));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        for (var attempt = 0; attempt < 10; attempt++)
+        for (var attempt = 0; attempt < 8; attempt++)
         {
             var response = await Http.Post(client, "/api/auth/login", new { userName = "nobody", password = "WrongPass2026" });
             Assert.Equal(HttpStatusCode.Unauthorized, response.Status);
         }
         var limited = await Http.Post(client, "/api/auth/login", new { userName = "nobody", password = "WrongPass2026" });
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.Status);
+        Assert.Contains("失败次数过多", limited.Message);
+        var other = await Http.Post(client, "/api/auth/login", new { userName = "someone", password = "WrongPass2026" });
+        Assert.Equal(HttpStatusCode.Unauthorized, other.Status);
+    }
+
+    [Fact]
+    public async Task Login_ip_burst_limit_is_independent_of_the_account()
+    {
+        using var factory = new ApiFactory(IPAddress.Parse("198.51.100.8"), settings: new Dictionary<string, string?>
+        {
+            ["School:Login:IpPermitLimit"] = "3"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var response = await Http.Post(client, "/api/auth/login", new { userName = "user" + attempt, password = "WrongPass2026" });
+            Assert.Equal(HttpStatusCode.Unauthorized, response.Status);
+        }
+        var limited = await Http.Post(client, "/api/auth/login", new { userName = "user-extra", password = "WrongPass2026" });
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.Status);
+        Assert.Contains("过于频繁", limited.Message);
+    }
+
+    [Fact]
+    public async Task Successful_login_clears_the_account_failure_streak()
+    {
+        using var factory = new ApiFactory(settings: new Dictionary<string, string?>
+        {
+            ["School:Login:FailureLimit"] = "2"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var setup = await Http.Post(client, "/api/setup", new
+        {
+            schoolName = "限流测试学校",
+            userName = "admin",
+            displayName = "管理员",
+            password = ApiScenario.AdminPassword
+        });
+        Assert.Equal(HttpStatusCode.OK, setup.Status);
+        var first = await Http.Post(client, "/api/auth/login", new { userName = "admin", password = "WrongPass2026" });
+        Assert.Equal(HttpStatusCode.Unauthorized, first.Status);
+        var success = await Http.Post(client, "/api/auth/login", new { userName = "admin", password = ApiScenario.AdminPassword });
+        Assert.Equal(HttpStatusCode.OK, success.Status);
+        var second = await Http.Post(client, "/api/auth/login", new { userName = "admin", password = "WrongPass2026" });
+        Assert.Equal(HttpStatusCode.Unauthorized, second.Status);
+        var third = await Http.Post(client, "/api/auth/login", new { userName = "admin", password = "WrongPass2026" });
+        Assert.Equal(HttpStatusCode.Unauthorized, third.Status);
+        var locked = await Http.Post(client, "/api/auth/login", new { userName = "admin", password = "WrongPass2026" });
+        Assert.Equal(HttpStatusCode.TooManyRequests, locked.Status);
+    }
+
+    [Fact]
+    public async Task Unlisted_peer_cannot_split_the_login_bucket_with_forwarded_for()
+    {
+        using var factory = new ApiFactory(settings: new Dictionary<string, string?>
+        {
+            ["School:Login:FailureLimit"] = "2"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var response = await Http.Post(client, "/api/auth/login", new { userName = "nobody", password = "WrongPass2026" },
+                request => request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.10"));
+            Assert.Equal(HttpStatusCode.Unauthorized, response.Status);
+        }
+        var spoofed = await Http.Post(client, "/api/auth/login", new { userName = "nobody", password = "WrongPass2026" },
+            request => request.Headers.TryAddWithoutValidation("X-Forwarded-For", "198.51.100.8"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, spoofed.Status);
+    }
+
+    [Fact]
+    public async Task Trusted_proxy_uses_one_forwarded_for_hop_as_the_login_client()
+    {
+        using var factory = new ApiFactory(settings: new Dictionary<string, string?>
+        {
+            ["School:Login:FailureLimit"] = "2",
+            ["School:ReverseProxy:TrustedProxies:0"] = "127.0.0.1"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var response = await Http.Post(client, "/api/auth/login", new { userName = "nobody", password = "WrongPass2026" },
+                request => request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.10"));
+            Assert.Equal(HttpStatusCode.Unauthorized, response.Status);
+        }
+        var sameClient = await Http.Post(client, "/api/auth/login", new { userName = "nobody", password = "WrongPass2026" },
+            request => request.Headers.TryAddWithoutValidation("X-Forwarded-For", "198.51.100.8, 203.0.113.10"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, sameClient.Status);
+        var otherClient = await Http.Post(client, "/api/auth/login", new { userName = "nobody", password = "WrongPass2026" },
+            request => request.Headers.TryAddWithoutValidation("X-Forwarded-For", "198.51.100.8"));
+        Assert.Equal(HttpStatusCode.Unauthorized, otherClient.Status);
+    }
+
+    [Fact]
+    public async Task Forwarded_proto_from_an_unlisted_peer_does_not_satisfy_the_origin_check()
+    {
+        using var factory = new ApiFactory();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var response = await Http.Post(client, "/api/auth/login", new { userName = "nobody", password = "WrongPass2026" },
+            request =>
+            {
+                request.Headers.TryAddWithoutValidation("Origin", "https://localhost");
+                request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+            });
+        Assert.Equal(HttpStatusCode.Forbidden, response.Status);
+        Assert.Contains("跨站", response.Message);
+    }
+
+    [Fact]
+    public async Task Trusted_proxy_forwarded_proto_matches_the_browser_origin()
+    {
+        using var factory = new ApiFactory(settings: new Dictionary<string, string?>
+        {
+            ["School:ReverseProxy:TrustedProxies:0"] = "127.0.0.1"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var response = await Http.Post(client, "/api/auth/login", new { userName = "nobody", password = "WrongPass2026" },
+            request =>
+            {
+                request.Headers.TryAddWithoutValidation("Origin", "https://localhost");
+                request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+            });
+        Assert.Equal(HttpStatusCode.Unauthorized, response.Status);
+    }
+
+    [Fact]
+    public async Task Setup_keeps_the_socket_peer_when_a_trusted_proxy_rewrites_the_client()
+    {
+        using var factory = new ApiFactory(settings: new Dictionary<string, string?>
+        {
+            ["School:ReverseProxy:TrustedProxies:0"] = "127.0.0.1"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var response = await Http.Post(client, "/api/setup", new
+        {
+            schoolName = "本机初始化学校",
+            userName = "admin",
+            displayName = "管理员",
+            password = ApiScenario.AdminPassword
+        }, request => request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.50"));
+        Assert.Equal(HttpStatusCode.OK, response.Status);
+    }
+
+    [Fact]
+    public async Task Setup_rejects_a_remote_peer_that_forwards_a_loopback_address()
+    {
+        using var factory = new ApiFactory(IPAddress.Parse("203.0.113.9"), settings: new Dictionary<string, string?>
+        {
+            ["School:ReverseProxy:TrustedProxies:0"] = "203.0.113.9"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var response = await Http.Post(client, "/api/setup", new
+        {
+            schoolName = "伪造本机学校",
+            userName = "admin",
+            displayName = "管理员",
+            password = ApiScenario.AdminPassword
+        }, request => request.Headers.TryAddWithoutValidation("X-Forwarded-For", "127.0.0.1"));
+        Assert.Equal(HttpStatusCode.Forbidden, response.Status);
+        Assert.Contains("本机", response.Message);
     }
 }

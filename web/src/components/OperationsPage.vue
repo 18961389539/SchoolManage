@@ -21,7 +21,7 @@ import { api, downloadFile, post, put, listItems, messageOf, dateTime, bytes, ty
 import { appState } from '../store'
 import { readListState, useListPersist } from '../listState'
 import { focusFirstField } from '../focusField'
-import type { AutomaticBackupStatus, BackupItem, LicenseUploadResult, NodeRow, Paged } from '../types'
+import type { AutomaticBackupStatus, BackupInspection, BackupItem, LicenseUploadResult, NodeRow, Paged } from '../types'
 import DataRecord from './DataRecord.vue'
 import TableEmpty from './TableEmpty.vue'
 import EntityRowMenu, { type EntityRowAction } from './EntityRowMenu.vue'
@@ -59,9 +59,19 @@ function syncVmViewport(event: MediaQueryListEvent) {
 onMounted(() => vmViewport.addEventListener('change', syncVmViewport))
 onBeforeUnmount(() => {
   vmViewport.removeEventListener('change', syncVmViewport)
+  window.clearTimeout(hypervPoll)
 })
 let loadVersion = 0,
-  pageVersion = 0
+  pageVersion = 0,
+  hypervPoll = 0
+const hypervSyncTitle = computed(() => {
+  if (vmProvider.value !== 'hyperv' || !data.value) return ''
+  const pending = Array.isArray(data.value.pendingNodes) ? data.value.pendingNodes.map(item => String(item)) : []
+  const synced = data.value.syncedAt ? `最后同步 ${dateTime(String(data.value.syncedAt))}` : ''
+  const waiting = pending.length ? `正在同步 ${pending.join('、')}` : ''
+  const updating = data.value.refreshing && pending.length === 0 ? '正在更新' : ''
+  return [synced || (waiting ? '尚未完成同步' : ''), waiting, updating].filter(Boolean).join('，')
+})
 function resetSearch() {
   page.value = 1
   void load()
@@ -96,6 +106,10 @@ const licenseMetadata = computed(() =>
   data.value ? { machineCode: data.value.machineCode, items: data.value.items } : null
 )
 const automaticStatus = computed(() => (data.value?.automatic as AutomaticBackupStatus | undefined) || null)
+const keyProtection = computed(() => data.value?.keyProtection)
+const inspection = ref<BackupInspection | null>(null)
+const inspecting = ref(false)
+const backupInput = ref<HTMLInputElement | null>(null)
 
 const automaticBackupFailed = computed(() => {
   const item = automaticStatus.value
@@ -126,12 +140,23 @@ const automaticBackupDescription = computed(() => {
   return [last, result].filter(Boolean).join('；')
 })
 const auditExportHref = computed(() => `/api/audits/export?search=${encodeURIComponent(search.value.trim())}`)
-async function load() {
+function scheduleHypervPoll() {
+  window.clearTimeout(hypervPoll)
+  hypervPoll = window.setTimeout(() => {
+    if (props.pageKey === 'virtual-machines' && vmProvider.value === 'hyperv') void reload(true)
+  }, 2000)
+}
+function load() {
+  return reload(false)
+}
+async function reload(silent: boolean) {
   const version = ++loadVersion
-  loading.value = true
-  error.value = ''
-  data.value = null
-  rows.value = []
+  if (!silent) {
+    loading.value = true
+    error.value = ''
+    data.value = null
+    rows.value = []
+  }
   try {
     const path =
       props.pageKey === 'server'
@@ -147,6 +172,8 @@ async function load() {
       total.value = result?.total ?? rows.value.length
     }
     if (props.pageKey === 'settings') Object.assign(settings, result)
+    if (props.pageKey === 'virtual-machines' && vmProvider.value === 'hyperv' && result?.refreshing) scheduleHypervPoll()
+    else window.clearTimeout(hypervPoll)
   } catch (err) {
     if (version === loadVersion) error.value = messageOf(err)
   } finally {
@@ -175,6 +202,41 @@ async function createBackup() {
   }
 }
 
+function showInspection(result: BackupInspection) {
+  inspection.value = result
+  if (result.ok) ElMessage.success(result.portable ? '备份可以在当前配置下解密' : '备份完整，但密钥仍绑定当前 Windows')
+  else ElMessage.warning(result.message)
+}
+async function inspectBackup(fileName: string) {
+  inspecting.value = true
+  try {
+    showInspection(await post<BackupInspection>(`/backups/${encodeURIComponent(fileName)}/inspect`))
+  } catch (err) {
+    ElMessage.error(messageOf(err))
+  } finally {
+    inspecting.value = false
+  }
+}
+async function inspectUploadedBackup(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (file.size < 1 || file.size > 16 * 1024 * 1024) {
+    ElMessage.warning('上传检查的备份包不能超过 16MB。更大的文件请放入服务器备份目录后，在列表中检查。')
+    return
+  }
+  inspecting.value = true
+  try {
+    const body = new FormData()
+    body.append('file', file)
+    showInspection(await api<BackupInspection>('/backups/inspect', { method: 'POST', body, timeoutMs: 0 }))
+  } catch (err) {
+    ElMessage.error(messageOf(err))
+  } finally {
+    inspecting.value = false
+  }
+}
 function copyRestoreCommand(fileName: string) {
   const command =
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\\Program Files\\SchoolTraining\\scripts\\restore-backup.ps1' -BackupFile '<请填写已下载的备份路径>\\" +
@@ -502,8 +564,16 @@ useListPersist(opsStateKey, () => ({ search: search.value, filters: {}, page: pa
         :loading="vmLoading"
         @click="openVm()"
         >新增模拟虚拟机</el-button
-      ><el-button v-if="pageKey === 'backups'" type="primary" :icon="Plus" :loading="saving" @click="createBackup"
-        >创建备份</el-button
+      ><template v-if="pageKey === 'backups'"
+        ><el-button :icon="Upload" :loading="inspecting" @click="backupInput?.click()">上传检查</el-button
+        ><el-button type="primary" :icon="Plus" :loading="saving" @click="createBackup">创建备份</el-button
+        ><input
+          ref="backupInput"
+          type="file"
+          accept=".zip,application/zip"
+          class="visually-hidden"
+          aria-label="选择要检查的备份包"
+          @change="inspectUploadedBackup" /></template
       ><el-button v-if="['server', 'settings'].includes(pageKey)" tag="a" href="/api/diagnostics" :icon="Document"
         >下载诊断包</el-button
       ><template v-if="pageKey === 'licenses'"
@@ -526,6 +596,13 @@ useListPersist(opsStateKey, () => ({ search: search.value, filters: {}, page: pa
       <el-radio-button value="simulated">内置模拟节点</el-radio-button>
       <el-radio-button value="hyperv">Hyper-V</el-radio-button>
     </el-radio-group>
+    <el-alert
+      v-if="hypervSyncTitle"
+      type="info"
+      show-icon
+      :closable="false"
+      class="section-notice"
+      :title="hypervSyncTitle" />
     <el-alert
       v-if="vmProvider === 'hyperv' && data?.unavailableNodes?.length"
       type="warning"
@@ -679,10 +756,28 @@ useListPersist(opsStateKey, () => ({ search: search.value, filters: {}, page: pa
           备份文件包含业务数据与必要密钥，请下载后妥善保存到服务器以外的位置。恢复会停止服务，并用备份中的数据库和密钥替换当前数据。请先记录当前程序版本，再在服务器上使用安装目录中的
           <code>scripts\restore-backup.ps1</code>
           按运维说明执行并验证结果。默认脚本路径为
-          <code>C:\Program Files\SchoolTraining\scripts\restore-backup.ps1</code>。
+          <code>C:\Program Files\SchoolTraining\scripts\restore-backup.ps1</code>。上传检查只读取备份，不会替换当前数据。
         </p>
       </div>
     </div>
+    <el-alert
+      v-if="keyProtection"
+      :type="keyProtection.portable ? 'success' : 'warning'"
+      show-icon
+      :closable="false"
+      class="section-notice"
+      :title="keyProtection.portable ? '密钥可以带到新系统' : '密钥仍绑定当前 Windows'"
+      :description="keyProtection.summary"
+    />
+    <el-alert
+      v-if="inspection"
+      :type="inspection.ok ? (inspection.portable ? 'success' : 'warning') : 'error'"
+      show-icon
+      :closable="false"
+      class="section-notice"
+      :title="inspection.ok ? '备份检查通过' : '备份检查未通过'"
+      :description="[inspection.message, ...inspection.warnings].filter(Boolean).join(' ')"
+    />
     <el-alert
       v-if="automaticStatus"
       :type="automaticBackupAlertType"
@@ -711,7 +806,7 @@ useListPersist(opsStateKey, () => ({ search: search.value, filters: {}, page: pa
           ><template #default="{ row }">{{ dateTime(row.createdAt) }}</template></el-table-column
         ><el-table-column label="文件大小" width="140"
           ><template #default="{ row }">{{ bytes(row.size) }}</template></el-table-column
-        ><el-table-column label="操作" min-width="210"
+        ><el-table-column label="操作" min-width="280"
           ><template #default="{ row }"
             ><el-button
               link
@@ -720,6 +815,7 @@ useListPersist(opsStateKey, () => ({ search: search.value, filters: {}, page: pa
               tag="a"
               :href="`/api/backups/${encodeURIComponent(row.fileName)}`"
               >下载</el-button
+            ><el-button link :icon="Check" :loading="inspecting" @click="inspectBackup(row.fileName)">检查</el-button
             ><el-button link :icon="CopyDocument" @click="copyRestoreCommand(row.fileName)"
               >复制恢复命令</el-button
             ></template

@@ -1,30 +1,130 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { api, messageOf, post } from '../api'
+import { messageOf } from '../api'
 
 const props = defineProps<{ sessionId: string; monitor: boolean }>()
 const emit = defineEmits<{ assistance: [allowed: boolean] }>()
-const path = `/classrooms/case-sessions/${props.sessionId}/live`
 const sharing = ref(false)
+const capturing = ref(false)
 const allowAssist = ref(false)
 const image = ref('')
 const error = ref('')
 const starting = ref(false)
 let timer = 0
-let token = ''
+let retryTimer = 0
+let captureGeneration = 0
 let stream: MediaStream | undefined
+let preview: HTMLVideoElement | undefined
+let socket: WebSocket | undefined
 let disposed = false
-let busy = false
+let intentionalStop = false
+
+function socketUrl() {
+  const url = new URL(`/api/classrooms/case-sessions/${props.sessionId}/live/socket`, location.href)
+  url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return url
+}
+
+function closeSocket() {
+  const current = socket
+  socket = undefined
+  if (!current) return
+  current.onopen = null
+  current.onclose = null
+  current.onerror = null
+  current.onmessage = null
+  current.close()
+}
+
+function pauseCapture() {
+  captureGeneration++
+  window.clearInterval(timer)
+  timer = 0
+  capturing.value = false
+}
+
+function releaseImage() {
+  if (image.value.startsWith('blob:')) URL.revokeObjectURL(image.value)
+  image.value = ''
+}
 
 function stop() {
-  window.clearInterval(timer)
+  intentionalStop = true
+  window.clearTimeout(retryTimer)
+  pauseCapture()
+  closeSocket()
   stream?.getTracks().forEach(track => track.stop())
   stream = undefined
-  const ended = token
-  token = ''
+  preview = undefined
   sharing.value = false
+  releaseImage()
   emit('assistance', false)
-  if (ended) void post(`${path}/stop`, { token: ended }).catch(() => {})
+}
+
+function beginCapture(video: HTMLVideoElement) {
+  pauseCapture()
+  const generation = ++captureGeneration
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')
+  if (!context) {
+    error.value = '无法读取共享画面'
+    stop()
+    return
+  }
+  capturing.value = true
+  const send = () => {
+    if (generation !== captureGeneration || socket?.readyState !== WebSocket.OPEN || !video.videoWidth) return
+    const scale = Math.min(1, 640 / video.videoWidth, 480 / video.videoHeight)
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob(blob => {
+      if (generation !== captureGeneration || !blob || blob.size > 160000 || socket?.readyState !== WebSocket.OPEN) return
+      socket.send(blob)
+    }, 'image/jpeg', 0.55)
+  }
+  send()
+  timer = window.setInterval(send, 1000)
+}
+
+function openPublisher() {
+  closeSocket()
+  const current = new WebSocket(socketUrl())
+  socket = current
+  current.onopen = () => {
+    if (socket !== current) return
+    current.send(JSON.stringify({ allowAssist: allowAssist.value }))
+    sharing.value = true
+    error.value = ''
+  }
+  current.onmessage = event => {
+    if (socket !== current || typeof event.data !== 'string' || !preview) return
+    let message: { type?: string }
+    try {
+      message = JSON.parse(event.data) as { type?: string }
+    } catch {
+      return
+    }
+    if (message.type === 'start') beginCapture(preview)
+    if (message.type === 'stop') pauseCapture()
+  }
+  current.onerror = () => {
+    if (socket === current) error.value = '画面共享连接未建立。'
+  }
+  current.onclose = event => {
+    if (socket !== current) return
+    socket = undefined
+    pauseCapture()
+    if (intentionalStop || disposed) return
+    if (event.code === 1008) {
+      error.value = event.reason || '共享连接被拒绝'
+      stop()
+      return
+    }
+    retryTimer = window.setTimeout(() => {
+      if (!intentionalStop && !disposed && stream) openPublisher()
+    }, 2000)
+  }
 }
 
 async function start() {
@@ -32,6 +132,7 @@ async function start() {
     error.value = '画面共享需要 HTTPS 或本机地址。'
     return
   }
+  intentionalStop = false
   starting.value = true
   error.value = ''
   try {
@@ -47,12 +148,8 @@ async function start() {
     video.srcObject = stream
     await video.play()
     if (!stream || disposed) return stop()
-    const response = await post<{ token: string }>(path, { allowAssist: allowAssist.value })
-    token = response.token
-    if (!stream || disposed) return stop()
-    sharing.value = true
-    await startSending(video)
-    emit('assistance', !!token && allowAssist.value)
+    preview = video
+    openPublisher()
   } catch (failure) {
     if (!disposed)
       error.value =
@@ -63,63 +160,60 @@ async function start() {
   }
 }
 
-async function startSending(video: HTMLVideoElement) {
-  const canvas = document.createElement('canvas')
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('无法读取共享画面')
-  async function send() {
-    if (!context || !token || busy || !video.videoWidth) return
-    const current = token
-    busy = true
-    try {
-      const scale = Math.min(1, 640 / video.videoWidth, 480 / video.videoHeight)
-      canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
-      canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
-      context.drawImage(video, 0, 0, canvas.width, canvas.height)
-      const frame = canvas.toDataURL('image/jpeg', 0.55).split(',')[1]
-      if (frame && frame.length <= 160000) await post(`${path}/frame`, { token: current, image: frame })
-    } catch (failure) {
-      if (token === current) {
-        error.value = messageOf(failure)
-        stop()
+function openMonitor() {
+  closeSocket()
+  const current = new WebSocket(socketUrl())
+  current.binaryType = 'blob'
+  socket = current
+  current.onmessage = event => {
+    if (socket !== current) return
+    if (typeof event.data === 'string') {
+      let message: { type?: string; sharing?: boolean; allowAssist?: boolean }
+      try {
+        message = JSON.parse(event.data) as { type?: string; sharing?: boolean; allowAssist?: boolean }
+      } catch {
+        return
       }
-    } finally {
-      busy = false
+      if (message.type !== 'status') return
+      sharing.value = !!message.sharing
+      emit('assistance', !!message.allowAssist)
+      if (!message.sharing) releaseImage()
+      error.value = ''
+      return
     }
+    if (!(event.data instanceof Blob)) return
+    const next = URL.createObjectURL(event.data)
+    releaseImage()
+    image.value = next
+    sharing.value = true
   }
-  await send()
-  if (token) timer = window.setInterval(() => void send(), 1000)
-}
-
-async function watchFrame() {
-  if (busy || disposed) return
-  busy = true
-  try {
-    const result = await api<{ sharing: boolean; allowAssist: boolean; image: string | null }>(path)
-    if (disposed) return
-    sharing.value = result.sharing
-    image.value = result.image ? `data:image/jpeg;base64,${result.image}` : ''
-    emit('assistance', result.allowAssist)
-    error.value = ''
-  } catch (failure) {
-    if (disposed) return
+  current.onerror = () => {
+    if (socket === current) error.value = '画面监控连接未建立。'
+  }
+  current.onclose = () => {
+    if (socket !== current) return
+    socket = undefined
     sharing.value = false
-    image.value = ''
+    releaseImage()
     emit('assistance', false)
-    error.value = messageOf(failure)
-  } finally {
-    busy = false
+    if (disposed) return
+    retryTimer = window.setTimeout(() => {
+      if (!disposed) openMonitor()
+    }, 2000)
   }
 }
 
 onMounted(() => {
-  if (props.monitor) {
-    void watchFrame()
-    timer = window.setInterval(() => void watchFrame(), 1200)
-  }
+  if (props.monitor) openMonitor()
 })
 onBeforeUnmount(() => {
   disposed = true
+  if (props.monitor) {
+    window.clearTimeout(retryTimer)
+    closeSocket()
+    releaseImage()
+    return
+  }
   stop()
 })
 </script>
@@ -136,7 +230,9 @@ onBeforeUnmount(() => {
         <el-checkbox v-model="allowAssist" :disabled="sharing || starting">允许教师协助修改模拟设备配置</el-checkbox>
         <el-button v-if="sharing" type="danger" plain @click="stop">停止共享</el-button>
         <el-button v-else plain :loading="starting" @click="start">共享实操画面</el-button>
-        <el-tag v-if="sharing" type="success">正在共享</el-tag>
+        <el-tag v-if="sharing" :type="capturing ? 'success' : 'info'">{{
+          capturing ? '正在传输画面' : '已就绪，教师查看时开始传输'
+        }}</el-tag>
       </div>
       <p v-if="!sharing">请选择实操所在的标签页。</p>
     </template>

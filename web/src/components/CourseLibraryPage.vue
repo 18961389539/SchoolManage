@@ -7,14 +7,18 @@ import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { useRequestGeneration } from '../requestGeneration'
 import { confirmReload, isStale } from '../stale'
-import { courseStatusOptions, courseTypeOptions, durationText, labelOf } from '../teaching'
+import { contentVisibilityOptions, courseStatusOptions, courseTypeOptions, durationText, labelOf, visibilityLabel } from '../teaching'
 import type { CoreCourseSeries, CourseDetail, CourseSummary, Paged } from '../types'
 import CourseTreeEditor from './CourseTreeEditor.vue'
 import TableEmpty from './TableEmpty.vue'
 import { focusFirstField } from '../focusField'
 import { useDiscardGuard } from '../discardGuard'
 
+const props = defineProps<{ admin?: boolean }>()
 const emit = defineEmits<{ navigate: [key: string, params?: Record<string, string>]; 'activation-changed': [] }>()
+const visibilityChoices = computed(() =>
+  props.admin ? contentVisibilityOptions : contentVisibilityOptions.filter(item => item.value !== 'published')
+)
 
 const listKey = 'courses'
 const savedList = readListState(listKey)
@@ -39,7 +43,7 @@ function focusNameInput() {
 const editing = ref<CourseSummary | null>(null)
 const saving = ref(false)
 const formError = ref('')
-const form = reactive({ name: '', type: 'general', description: '', remark: '', seriesId: '' })
+const form = reactive({ name: '', type: 'general', description: '', remark: '', seriesId: '', visibility: 'private' })
 const guard = useDiscardGuard({
   visible: dialogVisible,
   snapshot: () => form,
@@ -58,9 +62,9 @@ function focusSeriesName() {
   else seriesNameInput.value?.focus?.()
 }
 
-async function loadSeries() {
+async function loadSeries(manage = false) {
   try {
-    series.value = await api<CoreCourseSeries[]>('/course-series?manage=true')
+    series.value = await api<CoreCourseSeries[]>(`/course-series${manage ? '?manage=true' : ''}`)
   } catch (failure) {
     ElMessage.error(messageOf(failure))
   }
@@ -68,7 +72,7 @@ async function loadSeries() {
 
 function openSeriesManager() {
   seriesVisible.value = true
-  void loadSeries()
+  void loadSeries(true)
 }
 
 function editSeries(item?: CoreCourseSeries) {
@@ -117,6 +121,7 @@ async function load() {
     if (search.value.trim()) params.set('search', search.value.trim())
     if (statusFilter.value) params.set('status', statusFilter.value)
     if (typeFilter.value) params.set('type', typeFilter.value)
+    params.set('manage', 'true')
     const data = await api<Paged<CourseSummary>>(`/courses?${params.toString()}`)
     if (!listRequests.isCurrent(token)) return
     items.value = data.items
@@ -161,6 +166,7 @@ function openCreate() {
   form.description = ''
   form.remark = ''
   form.seriesId = ''
+  form.visibility = props.admin ? 'published' : 'private'
   formError.value = ''
   guard.capture()
   dialogVisible.value = true
@@ -173,6 +179,7 @@ function openEdit(course: CourseSummary) {
   form.description = course.description
   form.remark = course.remark
   form.seriesId = course.seriesId || ''
+  form.visibility = course.visibility || (props.admin ? 'published' : 'private')
   formError.value = ''
   guard.capture()
   dialogVisible.value = true
@@ -191,7 +198,8 @@ async function saveCourse() {
       type: form.type,
       description: form.description.trim(),
       remark: form.remark.trim(),
-      seriesId: form.type === 'core' ? form.seriesId || null : null
+      seriesId: form.type === 'core' ? form.seriesId || null : null,
+      visibility: form.visibility
     }
     if (editing.value) await put(`/courses/${editing.value.id}`, { ...payload, version: editing.value.version })
     else await post('/courses', payload)
@@ -226,8 +234,10 @@ async function publishCourse(course: CourseSummary, activate: boolean) {
     await post(`/courses/${course.id}/publish?activate=${activate}`)
     ElMessage.success(
       activate
-        ? '课程已发布并激活，教师可以用来开设课堂。'
-        : '课程已发布，尚未激活，教师还不能用来开课。可在本页再点击“激活”。'
+        ? '课程已发布并激活，可以用来开设课堂。'
+        : course.visibility === 'published'
+          ? '课程已发布，尚未激活，还不能用来开课。可在本页再点击“激活”。'
+          : '课程已发布，可以用来开设课堂。'
     )
     await load()
     emit('activation-changed')
@@ -311,11 +321,17 @@ onMounted(() => {
   <section class="page-heading">
     <div>
       <h1>课程管理</h1>
-      <p>课程发布后进入课程目录，激活后可用于开设课堂。</p>
+      <p>
+        {{
+          admin
+            ? '课程发布后进入课程目录，激活后可用于开设课堂。'
+            : '可以创建本人课程并用于自己的课堂。公共标准库由管理员发布和激活。'
+        }}
+      </p>
     </div>
     <div class="heading-actions">
       <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      <el-button @click="openSeriesManager">管理核心课系列</el-button>
+      <el-button v-if="admin" @click="openSeriesManager">管理核心课系列</el-button>
       <el-button type="primary" :icon="Plus" @click="openCreate">新建课程</el-button>
     </div>
   </section>
@@ -378,6 +394,7 @@ onMounted(() => {
           <div class="table-name">
             <strong>{{ row.name }}</strong>
             <el-tag size="small" effect="plain">{{ labelOf(courseTypeOptions, row.type) }}</el-tag>
+            <el-tag size="small" effect="plain">{{ visibilityLabel(row.visibility) }}</el-tag>
           </div>
           <p class="course-description">{{ row.description || '暂无简介' }}</p>
         </template>
@@ -409,11 +426,11 @@ onMounted(() => {
       </el-table-column>
       <el-table-column label="操作" width="330" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" :icon="View" @click="openTree(row as CourseSummary)">管理目录</el-button>
+          <el-button v-if="row.canEdit" link type="primary" :icon="View" @click="openTree(row as CourseSummary)">管理目录</el-button>
           <el-button link type="primary" @click="previewCourse(row as CourseSummary)">预览</el-button>
-          <el-button link @click="openEdit(row as CourseSummary)">编辑</el-button>
+          <el-button v-if="row.canEdit" link @click="openEdit(row as CourseSummary)">编辑</el-button>
           <el-button
-            v-if="row.status !== 'published'"
+            v-if="row.canEdit && row.status !== 'published'"
             link
             type="warning"
             @click="publishCourse(row as CourseSummary, false)"
@@ -421,23 +438,23 @@ onMounted(() => {
             发布
           </el-button>
           <el-button
-            v-if="row.status !== 'published'"
+            v-if="admin && row.canEdit && row.visibility === 'published' && row.status !== 'published'"
             link
             type="primary"
             @click="publishCourse(row as CourseSummary, true)"
           >
             发布并激活
           </el-button>
-          <el-button v-else link type="warning" @click="togglePublish(row as CourseSummary)">下线</el-button>
+          <el-button v-else-if="row.canEdit && row.status === 'published'" link type="warning" @click="togglePublish(row as CourseSummary)">下线</el-button>
           <el-button
-            v-if="row.status === 'published'"
+            v-if="admin && row.visibility === 'published' && row.status === 'published'"
             link
             type="primary"
             @click="toggleActivation(row as CourseSummary)"
           >
             {{ row.isActive ? '停用' : '激活' }}
           </el-button>
-          <el-button link type="danger" @click="removeCourse(row as CourseSummary)">删除</el-button>
+          <el-button v-if="row.canEdit" link type="danger" @click="removeCourse(row as CourseSummary)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -472,6 +489,11 @@ onMounted(() => {
             show-word-limit
             placeholder="例如：计算机网络基础"
           />
+        </el-form-item>
+        <el-form-item label="可见范围" required>
+          <el-select v-model="form.visibility">
+            <el-option v-for="option in visibilityChoices" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
         </el-form-item>
         <el-form-item label="课程类型" required>
           <el-select v-model="form.type">

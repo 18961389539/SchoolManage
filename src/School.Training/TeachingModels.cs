@@ -21,12 +21,17 @@ public partial class SchoolDbContext
     public DbSet<ClassroomCabinetAssignment> ClassroomCabinetAssignments => Set<ClassroomCabinetAssignment>();
     public DbSet<ClassroomCaseSession> ClassroomCaseSessions => Set<ClassroomCaseSession>();
     public DbSet<ClassroomCaseGrade> ClassroomCaseGrades => Set<ClassroomCaseGrade>();
+    public DbSet<ClassroomStudentStat> ClassroomStudentStats => Set<ClassroomStudentStat>();
+    public DbSet<ClassroomProgressFreeze> ClassroomProgressFreezes => Set<ClassroomProgressFreeze>();
     public DbSet<CaseSessionEvidence> CaseSessionEvidences => Set<CaseSessionEvidence>();
 
     partial void ConfigureTeaching(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<TrainingCourse>().HasIndex(x => x.Name).IsUnique().HasDatabaseName("IX_Courses_Name");
         modelBuilder.Entity<TrainingCourse>().HasIndex(x => new { x.Status, x.Type }).HasDatabaseName("IX_Courses_Status_Type");
+        modelBuilder.Entity<TrainingCourse>().Property(x => x.Visibility).HasDefaultValue(ContentAccess.Published);
+        modelBuilder.Entity<TrainingCourse>().HasIndex(x => x.OwnerUserId).HasDatabaseName("IX_Courses_OwnerUserId");
+        modelBuilder.Entity<TrainingCourse>().HasIndex(x => x.Visibility).HasDatabaseName("IX_Courses_Visibility");
         // Editing surface: the client sends back the version it loaded, and EF adds it to the
         // UPDATE's WHERE clause so a write built on stale content cannot land.
         modelBuilder.Entity<TrainingCourse>().Property(x => x.Version).IsConcurrencyToken();
@@ -66,6 +71,8 @@ public partial class SchoolDbContext
         modelBuilder.Entity<LearningRecord>().HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<LearningRecord>().HasOne<CourseResource>().WithMany().HasForeignKey(x => x.ResourceId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<PracticeAttempt>().HasIndex(x => new { x.LearningRecordId, x.SubmittedAt }).HasDatabaseName("IX_PracticeAttempts_LearningRecordId_SubmittedAt");
+        modelBuilder.Entity<PracticeAttempt>().HasIndex(x => x.SubmittedAt).HasDatabaseName("IX_PracticeAttempts_SubmittedAt");
+        modelBuilder.Entity<PracticeAttempt>().HasIndex(x => x.StartedAt).HasDatabaseName("IX_PracticeAttempts_StartedAt");
         modelBuilder.Entity<PracticeAttempt>().HasOne<LearningRecord>().WithMany().HasForeignKey(x => x.LearningRecordId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<ClassroomGroup>().HasIndex(x => new { x.ClassroomId, x.Name }).IsUnique().HasDatabaseName("IX_ClassroomGroups_ClassroomId_Name");
         modelBuilder.Entity<ClassroomGroup>().HasOne<Classroom>().WithMany().HasForeignKey(x => x.ClassroomId).OnDelete(DeleteBehavior.Cascade);
@@ -94,7 +101,14 @@ public partial class SchoolDbContext
         modelBuilder.Entity<ClassroomCaseSession>().HasOne<TrainingNode>().WithMany().HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<ClassroomCaseSession>().HasOne<TrainingVirtualMachine>().WithMany().HasForeignKey(x => x.VirtualMachineId).OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<ClassroomCaseGrade>().HasIndex(x => new { x.SessionId, x.ScoredAt });
+        modelBuilder.Entity<ClassroomCaseGrade>().HasIndex(x => new { x.IsFinal, x.ScoredAt }).HasDatabaseName("IX_ClassroomCaseGrades_IsFinal_ScoredAt");
         modelBuilder.Entity<ClassroomCaseGrade>().HasOne<ClassroomCaseSession>().WithMany().HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ClassroomStudentStat>().HasIndex(x => new { x.ClassroomId, x.UserId }).IsUnique().HasDatabaseName("IX_ClassroomStudentStats_ClassroomId_UserId");
+        modelBuilder.Entity<ClassroomStudentStat>().HasOne<Classroom>().WithMany().HasForeignKey(x => x.ClassroomId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ClassroomStudentStat>().HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ClassroomProgressFreeze>().HasKey(x => x.ClassroomId);
+        modelBuilder.Entity<ClassroomProgressFreeze>().Property(x => x.ResourcesJson).HasDefaultValue("[]");
+        modelBuilder.Entity<ClassroomProgressFreeze>().HasOne<Classroom>().WithMany().HasForeignKey(x => x.ClassroomId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<CaseSessionEvidence>().HasIndex(x => new { x.SessionId, x.CreatedAt }).HasDatabaseName("IX_CaseSessionEvidences_SessionId_CreatedAt");
         modelBuilder.Entity<CaseSessionEvidence>().HasOne<ClassroomCaseSession>().WithMany().HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Cascade);
     }
@@ -113,6 +127,8 @@ public class TrainingCourse
     public bool IsActive { get; set; }
     public string? SeriesId { get; set; }
     public int Version { get; set; }
+    public string? OwnerUserId { get; set; }
+    public string Visibility { get; set; } = ContentAccess.Published;
 }
 
 public class CoreCourseSeries
@@ -232,7 +248,7 @@ public class PracticeAttempt
     public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
 }
 
-public sealed record CourseInput(string Name, string Type, string? Description = null, string? Remark = null, string? SeriesId = null, int? Version = null);
+public sealed record CourseInput(string Name, string Type, string? Description = null, string? Remark = null, string? SeriesId = null, int? Version = null, string? Visibility = null);
 public sealed record ChapterInput(string Name, int? Version = null);
 public sealed record SectionInput(string Name, int DurationMinutes = 30, int? Version = null);
 public sealed record CourseResourceInput(string Name, string Kind, int DurationMinutes = 15, string? Content = null, string? Topology = null, string? StartupNodeId = null, CourseQuestionInput[]? Questions = null, CaseRubricItem[]? CaseRubric = null, CaseTopologyBlueprint? TopologyBlueprint = null, int? Version = null);
@@ -308,6 +324,39 @@ public sealed class ClassroomCaseGrade
     public int MaxScore { get; set; }
     public int Percent { get; set; }
     public string DetailsJson { get; set; } = "[]";
+}
+
+/// <summary>
+/// One row per student in a classroom. Home rankings read these counts instead of
+/// replaying every learning record and practice answer.
+/// </summary>
+public sealed class ClassroomStudentStat
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string ClassroomId { get; set; } = "";
+    public string UserId { get; set; } = "";
+    public int LearnedCount { get; set; }
+    public int PassedCount { get; set; }
+    public int RecordCount { get; set; }
+    public int AttemptCount { get; set; }
+    public int GradeCount { get; set; }
+    public long SourceStamp { get; set; }
+    public DateTime? LastActivityAt { get; set; }
+    public string ActiveDates { get; set; } = "";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Closed classrooms keep the resource totals they had at close time. Later course edits
+/// do not rewrite those home figures.
+/// </summary>
+public sealed class ClassroomProgressFreeze
+{
+    public string ClassroomId { get; set; } = "";
+    public int ResourceCount { get; set; }
+    public int VerifiableCount { get; set; }
+    public string ResourcesJson { get; set; } = "[]";
+    public DateTime FrozenAt { get; set; } = DateTime.UtcNow;
 }
 
 public class CaseSessionEvidence

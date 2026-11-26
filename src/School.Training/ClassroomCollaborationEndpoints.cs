@@ -13,6 +13,7 @@ public static class ClassroomCollaborationEndpoints
     {
         var staff = all.MapGroup("").RequireAuthorization(policy => policy.RequireRole("Admin", "Teacher"));
         var learners = all.MapGroup("").RequireAuthorization(policy => policy.RequireRole("Student"));
+        all.MapClassroomLiveShare();
         all.MapGroup("").RequireAuthorization("Admin").MapClassroomCaseScoring(staff, learners);
         staff.MapGet("/classrooms/{id}/groups", ListGroups);
         staff.MapPost("/classrooms/{id}/groups", CreateGroup);
@@ -410,16 +411,19 @@ public static class ClassroomCollaborationEndpoints
         var now = DateTime.UtcNow;
         ClassroomCaseScoring.Discard(session, now);
         var record = await db.LearningRecords.FirstOrDefaultAsync(item => item.Id == session.LearningRecordId, ct);
+        var progressChanged = false;
         if (record != null && record.Status != "completed")
         {
             record.Status = "completed";
             record.CompletedAt = finalGrade.ScoredAt;
             record.BestScore = Math.Max(record.BestScore, finalGrade.Percent);
+            progressChanged = true;
         }
         var student = await db.Users.AsNoTracking().Where(item => item.Id == session.UserId)
             .Select(item => item.DisplayName).FirstOrDefaultAsync(ct);
         Audit.Add(db, ctx, "结束课堂实操会话（保留终评）", classroom.Name, student ?? "学生");
         await db.SaveChangesAsync(ct);
+        if (progressChanged) await ClassroomProgress.RefreshStudentAsync(db, record!.ClassroomId, record.UserId, ct);
         await transaction.CommitAsync(ct);
         return Results.Ok(new { status = session.Status, endedAt = session.EndedAt });
     }

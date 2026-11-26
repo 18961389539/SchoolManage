@@ -121,7 +121,10 @@ try {
         $header = New-Object byte[] 16
         if ($stream.Read($header,0,16) -ne 16 -or [Text.Encoding]::ASCII.GetString($header) -ne "SQLite format 3`0") { throw 'Backup is not a SQLite database.' }
     } finally { $stream.Dispose() }
-    & $ProgramFile '--validate-backup' (Join-Path $staging 'school.db') (Join-Path $staging 'keys')
+    $previousDataDirectory = $env:SCHOOL_DATA_DIR
+    $env:SCHOOL_DATA_DIR = $DataDirectory
+    try { & $ProgramFile '--validate-backup' (Join-Path $staging 'school.db') (Join-Path $staging 'keys') }
+    finally { $env:SCHOOL_DATA_DIR = $previousDataDirectory }
     if ($LASTEXITCODE -ne 0) { throw 'Backup failed the product database integrity/schema validation. Existing data was not changed.' }
     $null = @(Get-SafeFiles $staging)
 

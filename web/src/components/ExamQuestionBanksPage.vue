@@ -6,14 +6,18 @@ import { api, dateTime, del, messageOf, post, put } from '../api'
 import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { examQuestionBankLabels } from '../questionBanks'
+import { contentVisibilityOptions, visibilityLabel } from '../teaching'
 import { focusFirstField } from '../focusField'
-import type { ExamQuestionBank, ExamQuestionBankType, Paged } from '../types'
+import type { ContentVisibility, ExamQuestionBank, ExamQuestionBankType, Paged } from '../types'
 import { useDiscardGuard } from '../discardGuard'
 import TableEmpty from './TableEmpty.vue'
 
 const QuestionBankPage = defineAsyncComponent(() => import('./QuestionBankPage.vue'))
-const props = defineProps<{ readOnly?: boolean }>()
+const props = defineProps<{ readOnly?: boolean; admin?: boolean }>()
 const canWrite = computed(() => !props.readOnly)
+const visibilityChoices = computed(() =>
+  props.admin ? contentVisibilityOptions : contentVisibilityOptions.filter(item => item.value !== 'published')
+)
 const filtering = computed(() => !!search.value.trim() || !!type.value)
 const banks = ref<ExamQuestionBank[]>([])
 const total = ref(0)
@@ -34,7 +38,7 @@ function focusBankName() {
   else bankNameInput.value?.focus?.()
 }
 const editing = ref<ExamQuestionBank | null>(null)
-const form = reactive({ name: '', type: 'theory' as ExamQuestionBankType })
+const form = reactive({ name: '', type: 'theory' as ExamQuestionBankType, visibility: 'private' as ContentVisibility })
 const guard = useDiscardGuard({
   visible: editor,
   snapshot: () => form,
@@ -95,6 +99,7 @@ function edit(bank: ExamQuestionBank | null = null) {
   editing.value = bank
   form.name = bank?.name ?? ''
   form.type = bank?.type ?? 'theory'
+  form.visibility = bank?.visibility ?? (props.admin ? 'published' : 'private')
   formError.value = ''
   guard.capture()
   editor.value = true
@@ -110,7 +115,7 @@ async function save() {
   }
   saving.value = true
   try {
-    const payload = { name, type: form.type }
+    const payload = { name, type: form.type, visibility: form.visibility }
     if (editing.value) await put(`/exam-question-banks/${editing.value.id}`, payload)
     else {
       await post('/exam-question-banks', payload)
@@ -161,12 +166,12 @@ onMounted(load)
 </script>
 
 <template>
-  <QuestionBankPage v-if="activeBank" :key="activeBank.id" :bank="activeBank" :read-only="!canWrite" @back="back" />
+  <QuestionBankPage v-if="activeBank" :key="activeBank.id" :bank="activeBank" :read-only="!activeBank.canEdit" @back="back" />
   <template v-else>
     <section class="page-heading">
       <div>
         <h1>{{ canWrite ? '题库管理' : '题库' }}</h1>
-        <p v-if="canWrite">按题库维护题目，并在组卷时查找来源。</p>
+        <p v-if="canWrite">可以新建本人题库并录入题目。公共标准库由管理员维护，其中的题目可以直接用于组卷。</p>
         <p v-else>只读查看管理员已配置的题库和题目，不能改题或删除。</p>
       </div>
       <div class="heading-actions">
@@ -226,6 +231,7 @@ onMounted(load)
           <template #default="{ row }">
             <strong>{{ row.name }}</strong>
             <el-tag v-if="row.isDefault" size="small" effect="plain" class="default-tag">默认</el-tag>
+            <el-tag size="small" effect="plain" class="default-tag">{{ visibilityLabel(row.visibility) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="题库类型" width="120">
@@ -237,12 +243,12 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="操作" width="225" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="View" @click="activeBank = row as ExamQuestionBank"
-              >查看题目</el-button
-            >
-            <el-button v-if="canWrite" link :icon="EditPen" @click="edit(row as ExamQuestionBank)">编辑</el-button>
+            <el-button type="primary" link :icon="View" @click="activeBank = row as ExamQuestionBank">{{
+              row.canEdit ? '管理题目' : '查看题目'
+            }}</el-button>
+            <el-button v-if="row.canEdit" link :icon="EditPen" @click="edit(row as ExamQuestionBank)">编辑</el-button>
             <el-tooltip
-              v-if="canWrite && !row.isDefault"
+              v-if="row.canEdit && !row.isDefault"
               :disabled="row.questionCount === 0"
               content="请先清空题库或移出题目"
             >
@@ -289,6 +295,11 @@ onMounted(load)
       <el-form-item label="题库类型" required>
         <el-select v-model="form.type" :disabled="editing?.isDefault">
           <el-option v-for="(label, key) in examQuestionBankLabels" :key="key" :label="label" :value="key" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="可见范围" required>
+        <el-select v-model="form.visibility">
+          <el-option v-for="option in visibilityChoices" :key="option.value" :label="option.label" :value="option.value" />
         </el-select>
       </el-form-item>
     </el-form>

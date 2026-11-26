@@ -22,7 +22,7 @@ async function walk(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const full = path.join(directory, entry.name)
     if (entry.isDirectory()) files.push(...(await walk(full)))
-    else if (/\.(vue|ts|css)$/.test(entry.name) && !entry.name.endsWith('.test.ts') && entry.name !== 'components.d.ts')
+    else if (/\.(vue|ts|css)$/.test(entry.name) && !entry.name.endsWith('.test.ts') && entry.name !== 'components.d.ts' && entry.name !== 'api.generated.ts')
       files.push(full)
   }
   return files

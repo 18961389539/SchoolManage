@@ -2,9 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ArrowLeft, Check, Clock, Document, Grid, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { focusQuestion, useAssessmentSession } from '../assessmentSession'
 import { api, dateTime, messageOf, post } from '../api'
-import { clearDraft, readDraft, registerEmergencyFlush, writeDraft } from '../draftPersistence'
-import { registerLeaveGuard } from '../leaveGuard'
 import { appState } from '../store'
 import {
   attemptStatusLabel,
@@ -15,7 +14,7 @@ import {
   optionLetters
 } from '../exam'
 import { durationText } from '../teaching'
-import { parseApiDate, rangeText, schoolTimeZone } from '../time'
+import { rangeText, schoolTimeZone } from '../time'
 import type { ExamHallDetail, ExamQuestionType, ExamSubmitAnswer, ExamSubmitResult, ExamTakingQuestion } from '../types'
 import ExamPracticalPanel from './ExamPracticalPanel.vue'
 
@@ -44,60 +43,16 @@ const leaving = ref(false)
 const reviewVisible = ref(false)
 const reviewError = ref('')
 const completed = ref<ExamSubmitResult | null>(null)
-const saveState = ref<'' | 'pending' | 'saving' | 'saved' | 'error'>('')
-const lastSavedAt = ref<Date | null>(null)
-const remaining = ref(0)
 const practicalVisible = ref(false)
 const practicalId = ref('')
 const practicalDirty = ref(false)
 let hydrating = false
-let dirty = false
+const savedFingerprints = new Map<string, string>()
 let autoTriggered = false
-let answerBaseAt = ''
-let ticker: number | undefined
-let autosaveTimer: number | undefined
 let deployPoll: number | undefined
 const refreshingStatus = ref(false)
-let debounceTimer: number | undefined
-let serverOffset = 0
-let activeSave: Promise<void> | undefined
 let reviewTarget: ExamTakingQuestion | undefined
 let disposed = false
-let emergencyRestorePending = true
-const draftKey = () =>
-  `school.exam.${appState.user?.id || 'anonymous'}.${props.examId}.${detail.value?.attempt?.id || ''}`
-
-function saveEmergencyDraft() {
-  if (!inProgress.value || !detail.value?.attempt?.id) return
-  writeDraft(draftKey(), { answers: payload() })
-}
-
-function restoreEmergencyDraft() {
-  if (!emergencyRestorePending) return
-  emergencyRestorePending = false
-  if (!inProgress.value || !detail.value?.attempt?.id) return
-  const saved = readDraft<{ answers: ExamSubmitAnswer[] }>(draftKey())
-  if (!saved?.answers?.length) return
-  let restored = false
-  for (const answer of saved.answers) {
-    const target = answers[answer.paperQuestionId]
-    if (!target) continue
-    if (answer.selected?.length) {
-      target.selected = [...answer.selected]
-      restored = true
-    }
-    if (answer.text) {
-      target.text = answer.text
-      restored = true
-    }
-  }
-  if (restored) {
-    dirty = true
-    saveState.value = 'pending'
-    ElMessage.warning('已从本机恢复上次未保存的考试答案，请确认后继续作答')
-  }
-}
-const releaseEmergencyFlush = registerEmergencyFlush(saveEmergencyDraft)
 const saveTimeFormat = new Intl.DateTimeFormat('zh-CN', {
   hour: '2-digit',
   minute: '2-digit',
@@ -151,13 +106,6 @@ const indexQuestions = computed(() =>
 const progressPercent = computed(() =>
   questions.value.length ? Math.round((answeredCount.value * 100) / questions.value.length) : 0
 )
-const saveText = computed(() => {
-  if (saveState.value === 'saving') return '正在保存…'
-  if (saveState.value === 'pending') return '有更改待保存…'
-  if (saveState.value === 'error') return '自动保存失败'
-  if (saveState.value === 'saved' && lastSavedAt.value) return `已保存 ${saveTimeFormat.format(lastSavedAt.value)}`
-  return '答案将自动保存'
-})
 const attemptSummary = computed(() => detail.value?.attempt || null)
 const finishedAttempt = computed(() =>
   attemptSummary.value && attemptSummary.value.status !== 'inProgress' ? attemptSummary.value : null
@@ -199,17 +147,10 @@ async function refreshHall(silent = false) {
   try {
     const data = await api<ExamHallDetail>(`/exam-hall/${props.examId}`)
     if (disposed) return
-    serverOffset = parseApiDate(data.serverNow).getTime() - Date.now()
-    answerBaseAt = data.serverNow
+    session.clearSchedule()
     detail.value = data
-    if (data.attempt?.status === 'inProgress' && data.questions) {
-      stopClocks()
-      await hydrate(data.questions)
-      syncRemaining()
-      if (!disposed) startClocks()
-    } else if (data.attempt) {
-      remaining.value = 0
-    }
+    session.noteServerNow(data.serverNow)
+    if (data.attempt?.status === 'inProgress' && data.questions) await hydrate(data.questions)
     if (wasWaiting && data.canStart) ElMessage.success('实操环境已就绪，可以开始作答')
   } catch (failure) {
     if (!silent) error.value = messageOf(failure)
@@ -226,7 +167,7 @@ async function load() {
   try {
     await refreshHall(true)
     if (disposed) return
-    restoreEmergencyDraft()
+    session.restoreDraft()
   } catch (failure) {
     error.value = messageOf(failure)
     detail.value = null
@@ -249,49 +190,36 @@ async function hydrate(list: ExamTakingQuestion[]) {
   indexOpen.value = false
   unansweredOnly.value = false
   autoTriggered = false
-  dirty = false
-  saveState.value = ''
+  captureFingerprints()
+  session.reset()
   await nextTick()
   hydrating = false
-}
-
-function startClocks() {
-  stopClocks()
-  ticker = window.setInterval(() => {
-    syncRemaining()
-    if (remaining.value <= 0 && inProgress.value && !autoTriggered && !submitting.value) {
-      autoTriggered = true
-      void submit(true)
-    }
-  }, 1000)
-  autosaveTimer = window.setInterval(() => {
-    if (dirty && inProgress.value && !submitting.value) void saveNow()
-  }, 30000)
-}
-
-function stopClocks() {
-  if (ticker !== undefined) {
-    window.clearInterval(ticker)
-    ticker = undefined
-  }
-  if (autosaveTimer !== undefined) {
-    window.clearInterval(autosaveTimer)
-    autosaveTimer = undefined
-  }
-  clearSaveTimer()
-}
-
-function syncRemaining() {
-  const deadline = detail.value?.attempt?.deadline
-  remaining.value = deadline
-    ? Math.max(0, Math.ceil((parseApiDate(deadline).getTime() - Date.now() - serverOffset) / 1000))
-    : 0
 }
 
 function setSingle(questionId: string, value: string | number | boolean | undefined) {
   const answer = answers[questionId]
   if (!answer) return
   answer.selected = value === undefined || value === null || value === '' ? [] : [Number(value)]
+}
+
+function fingerprint(questionId: string): string {
+  const answer = answers[questionId]
+  return JSON.stringify({ selected: answer?.selected || [], text: answer?.text || '' })
+}
+
+function changedIds(): string[] {
+  return questions.value
+    .filter(question => !question.automaticPractical)
+    .map(question => question.paperQuestionId)
+    .filter(questionId => savedFingerprints.get(questionId) !== fingerprint(questionId))
+}
+
+function captureFingerprints() {
+  savedFingerprints.clear()
+  for (const question of questions.value) {
+    if (question.automaticPractical) continue
+    savedFingerprints.set(question.paperQuestionId, fingerprint(question.paperQuestionId))
+  }
 }
 
 function payload(): ExamSubmitAnswer[] {
@@ -304,55 +232,74 @@ function payload(): ExamSubmitAnswer[] {
     }))
 }
 
-function scheduleSave() {
-  clearSaveTimer()
-  debounceTimer = window.setTimeout(() => {
-    debounceTimer = undefined
-    void saveNow()
-  }, 800)
-}
-
-function clearSaveTimer() {
-  if (debounceTimer === undefined) return
-  window.clearTimeout(debounceTimer)
-  debounceTimer = undefined
-}
-
-function saveNow() {
-  if (disposed || activeSave || !dirty || !inProgress.value || submitting.value) return activeSave
-  clearSaveTimer()
-  dirty = false
-  saveState.value = 'saving'
-  activeSave = persistAnswers().finally(() => {
-    activeSave = undefined
-    if (!disposed && dirty && saveState.value !== 'error' && inProgress.value && !submitting.value) scheduleSave()
-  })
-  return activeSave
-}
-
-async function persistAnswers() {
-  try {
-    const result = await post<{ serverNow: string }>(`/exam-hall/${props.examId}/answers`, {
-      answers: payload(),
-      loadedAt: answerBaseAt
-    })
-    if (disposed) return
-    answerBaseAt = result.serverNow
-    if (!dirty) clearDraft(draftKey())
-    lastSavedAt.value = new Date()
-    saveState.value = dirty ? 'pending' : 'saved'
-  } catch (failure) {
-    if (disposed || completed.value) return
-    dirty = true
-    saveState.value = 'error'
-    const status = (failure as { status?: number })?.status
-    if (status === 409 && !submitting.value) {
-      ElMessage.warning(messageOf(failure))
-      await load()
-      if (!inProgress.value && !disposed) closeAfterSubmit()
+const session = useAssessmentSession<ExamSubmitAnswer>({
+  draftKey: () => `school.exam.${appState.user?.id || 'anonymous'}.${props.examId}.${detail.value?.attempt?.id || ''}`,
+  active: () => inProgress.value,
+  deadline: () => detail.value?.attempt?.deadline,
+  submitting: () => submitting.value,
+  disposed: () => disposed,
+  collectDraft: () => payload(),
+  restoreAnswer: answer => {
+    const target = answers[answer.paperQuestionId]
+    if (!target) return false
+    let changed = false
+    if (answer.selected?.length) {
+      target.selected = [...answer.selected]
+      changed = true
     }
+    if (answer.text) {
+      target.text = answer.text
+      changed = true
+    }
+    return changed
+  },
+  changedIds,
+  fingerprint,
+  remember: (id, value) => savedFingerprints.set(id, value),
+  snapshot: ids =>
+    ids.map(questionId => ({
+      paperQuestionId: questionId,
+      selected: [...(answers[questionId]?.selected || [])],
+      text: answers[questionId]?.text || ''
+    })),
+  savePath: () => `/exam-hall/${props.examId}/answers`,
+  debounceMs: 800,
+  intervalMs: 30000,
+  queue: 'debounce',
+  flushOnUnmount: true,
+  leaveWaits: true,
+  treatDirtyAsUnsaved: true,
+  blockLeave: () => submitting.value || leaving.value,
+  ignoreFailure: () => disposed || completed.value !== null,
+  onConflict: async failure => {
+    ElMessage.warning(messageOf(failure))
+    await load()
+    if (!inProgress.value && !disposed) closeAfterSubmit()
+  },
+  onSecond: seconds => {
+    if (seconds <= 0 && inProgress.value && !autoTriggered && !submitting.value) {
+      autoTriggered = true
+      void submit(true)
+    }
+  },
+  restoreNotice: '已从本机恢复上次未保存的考试答案，请确认后继续作答',
+  leave: {
+    title: '离开考试',
+    unsaved: '还有答案没有保存成功，离开后这些修改可能丢失。仍要离开吗？',
+    saved: '考试仍在进行，离开后倒计时不会暂停。已作答内容会保留，可从「我的考试」继续。',
+    confirmUnsaved: '仍要离开',
+    confirmSaved: '离开考试',
+    cancel: '继续作答'
+  },
+  labels: {
+    idle: '答案将自动保存',
+    pending: '有更改待保存…',
+    saving: '正在保存…',
+    error: '自动保存失败',
+    saved: at => (at ? `已保存 ${saveTimeFormat.format(at)}` : '已保存')
   }
-}
+})
+const { remaining, phase, text: saveText, flush } = session
 
 function dismissIndex(event: KeyboardEvent) {
   if (!indexOpen.value || !indexToggle.value?.offsetParent) return
@@ -380,12 +327,7 @@ async function scrollToQuestion(question: ExamTakingQuestion) {
   indexOpen.value = false
   await nextTick()
   currentId.value = question.paperQuestionId
-  const target = document.getElementById(`exam-question-${question.paperQuestionId}`)
-  target?.focus({ preventScroll: true })
-  target?.scrollIntoView({
-    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    block: 'start'
-  })
+  focusQuestion(`exam-question-${question.paperQuestionId}`)
 }
 
 function openPractical(question: ExamTakingQuestion) {
@@ -467,16 +409,16 @@ async function submit(auto = false) {
   submitting.value = true
   autoTriggered = true
   reviewError.value = ''
-  clearSaveTimer()
+  session.clearSchedule()
   try {
     const result = await post<ExamSubmitResult>(`/exam-hall/${props.examId}/submit`, {
       answers: payload(),
-      loadedAt: answerBaseAt
+      loadedAt: session.loadedAt()
     })
     if (disposed) return
     completed.value = result
-    clearDraft(draftKey())
-    stopClocks()
+    session.clearStoredDraft()
+    session.stopClock()
     closeAfterSubmit()
   } catch (failure) {
     if (disposed) return
@@ -491,24 +433,16 @@ async function submit(auto = false) {
     }
   } finally {
     submitting.value = false
-    if (!disposed && dirty && inProgress.value) scheduleSave()
+    if (!disposed && changedIds().length > 0 && inProgress.value) session.schedule()
   }
-}
-
-function beforeUnload(event: BeforeUnloadEvent) {
-  saveEmergencyDraft()
-  if (!inProgress.value) return
-  event.preventDefault()
-  event.returnValue = ''
 }
 
 watch(
   answers,
   () => {
     if (hydrating || !inProgress.value || submitting.value) return
-    dirty = true
-    if (!activeSave) saveState.value = 'pending'
-    scheduleSave()
+    if (changedIds().length === 0) return
+    session.schedule()
   },
   { deep: true }
 )
@@ -517,46 +451,13 @@ watch(activeType, () => {
   if (filteredQuestions.value.length) currentId.value = filteredQuestions.value[0].paperQuestionId
 })
 
-let leaveApproved = false
-const releaseLeaveGuard = registerLeaveGuard(async () => {
-  if (leaveApproved || !inProgress.value) return true
-  if (submitting.value || leaving.value) return false
-  if (activeSave) await activeSave
-  if (dirty) await saveNow()
-  const unsaved = dirty || saveState.value === 'error'
-  try {
-    await ElMessageBox.confirm(
-      unsaved
-        ? '还有答案没有保存成功，离开后这些修改可能丢失。仍要离开吗？'
-        : '考试仍在进行，离开后倒计时不会暂停。已作答内容会保留，可从「我的考试」继续。',
-      '离开考试',
-      {
-        type: 'warning',
-        confirmButtonText: unsaved ? '仍要离开' : '离开考试',
-        cancelButtonText: '继续作答'
-      }
-    )
-  } catch {
-    return false
-  }
-  leaveApproved = true
-  return true
-})
-
 onMounted(() => {
   void load()
-  window.addEventListener('beforeunload', beforeUnload)
 })
 
 onBeforeUnmount(() => {
-  releaseEmergencyFlush()
-  releaseLeaveGuard()
-  // Last-chance write for paths that bypass the guard (session expiry, forced sign-out).
-  if (dirty && inProgress.value && !submitting.value) void persistAnswers()
   disposed = true
   stopDeployPoll()
-  stopClocks()
-  window.removeEventListener('beforeunload', beforeUnload)
 })
 
 async function goBack() {
@@ -565,8 +466,7 @@ async function goBack() {
     // Flush before the shared leave guard asks, so leaving never drops the last debounce window.
     leaving.value = true
     try {
-      if (activeSave) await activeSave
-      if (dirty) await saveNow()
+      await session.flushPending()
     } finally {
       leaving.value = false
     }
@@ -646,11 +546,11 @@ function goRecords() {
               </div>
               <div
                 class="side-save"
-                :class="{ 'save-error': saveState === 'error', 'save-done': saveState === 'saved' }"
+                :class="{ 'save-error': phase === 'error', 'save-done': phase === 'saved' }"
               >
                 <i aria-hidden="true" />
                 <span role="status">{{ saveText }}</span>
-                <el-button v-if="saveState === 'error'" link type="primary" :icon="Refresh" @click="saveNow">
+                <el-button v-if="phase === 'error'" link type="primary" :icon="Refresh" @click="flush()">
                   重试
                 </el-button>
               </div>

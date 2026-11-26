@@ -212,6 +212,7 @@ Object.assign(labels, {
   healthStatus: '健康状态',
   metricsSource: '指标来源',
   collectedAt: '采集时间',
+  refreshing: '正在同步',
   publicKeyConfigured: '已配置供应商公钥',
   mode: '环境模式',
   importedAt: '导入时间',

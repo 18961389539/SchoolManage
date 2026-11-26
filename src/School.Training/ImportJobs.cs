@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -63,8 +62,6 @@ public sealed class ImportJobQueue
 
 public sealed class ImportJobWorker(ImportJobQueue jobs, ImportPasswordReceipts passwordReceipts, IServiceScopeFactory scopes, ILogger<ImportJobWorker> logger) : BackgroundService
 {
-    static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try { await RecoverInterruptedAsync(); }
@@ -100,13 +97,20 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, ImportPasswordReceipts 
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
         var now = DateTime.UtcNow;
-        var recovered = await db.ImportBatches
+        var interrupted = await db.ImportBatches
             .Where(x => x.Status == ImportBatchStatus.Queued || x.Status == ImportBatchStatus.Running || x.Status == ImportBatchStatus.Cancelling)
+            .Select(x => x.Id)
+            .ToListAsync();
+        if (interrupted.Count == 0) return;
+        await db.ImportBatches
+            .Where(x => interrupted.Contains(x.Id))
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.Status, ImportBatchStatus.Failed)
                 .SetProperty(x => x.FailureMessage, "服务重启导致导入任务中断，请重新预览并提交")
+                .SetProperty(x => x.RowsJson, "[]")
                 .SetProperty(x => x.CompletedAt, now));
-        if (recovered > 0) logger.LogWarning("Marked {Count} interrupted import batches as failed.", recovered);
+        await db.ImportBatchRows.Where(x => interrupted.Contains(x.BatchId)).ExecuteDeleteAsync();
+        logger.LogWarning("Marked {Count} interrupted import batches as failed.", interrupted.Count);
     }
 
     async Task ProcessAsync(ImportJobRequest request, CancellationToken stoppingToken)
@@ -133,9 +137,19 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, ImportPasswordReceipts 
             if (claimed == 0) return;
 
             var batch = await db.ImportBatches.AsNoTracking().SingleAsync(x => x.Id == request.BatchId, token);
-            var rows = JsonSerializer.Deserialize<List<ImportRow>>(batch.RowsJson, JsonOptions)
-                ?? throw new InvalidDataException("导入预览数据无法读取，请重新上传");
-            if (rows.Count == 0 || rows.Count != batch.TotalCount) throw new InvalidDataException("导入预览数据不完整，请重新上传");
+            if (batch.Status is ImportBatchStatus.Cancelled or ImportBatchStatus.Cancelling)
+            {
+                if (batch.Status == ImportBatchStatus.Cancelling) await FinishCancelledAsync(request.BatchId);
+                return;
+            }
+            var rows = await ImportBatchStore.LoadAsync(db, batch, token);
+            if (rows.Count == 0 || rows.Count != batch.TotalCount)
+            {
+                var status = await db.ImportBatches.Where(x => x.Id == request.BatchId).Select(x => x.Status).SingleAsync(token);
+                if (status == ImportBatchStatus.Cancelling) await FinishCancelledAsync(request.BatchId);
+                else if (status != ImportBatchStatus.Cancelled) throw new InvalidDataException("导入预览数据不完整，请重新上传");
+                return;
+            }
 
             // Validation must run before hashing: a stale preview fails the whole batch.
             await ImportEndpoints.ValidateRows(rows, batch.Kind, db, token);
@@ -145,29 +159,33 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, ImportPasswordReceipts 
                 return;
             }
 
-            var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
-            var prepared = new Dictionary<int, AppUser>(rows.Count);
-            var credentials = new List<ImportCredential>(rows.Count);
+            var degree = ImportHashing.Parallelism;
+            var prepared = new AppUser[rows.Count];
+            var credentials = new ImportCredential[rows.Count];
+            var role = batch.Kind == "teacher" ? "Teacher" : "Student";
             const int progressInterval = 250;
             var processed = 0;
             foreach (var chunk in rows.Chunk(progressInterval))
             {
                 token.ThrowIfCancellationRequested();
-                foreach (var row in chunk)
-                {
-                    var data = row.Data;
-                    var password = ImportPasswordReceipts.GeneratePassword();
-                    var user = new AppUser
+                var offset = processed;
+                Parallel.For(0, chunk.Length, new ParallelOptions { MaxDegreeOfParallelism = degree, CancellationToken = token },
+                    ImportHashing.Create, (index, _, hasher) =>
                     {
-                        UserName = data.UserName,
-                        DisplayName = data.Name,
-                        Role = batch.Kind == "teacher" ? "Teacher" : "Student",
-                        MustChangePassword = true
-                    };
-                    user.PasswordHash = hasher.HashPassword(user, password);
-                    prepared.Add(row.RowNumber, user);
-                    credentials.Add(new ImportCredential(data.UserName, password));
-                }
+                        var data = chunk[index].Data;
+                        var password = ImportPasswordReceipts.GeneratePassword();
+                        var user = new AppUser
+                        {
+                            UserName = data.UserName,
+                            DisplayName = data.Name,
+                            Role = role,
+                            MustChangePassword = true
+                        };
+                        user.PasswordHash = hasher.HashPassword(user, password);
+                        prepared[offset + index] = user;
+                        credentials[offset + index] = new ImportCredential(data.UserName, password);
+                        return hasher;
+                    }, static _ => { });
                 processed += chunk.Length;
                 await ReportProgressAsync(request.BatchId, processed, token);
             }
@@ -187,15 +205,16 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, ImportPasswordReceipts 
             }
 
             var classMap = await ImportEndpoints.LoadUniqueClassMapAsync(db, rows, token);
-            foreach (var row in rows)
+            var people = new Person[rows.Count];
+            for (var i = 0; i < rows.Count; i++)
             {
-                var data = row.Data;
-                if (!prepared.TryGetValue(row.RowNumber, out var user)) throw new InvalidDataException("导入任务数据不完整，请重新上传");
-                db.Users.Add(user);
-                db.People.Add(AcademicEndpoints.CreatePerson(
+                var data = rows[i].Data;
+                var user = prepared[i] ?? throw new InvalidDataException("导入任务数据不完整，请重新上传");
+                people[i] = AcademicEndpoints.CreatePerson(
                     new PersonRequest(batch.Kind, data.Name, data.UserName, data.Number,
-                        classMap.GetValueOrDefault(data.ClassName), data.Gender, data.Phone, data.Email), user.Id));
+                        classMap.GetValueOrDefault(data.ClassName), data.Gender, data.Phone, data.Email), user.Id);
             }
+            await ImportBatchStore.InsertAccountsAsync(db, prepared, people, token);
 
             var userName = await db.Users.Where(x => x.Id == batch.UserId).Select(x => x.UserName).FirstOrDefaultAsync(token) ?? "system";
             current.Committed = true;
@@ -212,7 +231,8 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, ImportPasswordReceipts 
                 Target = batch.Kind,
                 Detail = $"成功{rows.Count}行，移除问题行{batch.RemovedCount}行"
             });
-            passwordReceipts.Put(request.BatchId, batch.UserId, credentials.ToArray(), DateTime.UtcNow.AddHours(24));
+            await db.ImportBatchRows.Where(x => x.BatchId == request.BatchId).ExecuteDeleteAsync(token);
+            passwordReceipts.Put(request.BatchId, batch.UserId, credentials, DateTime.UtcNow.AddHours(24));
             await db.SaveChangesAsync(token);
             await transaction.CommitAsync(token);
         }
@@ -224,7 +244,8 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, ImportPasswordReceipts 
         catch (Exception ex)
         {
             logger.LogError(ex, "Import job {BatchId} failed.", request.BatchId);
-            await FinishFailedAsync(request.BatchId, ex is DbUpdateException ? "账号或学号在导入期间发生重复，请重新预览" : "导入任务失败，请查看服务日志");
+            var duplicate = ex is DbUpdateException || DatabaseErrors.Classify(ex) == DatabaseFailure.Constraint;
+            await FinishFailedAsync(request.BatchId, duplicate ? "账号或学号在导入期间发生重复，请重新预览" : "导入任务失败，请查看服务日志");
         }
         finally
         {
@@ -256,13 +277,14 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, ImportPasswordReceipts 
         {
             await using var scope = scopes.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
-            await db.ImportBatches
+            var updated = await db.ImportBatches
                 .Where(x => x.Id == batchId && (x.Status == ImportBatchStatus.Queued || x.Status == ImportBatchStatus.Running || x.Status == ImportBatchStatus.Cancelling))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.Status, ImportBatchStatus.Failed)
                     .SetProperty(x => x.FailureMessage, message)
                     .SetProperty(x => x.RowsJson, "[]")
                     .SetProperty(x => x.CompletedAt, DateTime.UtcNow));
+            if (updated > 0) await db.ImportBatchRows.Where(x => x.BatchId == batchId).ExecuteDeleteAsync();
         }
         catch (Exception ex)
         {
@@ -278,13 +300,14 @@ public sealed class ImportJobWorker(ImportJobQueue jobs, ImportPasswordReceipts 
         {
             await using var scope = scopes.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<SchoolDbContext>();
-            await db.ImportBatches
+            var updated = await db.ImportBatches
                 .Where(x => x.Id == batchId && (x.Status == ImportBatchStatus.Queued || x.Status == ImportBatchStatus.Running || x.Status == ImportBatchStatus.Cancelling))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.Status, ImportBatchStatus.Cancelled)
                     .SetProperty(x => x.FailureMessage, "导入任务已取消")
                     .SetProperty(x => x.RowsJson, "[]")
                     .SetProperty(x => x.CompletedAt, DateTime.UtcNow));
+            if (updated > 0) await db.ImportBatchRows.Where(x => x.BatchId == batchId).ExecuteDeleteAsync();
         }
         catch (Exception ex)
         {

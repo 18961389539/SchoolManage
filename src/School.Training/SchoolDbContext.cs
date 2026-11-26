@@ -11,6 +11,7 @@ public partial class SchoolDbContext(DbContextOptions<SchoolDbContext> options) 
     public DbSet<AuditEntry> Audits => Set<AuditEntry>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
+    public DbSet<ImportBatchRow> ImportBatchRows => Set<ImportBatchRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -24,6 +25,8 @@ public partial class SchoolDbContext(DbContextOptions<SchoolDbContext> options) 
         // Audit lists page by (At DESC, Id DESC); the composite index also supports the
         // dashboard's "latest 8" query without a full scan plus sort.
         modelBuilder.Entity<AuditEntry>().HasIndex(x => new { x.At, x.Id }).HasDatabaseName("IX_Audits_At_Id");
+        modelBuilder.Entity<ImportBatchRow>().HasIndex(x => new { x.BatchId, x.RowNumber }).IsUnique().HasDatabaseName("IX_ImportBatchRows_BatchId_RowNumber");
+        modelBuilder.Entity<ImportBatchRow>().HasOne<ImportBatch>().WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Cascade);
         ConfigureInfrastructure(modelBuilder);
         ConfigureTeaching(modelBuilder);
         ConfigureExams(modelBuilder);
@@ -111,4 +114,17 @@ public class ImportBatch
     public DateTime? QueuedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+}
+
+/// <summary>
+/// One preview line. Replaces the single <see cref="ImportBatch.RowsJson"/> document so preview
+/// pages and the import worker can read a range instead of a multi-megabyte column.
+/// </summary>
+public class ImportBatchRow
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string BatchId { get; set; } = "";
+    public int RowNumber { get; set; }
+    public string PayloadJson { get; set; } = "";
+    public bool HasError { get; set; }
 }

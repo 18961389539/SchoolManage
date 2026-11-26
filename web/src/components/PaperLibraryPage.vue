@@ -7,14 +7,21 @@ import { readListState, useListPersist } from '../listState'
 import { recoverPage } from '../paging'
 import { useRequestGeneration } from '../requestGeneration'
 import { examQuestionTypeLabel, examQuestionTypeOptions, optionLetters, selectedText, typeCountText } from '../exam'
-import type { ExamPaperDetail, ExamPaperQuestion, ExamPaperSummary, ExamQuestionSummary, Paged } from '../types'
+import { contentVisibilityOptions, visibilityLabel } from '../teaching'
+import type { ContentVisibility, ExamPaperDetail, ExamPaperQuestion, ExamPaperSummary, ExamQuestionSummary, Paged } from '../types'
 import QuestionBankSelect from './QuestionBankSelect.vue'
 import { focusFirstField } from '../focusField'
 import { useDiscardGuard } from '../discardGuard'
 import TableEmpty from './TableEmpty.vue'
 
-const props = defineProps<{ readOnly?: boolean }>()
+const props = defineProps<{ readOnly?: boolean; admin?: boolean }>()
 const canWrite = computed(() => !props.readOnly)
+const visibilityChoices = computed(() =>
+  props.admin ? contentVisibilityOptions : contentVisibilityOptions.filter(item => item.value !== 'published')
+)
+function paperSelectable(row: ExamPaperSummary) {
+  return row.canEdit
+}
 
 const items = ref<ExamPaperSummary[]>([])
 const total = ref(0)
@@ -51,7 +58,7 @@ function addPickerReason(): string | undefined {
 const editing = ref<ExamPaperSummary | null>(null)
 const saving = ref(false)
 const formError = ref('')
-const form = reactive({ name: '', description: '', remark: '' })
+const form = reactive({ name: '', description: '', remark: '', visibility: 'private' as ContentVisibility })
 const guard = useDiscardGuard({
   visible: dialogVisible,
   snapshot: () => form,
@@ -135,6 +142,7 @@ function openCreate() {
   form.name = ''
   form.description = ''
   form.remark = ''
+  form.visibility = props.admin ? 'published' : 'private'
   formError.value = ''
   guard.capture()
   dialogVisible.value = true
@@ -145,6 +153,7 @@ function openEdit(item: ExamPaperSummary) {
   form.name = item.name
   form.description = item.description
   form.remark = item.remark
+  form.visibility = item.visibility || (props.admin ? 'published' : 'private')
   formError.value = ''
   guard.capture()
   dialogVisible.value = true
@@ -161,7 +170,8 @@ async function savePaper() {
     const payload = {
       name: form.name.trim(),
       description: form.description.trim(),
-      remark: form.remark.trim()
+      remark: form.remark.trim(),
+      visibility: form.visibility
     }
     if (editing.value) await put(`/exam-papers/${editing.value.id}`, payload)
     else await post('/exam-papers', payload)
@@ -340,7 +350,7 @@ onMounted(load)
     <div>
       <h1>{{ canWrite ? '试卷管理' : '试卷库' }}</h1>
       <p v-if="canWrite">
-        从题库复制题目快照组成试卷并调整分值。修改题库不会自动更新本试卷；未用于考试时可移除后重新加入题目。已用于考试的试卷保持锁定，重命名不影响原考试。
+        可以创建本人试卷，并从可见题库选题。公共标准库中的试卷由管理员维护。从题库复制的是题目快照；未用于考试时可调整题目。
       </p>
       <p v-else>只读查看管理员已配置的试卷，不能改题、组卷或删除。</p>
     </div>
@@ -398,11 +408,12 @@ onMounted(load)
           </template>
         </TableEmpty>
       </template>
-      <el-table-column v-if="canWrite" type="selection" width="45" />
+      <el-table-column v-if="canWrite" type="selection" width="45" :selectable="paperSelectable" />
       <el-table-column prop="name" label="试卷" min-width="220">
         <template #default="{ row }">
           <div class="table-name">
             <strong>{{ row.name }}</strong>
+            <el-tag size="small" effect="plain">{{ visibilityLabel(row.visibility) }}</el-tag>
           </div>
           <p class="paper-description">{{ row.description || '暂无简介' }}</p>
         </template>
@@ -424,10 +435,10 @@ onMounted(load)
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" :icon="View" @click="openEditor(row as ExamPaperSummary)">{{
-            canWrite ? '组卷' : '查看试卷'
+            row.canEdit ? '组卷' : '查看试卷'
           }}</el-button>
-          <el-button v-if="canWrite" link :icon="EditPen" @click="openEdit(row as ExamPaperSummary)">编辑</el-button>
-          <el-button v-if="canWrite" link type="danger" :icon="Delete" @click="removePaper(row as ExamPaperSummary)"
+          <el-button v-if="row.canEdit" link :icon="EditPen" @click="openEdit(row as ExamPaperSummary)">编辑</el-button>
+          <el-button v-if="row.canEdit" link type="danger" :icon="Delete" @click="removePaper(row as ExamPaperSummary)"
             >删除</el-button
           >
         </template>
@@ -476,6 +487,11 @@ onMounted(load)
       </el-form-item>
       <el-form-item label="备注">
         <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="2000" show-word-limit />
+      </el-form-item>
+      <el-form-item label="可见范围" required>
+        <el-select v-model="form.visibility">
+          <el-option v-for="option in visibilityChoices" :key="option.value" :label="option.label" :value="option.value" />
+        </el-select>
       </el-form-item>
     </el-form>
     <template #footer>

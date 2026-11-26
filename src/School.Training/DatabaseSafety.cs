@@ -1,37 +1,73 @@
+using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace School.Training;
 
 public static class DatabaseSafety
 {
     public const int ApplicationId = 0x5354524E;
-    public const int SchemaVersion = 18;
+    public const int SchemaVersion = 22;
 
-    public static async Task ValidateBackup(string path, string keysDirectory)
+    public static Task ValidateBackup(string path, string keysDirectory, KeyProtectionOptions? protection = null)
+        => ValidateBackupCore(path, keysDirectory, protection ?? new KeyProtectionOptions());
+
+    public static async Task<BackupInspectionReport> InspectBackupAsync(string path, string keysDirectory, KeyProtectionOptions protection, CancellationToken ct)
+    {
+        var mode = Directory.Exists(keysDirectory) ? KeyProtectionMaterial.Describe(keysDirectory) : "unknown";
+        var warnings = new List<string>();
+        if (mode == "dpapi") warnings.Add("密钥仍绑定做出这份备份的 Windows 安装。重装系统或更换服务器后无法解密设备凭据。请先配置证书或恢复口令，重启服务后再备份。");
+        else if (mode == "passphrase" && !protection.UsesPassphrase && !protection.UsesCertificate)
+            warnings.Add("此备份的密钥用恢复口令保护。请在 server.json 配置同一句 School:DataProtection:RecoveryPassphrase 后再检查。");
+        else if (mode is "certificate" or "passphrase")
+            warnings.Add("密钥可以在持有同一证书或恢复口令的新系统上解密。请把证书或口令保存在服务器以外。");
+        int? schema = null;
+        try
+        {
+            schema = await Inspect(path);
+            var credentials = await ValidateBackupCore(path, keysDirectory, protection, ct);
+            return new BackupInspectionReport(true, "备份可以通过当前服务器的完整性检查", schema, mode, mode is "certificate" or "passphrase", credentials, warnings);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or System.Security.Cryptography.CryptographicException or InvalidOperationException)
+        {
+            return new BackupInspectionReport(false, ex.Message, schema, mode, false, 0, warnings);
+        }
+    }
+
+    static async Task<int> ValidateBackupCore(string path, string keysDirectory, KeyProtectionOptions protection, CancellationToken ct = default)
     {
         await Validate(path, allowOlderSchema: true);
         if (!Directory.Exists(keysDirectory) || !Directory.EnumerateFiles(keysDirectory, "key-*.xml").Any()) throw new InvalidDataException("备份缺少DataProtection密钥文件");
-        var provider = DataProtectionProvider.Create(new DirectoryInfo(keysDirectory), options =>
-        {
-            options.SetApplicationName("SchoolTraining").DisableAutomaticKeyGeneration();
-            if (OperatingSystem.IsWindows()) options.ProtectKeysWithDpapi(protectToLocalMachine: true);
-        });
-        var protector = provider.CreateProtector("EquipmentCredentials.v1");
+        X509Certificate2? certificate = null;
         try
         {
-            var probe = protector.Protect("backup-validation-probe");
-            if (protector.Unprotect(probe) != "backup-validation-probe") throw new InvalidDataException("密钥验证失败");
-            var cs = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString();
-            await using var db = new SchoolDbContext(new DbContextOptionsBuilder<SchoolDbContext>().UseSqlite(cs).Options);
-            var values = await db.Cabinets.Where(x => x.JumpPasswordProtected != "").Select(x => x.JumpPasswordProtected).ToListAsync();
-            values.AddRange(await db.Devices.Where(x => x.PasswordProtected != "").Select(x => x.PasswordProtected).ToListAsync());
-            values.AddRange(await db.Nodes.Where(x => x.PasswordProtected != "").Select(x => x.PasswordProtected).ToListAsync());
-            foreach (var value in values) _ = protector.Unprotect(value);
+            certificate = KeyProtectionMaterial.OpenForRead(keysDirectory, protection);
+            await using var reader = KeyProtectionMaterial.CreateReader(keysDirectory, certificate);
+            var protector = reader.GetRequiredService<IDataProtectionProvider>().CreateProtector("EquipmentCredentials.v1");
+            try
+            {
+                var probe = protector.Protect("backup-validation-probe");
+                if (protector.Unprotect(probe) != "backup-validation-probe") throw new InvalidDataException("密钥验证失败");
+                var cs = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString();
+                await using var db = new SchoolDbContext(new DbContextOptionsBuilder<SchoolDbContext>().UseSqlite(cs).Options);
+                var values = await db.Cabinets.Where(x => x.JumpPasswordProtected != "").Select(x => x.JumpPasswordProtected).ToListAsync(ct);
+                values.AddRange(await db.Devices.Where(x => x.PasswordProtected != "").Select(x => x.PasswordProtected).ToListAsync(ct));
+                values.AddRange(await db.Nodes.Where(x => x.PasswordProtected != "").Select(x => x.PasswordProtected).ToListAsync(ct));
+                foreach (var value in values) _ = protector.Unprotect(value);
+                return values.Count;
+            }
+            catch (System.Security.Cryptography.CryptographicException ex)
+            {
+                var portable = certificate != null || protection.UsesCertificate || protection.UsesPassphrase;
+                throw new InvalidDataException(portable
+                    ? "备份密钥无法用当前证书或恢复口令解密。请确认 server.json 中的保护配置与做备份时一致"
+                    : "备份密钥无法在当前Windows上解密已有凭据，禁止恢复", ex);
+            }
         }
-        catch (System.Security.Cryptography.CryptographicException ex) { throw new InvalidDataException("备份密钥无法在当前Windows上解密已有凭据，禁止恢复", ex); }
+        finally { certificate?.Dispose(); }
     }
 
     /// <summary>
@@ -125,6 +161,12 @@ public static class DatabaseSafety
         // Pre-v17 backups and snapshots predate optimistic locking on the course tree.
         if (version < 17 && column == "Version" && table is ("Courses" or "CourseChapters" or "CourseSections" or "CourseResources")) return false;
         if (version < 18 && table == "JobPositions" && column == "Published") return false;
+        if (version < 19 && column == "ContentVersion" && table is "JobPositions" or "JobSkills" or "JobQuestions" or "JobAttempts") return false;
+        if (version < 19 && table == "JobAttempts" && column == "StartupNodeId") return false;
+        if (version < 20 && table is "ClassroomStudentStats" or "ClassroomProgressFreezes") return false;
+        if (version < 21 && table == "ImportBatchRows") return false;
+        if (version < 22 && column is "OwnerUserId" or "Visibility"
+            && table is "Courses" or "ExamQuestionBanks" or "ExamPapers") return false;
         if (table == "Devices" && column == "NodeId") return version >= 5;
         if (table == "ImportBatches" && column is "Status" or "RemoveInvalidRows" or "TotalCount" or "ProcessedCount"
             or "ImportedCount" or "RemovedCount" or "FailureMessage" or "QueuedAt" or "StartedAt" or "CompletedAt") return version >= 3;

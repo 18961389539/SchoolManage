@@ -6,6 +6,8 @@ namespace School.Training;
 /// </summary>
 public sealed record ImportPreviewResponse(string BatchId, List<ImportRow> Rows, int ValidCount, int ErrorCount);
 
+public sealed record ImportRowsResponse(List<ImportRow> Rows, int TotalCount, int Page, int PageSize);
+
 public sealed record ImportStatusResponse(
     string BatchId,
     string Status,
